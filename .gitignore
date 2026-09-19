@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 *.pyc
 .env
+.env.*
+!.env.example
 projects/
 *.sqlite3
 *.sqlite3-wal
@@ -13,3 +15,11 @@ projects/
 # Public-domain EPUB fixtures/examples may be committed deliberately.
 !examples/public-domain/*.epub
 !examples/public-domain/**/*.epub
+
+# Provider runtime and live verification contain private communication evidence.
+**/.runtime/
+**/artifacts/
+**/codex-home/
+**/codex-sqlite/
+**/auth.json
+.verification/

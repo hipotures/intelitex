@@ -1,6 +1,6 @@
 [project]
 name = "intelitex"
-version = "1.10.0"
+version = "1.11.0"
 description = "Intelitex: checkpointed five-pass literary translation with human terminology review"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,3 +16,4 @@ dev = ["pytest>=8,<10"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

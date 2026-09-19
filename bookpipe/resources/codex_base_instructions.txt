@@ -1,0 +1,1 @@
+Return only the requested translation-pipeline result. Do not use tools, files, prior conversations, or runtime context.

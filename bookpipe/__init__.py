@@ -1,2 +1,2 @@
-"""Checkpointed literary translation using a local llama.cpp server."""
-__version__ = "1.10.0"
+"""Checkpointed literary translation through native LLM transports."""
+__version__ = "1.11.0"

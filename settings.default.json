@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "host": "127.0.0.1",
   "port": 8080,
   "model": null,
@@ -34,5 +34,47 @@
       "max_tokens": 16000
     }
   },
-  "whole_section_char_limit": 10000
+  "whole_section_char_limit": 10000,
+  "allow_incomplete_observability": false,
+  "default_profile": "local",
+  "pass_profiles": {},
+  "profiles": {
+    "local": {
+      "provider": "llamacpp",
+      "enabled": true,
+      "model": null,
+      "endpoint": "127.0.0.1",
+      "context_size": null,
+      "planning_output_reserve": 16000,
+      "request_timeout": 1200,
+      "credential_env": "LLAMA_API_KEY",
+      "seed": 42,
+      "options": {"port": 8080, "thinking": "off", "request_extra": {}}
+    },
+    "openai-template": {
+      "provider": "openai",
+      "enabled": false,
+      "model": null,
+      "endpoint": "https://api.openai.com/v1",
+      "credential_env": "OPENAI_API_KEY",
+      "context_size": null,
+      "planning_output_reserve": 16000,
+      "max_output_tokens": null,
+      "request_timeout": 1200,
+      "reasoning_effort": null,
+      "options": {}
+    },
+    "codex-template": {
+      "provider": "codex",
+      "enabled": false,
+      "model": null,
+      "executable": "codex",
+      "context_size": null,
+      "planning_output_reserve": 16000,
+      "max_output_tokens": null,
+      "request_timeout": 1200,
+      "reasoning_effort": null,
+      "options": {}
+    }
+  }
 }

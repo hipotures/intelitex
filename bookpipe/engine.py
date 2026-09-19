@@ -9,6 +9,9 @@ from typing import Any, Callable
 import jsonschema
 
 from .client import Client, ContextFull
+from .catalog import apply_estimate, load_catalog, pricing_snapshot
+from .contracts import SemanticRequest
+from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
 from .schemas import SCHEMAS
 from .store import Store
@@ -293,7 +296,17 @@ def _recovery_signature(body: dict) -> dict:
     return value
 
 
-def _compatible_completed_attempts(key_root: Path, body: dict) -> list[Path]:
+def _semantic_execution_signature(value: dict) -> dict:
+    value = copy.deepcopy(value)
+    for key in ("attempt_no", "retry_additions", "profile"):
+        value.pop(key, None)
+    resolved = value.get("resolved_profile")
+    if isinstance(resolved, dict):
+        resolved.pop("selection_provenance", None)
+    return value
+
+
+def _compatible_completed_attempts(key_root: Path, body: dict, semantic: dict | None = None) -> list[Path]:
     """Find completed older attempts whose semantic request matches this one.
 
     v1.2 retry requests carried VALIDATION_ERROR / RETRY_INSTRUCTION and an
@@ -313,14 +326,25 @@ def _compatible_completed_attempts(key_root: Path, body: dict) -> list[Path]:
         if not (answer.is_file() and request.is_file() and meta.is_file()):
             continue
         try:
-            old = read_json(request)
             metadata = read_json(meta)
         except Exception:
             continue
         if metadata.get("finish_reason") != "stop":
             continue
-        if _recovery_signature(old) != wanted:
-            continue
+        semantic_path = attempt / "request.semantic.json"
+        if semantic is not None and semantic_path.is_file():
+            try:
+                if _semantic_execution_signature(read_json(semantic_path)) != _semantic_execution_signature(semantic):
+                    continue
+            except Exception:
+                continue
+        else:
+            try:
+                old = read_json(request)
+            except Exception:
+                continue
+            if _recovery_signature(old) != wanted:
+                continue
         found.append(attempt)
     return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -337,16 +361,35 @@ class Runner:
         if cached:
             validate_result(pass_no, cached["value"], inputs)
             return cached["value"], cached["path"], fingerprint
+        hold = self.store.get("observability_hold")
+        if hold and not self.settings.get("allow_incomplete_observability", False):
+            raise PipelineError(
+                "New inference is paused because an earlier completed attempt lacked expected usage evidence. "
+                f"Inspect {hold.get('attempt')} and explicitly set allow_incomplete_observability=true to continue."
+            )
         work = self.store.root / "artifacts" / key / fingerprint[:20]
         work.mkdir(parents=True, exist_ok=True)
         atomic_json(work / "inputs.json", inputs)
         atomic_text(work / "prompt.txt", prompt)
+        provider = self.client.for_pass(pass_no) if hasattr(self.client, "for_pass") else self.client
         # Before generating again, recover a completed compatible response from
         # an older fingerprint if possible. This is especially useful after a
         # validation-only failure in a previous program version.
-        recovery_body = self.client.body(prompt, inputs, schema, pass_no)
+        recovery_body = provider.body(prompt, inputs, schema, pass_no)
+        base_semantic = SemanticRequest(
+            task_key=key, task_fingerprint=fingerprint, pass_no=pass_no, attempt_no=0,
+            trusted_instructions=prompt, input_payload=inputs, output_schema=schema,
+            schema_version=1, profile=getattr(provider, "profile_name", "local"),
+            provider=getattr(provider, "provider", "llamacpp"), requested_model=getattr(provider, "model", None),
+            reasoning_effort=getattr(provider, "resolved_profile", {}).get("reasoning_effort"),
+            planning_output_reserve=int(getattr(provider, "resolved_profile", {}).get(
+                "planning_output_reserve", self.settings["passes"][str(pass_no)]["max_tokens"])),
+            enforced_output_cap=getattr(provider, "resolved_profile", {}).get("max_output_tokens"),
+            timeout_seconds=float(getattr(provider, "timeout", self.settings.get("request_timeout", 1200))),
+            resolved_profile=getattr(provider, "resolved_profile", {}),
+        ).as_dict()
         key_root = self.store.root / "artifacts" / key
-        for attempt in _compatible_completed_attempts(key_root, recovery_body):
+        for attempt in _compatible_completed_attempts(key_root, recovery_body, base_semantic):
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
                 clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
@@ -379,14 +422,67 @@ class Runner:
                 payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."
                 if pass_no == 1:
                     payload["ALLOWED_EVIDENCE_IDS"] = [b["id"] for b in inputs["SOURCE_BLOCKS"]]
-            body = self.client.body(prompt, payload, schema, pass_no)
-            input_tokens = self.client.preflight(body)
             number = len(list(work.glob("attempt_*"))) + 1
             attempt = work / f"attempt_{number:03d}"
+            retry_additions = {name: payload[name] for name in _RECOVERY_TRANSIENT_INPUT_KEYS if name in payload}
+            semantic = SemanticRequest(
+                task_key=key, task_fingerprint=fingerprint, pass_no=pass_no, attempt_no=number,
+                trusted_instructions=prompt, input_payload=payload, output_schema=schema,
+                schema_version=1, profile=getattr(provider, "profile_name", "local"),
+                provider=getattr(provider, "provider", "llamacpp"), requested_model=getattr(provider, "model", None),
+                reasoning_effort=getattr(provider, "resolved_profile", {}).get("reasoning_effort"),
+                planning_output_reserve=int(getattr(provider, "resolved_profile", {}).get(
+                    "planning_output_reserve", self.settings["passes"][str(pass_no)]["max_tokens"])),
+                enforced_output_cap=getattr(provider, "resolved_profile", {}).get("max_output_tokens"),
+                timeout_seconds=float(getattr(provider, "timeout", self.settings.get("request_timeout", 1200))),
+                resolved_profile=getattr(provider, "resolved_profile", {}), retry_additions=retry_additions,
+            )
+            recorder = AttemptRecorder(attempt, {
+                "project": str(self.store.root), "command": "pipeline", "pass": pass_no,
+                "task_key": key, "task_fingerprint": fingerprint, "attempt_id": f"{fingerprint[:20]}-{number:03d}",
+                "attempt_number": number, "provider": semantic.provider, "profile": semantic.profile,
+                "requested_model": semantic.requested_model,
+            })
+            recorder.semantic(semantic.as_dict(), schema)
+            catalog, catalog_path = load_catalog(self.store.root)
+            recorder.pricing(pricing_snapshot(catalog, catalog_path, semantic.provider, semantic.requested_model))
+            body = provider.body(prompt, payload, schema, pass_no)
+            # llama.cpp discovery is required for a null model/context and is
+            # recorded inside the already-created attempt boundary.
+            if getattr(provider, "provider", "llamacpp") == "llamacpp" and not getattr(provider, "identity", {}).get("id"):
+                recorder.event("outbound", "provider_discovery", {"provider": "llamacpp", "base": getattr(provider, "base", None)})
+                identity = provider.discover()
+                recorder.event("inbound", "provider_discovery", identity)
+                body = provider.body(prompt, payload, schema, pass_no)
+            try:
+                input_tokens = provider.preflight(body, recorder)
+            except BaseException as exc:
+                recorder.finish(generation="not_submitted", validation="not_run",
+                                metadata={"provider": semantic.provider, "status": "preflight_failed", "usage_status": "unavailable"},
+                                error={"type": type(exc).__name__, "message": str(exc)})
+                raise
             self.ui.phase(f"P{pass_no}/5 | {key} | waiting for model; input {input_tokens:,} tokens")
             # A failed HTTP or length-limited request is NOT blindly retried; first
             # inspect/save its partial output. Only invalid completed JSON is retried.
-            raw, meta = self.client.generate(body, attempt)
+            try:
+                raw, meta = provider.generate(body, attempt, recorder)
+            except BaseException as exc:
+                usage_status = "unknown"
+                if (attempt / "usage.json").is_file():
+                    try:
+                        usage_status = read_json(attempt / "usage.json").get("status", "unknown")
+                    except Exception:
+                        pass
+                recorder.finish(generation="failed", validation="not_run",
+                                metadata={"provider": semantic.provider, "status": "failed", "usage_status": usage_status,
+                                          "partial_answer": (attempt / "answer.partial.txt").exists()},
+                                error={"type": type(exc).__name__, "message": str(exc)},
+                                evidence_complete=(not isinstance(exc, (OSError, EvidenceError))
+                                                   and "rollout" not in str(exc).casefold()))
+                raise
+            if (attempt / "usage.json").is_file():
+                snapshot = read_json(attempt / "pricing.json")
+                recorder.pricing(apply_estimate(snapshot, read_json(attempt / "usage.json")))
             try:
                 clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
                 value = json.loads(clean)
@@ -397,6 +493,9 @@ class Runner:
             except (json.JSONDecodeError, jsonschema.ValidationError, PipelineError) as exc:
                 last_error = str(exc)
                 atomic_text(attempt / "validation_error.txt", last_error + "\n")
+                recorder.finish(generation="completed", validation="failed", metadata={**meta,
+                                "validation_error": last_error, "usage_status": meta.get("usage_status", "unknown")},
+                                error={"type": type(exc).__name__, "message": last_error})
                 if retry + 1 == attempts:
                     raise PipelineError(f"P{pass_no} failed validation. Artifacts: {attempt}\n{last_error[:1400]}") from exc
                 continue
@@ -404,8 +503,16 @@ class Runner:
             atomic_json(path, value)
             if pass_no in (3, 5):
                 atomic_text(work / "result.txt", "\n\n".join(b["text"] for b in value["translations"]) + "\n")
+            recorder.finish(generation="completed", validation="passed", metadata={**meta,
+                            "input_tokens_preflight": input_tokens,
+                            "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
             self.store.save_job(key, fingerprint, path, {**meta, "input_tokens_preflight": input_tokens,
                                                         "settings": self.settings["passes"][str(pass_no)]})
+            recorder.mark_accepted()
+            if meta.get("usage_status") == "unavailable":
+                with self.store.db:
+                    self.store.set("observability_hold", {"attempt": str(attempt.relative_to(self.store.root)),
+                                                          "reason": "Provider completed without expected usage telemetry."})
             return value, str(path.relative_to(self.store.root)), fingerprint
         raise PipelineError("No completed result.")
 
@@ -437,7 +544,8 @@ def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> l
         # Import already tokenized the complete natural section. Reuse that count.
         # This avoids thousands of synchronous /tokenize calls over individual
         # paragraphs before P1 can even start.
-        cached_tokens = int(chapter.get("source_tokens") or 0)
+        tokenizer_matches = chapter.get("source_tokens_tokenizer") == getattr(client, "tokenizer_identity", None)
+        cached_tokens = int(chapter.get("source_tokens") or 0) if tokenizer_matches else 0
         if cached_tokens and cached_tokens <= source_budget:
             groups = [chapter["blocks"]]
         else:

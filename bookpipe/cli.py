@@ -5,12 +5,17 @@ import json
 import shutil
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
-from .client import Client
+from .catalog import import_catalog, load_catalog, pricing_snapshot
+from .evidence import AttemptRecorder
 from .engine import analyze, translate, export_text
 from .importer import import_folder
 from .review import run_review_server
+from .operations import attempt_report, doctor_report, print_json, profile_report, usage_report
+from .profiles import migrate_settings_file, validate_profiles
+from .provider_registry import ProviderPool
 from .store import Store
 from .ui import Display
 from .util import PipelineError, atomic_json, atomic_text, digest, project_lock, read_json, plan_fingerprint
@@ -21,7 +26,7 @@ BUNDLE = Path(__file__).resolve().parent.parent
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Persistent five-pass literary translation. Import -> analyze -> human review -> approve -> translate.")
     sub = p.add_subparsers(dest="command", required=True)
-    for name, help_text in (
+    pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
         ("review", "Open the local terminology review application backed by terms.review.json."),
@@ -29,7 +34,8 @@ def parser() -> argparse.ArgumentParser:
         ("translate", "Run P2-P5 for the next N unfinished chunks; resume checkpoints automatically."),
         ("status", "Show local progress without contacting the server."),
         ("export", "Rebuild completed text; optionally produce a strict legacy-encoding copy."),
-    ):
+    )
+    for name, help_text in pipeline_commands:
         s = sub.add_parser(name, help=help_text)
         s.add_argument("--project", type=Path, required=True)
         s.add_argument("--quiet", action="store_true", help="Disable progress display.")
@@ -40,6 +46,9 @@ def parser() -> argparse.ArgumentParser:
             s.add_argument("--context-size", type=int, help="Optional context ceiling; never exceeds detected server capacity.")
             s.add_argument("--thinking", choices=["off", "analysis"], help="off is default; analysis enables model thinking in P1/P2/P4.")
             s.add_argument("--allow-model-change", action="store_true", help="Explicitly permit a different model; preserve the existing chunk manifest/checkpoints.")
+            s.add_argument("--profile", help="Use one named profile for this command without saving it.")
+            s.add_argument("--pass-profile", action="append", default=[], metavar="P=PROFILE",
+                           help="Override a pass profile for this command; repeatable.")
         if name == "import":
             s.add_argument("folder", type=Path)
             s.add_argument("--opf", type=Path, help="Select an OPF package if several exist.")
@@ -61,15 +70,63 @@ def parser() -> argparse.ArgumentParser:
         if name == "export":
             s.add_argument("--encoding", default="utf-8", help="Encoding for an additional copy; internal state always stays UTF-8.")
             s.add_argument("--output", type=Path, help="Required for non-UTF-8 export.")
+    for name, help_text in (
+        ("profiles", "Show configured and resolved profiles without exposing credentials."),
+        ("doctor", "Validate local configuration and Codex protocol without a model turn."),
+        ("attempts", "Inspect retained attempt evidence offline."),
+        ("usage", "Report retained token accounting offline."),
+        ("catalog-import", "Validate and atomically activate a model/pricing catalog."),
+        ("discover", "Explicitly query a selected provider's live model metadata."),
+        ("smoke", "Run one explicitly authorized live structured-output request."),
+    ):
+        s = sub.add_parser(name, help=help_text)
+        s.add_argument("--project", type=Path, required=True)
+        s.add_argument("--quiet", action="store_true")
+        if name == "attempts":
+            s.add_argument("--attempt", help="Project-relative attempt directory; omit to list all.")
+        if name == "catalog-import":
+            s.add_argument("file", type=Path)
+        if name in {"discover", "smoke"}:
+            s.add_argument("--profile")
+            s.add_argument("--pass", dest="pass_no", type=int, choices=range(1, 6), default=1)
+        if name == "smoke":
+            s.add_argument("--live", action="store_true", help="Required acknowledgement that this command may spend provider credit/quota.")
     return p
 
 
+def parse_pass_profiles(values: list[str]) -> dict[int, str]:
+    result: dict[int, str] = {}
+    for value in values:
+        try:
+            number_text, name = value.split("=", 1)
+            number = int(number_text.removeprefix("P").removeprefix("p"))
+        except (ValueError, AttributeError) as exc:
+            raise PipelineError(f"Invalid --pass-profile {value!r}; expected P=PROFILE.") from exc
+        if number not in range(1, 6) or not name:
+            raise PipelineError(f"Invalid --pass-profile {value!r}; pass must be 1..5.")
+        result[number] = name
+    return result
+
+
 def effective_settings(root: Path, args) -> dict:
-    settings = read_json(root / "settings.json") if (root / "settings.json").exists() else read_json(BUNDLE / "settings.default.json")
+    installed = (root / "settings.json").exists()
+    settings = read_json(root / "settings.json") if installed else read_json(BUNDLE / "settings.default.json")
+    if installed:
+        settings, _ = migrate_settings_file(root, settings)
     for key in ("host", "port", "model", "context_size", "thinking"):
         value = getattr(args, key, None)
         if value is not None:
             settings[key] = value
+            default = settings.get("profiles", {}).get(settings.get("default_profile"))
+            if default and default.get("provider") == "llamacpp":
+                if key == "host":
+                    default["endpoint"] = value
+                elif key == "port":
+                    default.setdefault("options", {})["port"] = value
+                elif key == "thinking":
+                    default.setdefault("options", {})["thinking"] = value
+                elif key in {"model", "context_size"}:
+                    default[key] = value
     for field in ("whole_section_char_limit", "memory_tokens", "request_timeout"):
         if settings[field] <= 0:
             raise PipelineError(f"{field} must be positive.")
@@ -78,6 +135,7 @@ def effective_settings(root: Path, args) -> dict:
     for number, cfg in settings["passes"].items():
         if cfg["max_tokens"] <= 0 or not 0 <= cfg["temperature"] <= 2:
             raise PipelineError(f"Invalid settings for pass {number}.")
+    validate_profiles(settings, root if installed else None)
     return settings
 
 
@@ -110,6 +168,55 @@ def main(argv: list[str] | None = None) -> int:
         if args.command != "import" and not (root / "book.json").exists():
             raise PipelineError("Project not imported. Run import first.")
         with project_lock(root), Display(args.quiet) as ui:
+            if args.command in {"profiles", "doctor", "attempts", "usage", "catalog-import", "discover", "smoke"}:
+                settings = effective_settings(root, args)
+                if args.command == "profiles":
+                    print_json(profile_report(settings, root))
+                elif args.command == "doctor":
+                    print_json(doctor_report(settings, root))
+                elif args.command == "attempts":
+                    print_json(attempt_report(root, args.attempt))
+                elif args.command == "usage":
+                    print_json(usage_report(root))
+                elif args.command == "catalog-import":
+                    print_json(import_catalog(args.file, root))
+                elif args.command == "discover":
+                    client = ProviderPool(settings, ui, root, command_profile=args.profile)
+                    print_json(client.discover(args.pass_no))
+                else:
+                    if not args.live:
+                        raise PipelineError("smoke requires --live because it starts a billable/model turn.")
+                    client = ProviderPool(settings, ui, root, command_profile=args.profile)
+                    provider = client.for_pass(args.pass_no)
+                    stamp = str(time.time_ns())
+                    attempt = root / "artifacts" / "smoke" / stamp / "attempt_001"
+                    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                              "required": ["ok"], "additionalProperties": False}
+                    prompt = "Return the requested JSON object and nothing else."
+                    inputs = {"REQUEST": "Set ok to true."}
+                    recorder = AttemptRecorder(attempt, {"operation": "live_smoke", "provider": provider.provider,
+                                                         "profile": provider.profile_name, "requested_model": provider.model})
+                    recorder.semantic({"trusted_instructions": prompt, "input_payload": inputs,
+                                       "output_schema": schema, "resolved_profile": provider.resolved_profile}, schema)
+                    catalog, catalog_path = load_catalog(root)
+                    recorder.pricing(pricing_snapshot(catalog, catalog_path, provider.provider, provider.model))
+                    try:
+                        if provider.provider == "llamacpp" and not provider.identity.get("id"):
+                            recorder.event("outbound", "provider_discovery", {"provider": "llamacpp"})
+                            recorder.event("inbound", "provider_discovery", provider.discover())
+                        body = provider.body(prompt, inputs, schema, args.pass_no)
+                        count = provider.preflight(body, recorder)
+                        answer, metadata = provider.generate(body, attempt, recorder)
+                        if json.loads(answer) != {"ok": True}:
+                            raise PipelineError("Smoke response did not match the requested structured value.")
+                        recorder.finish(generation="completed", validation="passed",
+                                        metadata={**metadata, "input_tokens_preflight": count})
+                        print_json({"status": "passed", "attempt": str(attempt.relative_to(root)), **metadata})
+                    except BaseException as exc:
+                        recorder.finish(generation="failed", validation="failed", metadata={"status": "failed"},
+                                        error={"type": type(exc).__name__, "message": str(exc)})
+                        raise
+                return 0
             if args.command == "import":
                 if (root / "book.json").exists():
                     raise PipelineError("Project already imported. Use analyze/status/translate, not import again.")
@@ -121,13 +228,17 @@ def main(argv: list[str] | None = None) -> int:
                 settings["whole_section_char_limit"] = args.whole_section_limit
                 if args.whole_section_limit <= 0:
                     raise PipelineError("--whole-section-limit must be positive.")
-                client = Client(settings, ui)
-                client.discover()
+                client = ProviderPool(settings, ui, root, command_profile=args.profile,
+                                      command_pass_profiles=parse_pass_profiles(args.pass_profile))
+                client.discover(1)
                 opf = args.opf.resolve() if args.opf else None
                 book = import_folder(args.folder, root, client.count, settings, ui, opf=opf,
                     encoding=args.input_encoding, chapter_mode=args.chapter_mode,
                     chapter_selector=args.chapter_selector, sidecars=args.sidecar_txt, include_glob=args.include_glob)
                 book["model_identity"] = client.identity
+                book["tokenizer_identity"] = client.tokenizer_identity
+                for chapter in book["chapters"]:
+                    chapter["source_tokens_tokenizer"] = client.tokenizer_identity
                 book["content_fingerprint"] = plan_fingerprint(book)
                 book["planning_settings"] = {"whole_section_char_limit": settings["whole_section_char_limit"]}
                 atomic_json(root / "settings.json", settings)
@@ -153,8 +264,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise PipelineError("The frozen source/chunk manifest was modified. Restore book.json or import into a new project. Only titles and thread_id may be edited in place.")
             if args.command in {"analyze", "translate"}:
                 settings = effective_settings(root, args)
-                client = Client(settings, ui)
-                client.discover()
+                client = ProviderPool(settings, ui, root, command_profile=args.profile,
+                                      command_pass_profiles=parse_pass_profiles(args.pass_profile))
+                first_pass = 1 if args.command == "analyze" else 2
+                client.planning_pass = first_pass
+                selected = client.for_pass(first_pass)
+                if getattr(selected, "provider", "llamacpp") == "llamacpp":
+                    client.discover(first_pass)
+                else:
+                    client.identity = {"provider": selected.provider, "requested_model": selected.model,
+                                       "profile": selected.profile_name}
                 check_model(client, book, args.allow_model_change, ui)
                 if args.command == "analyze":
                     analyze(store, book, client, settings, ui)

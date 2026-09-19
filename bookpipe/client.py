@@ -11,6 +11,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from .contracts import normalized_usage
+from .evidence import AttemptRecorder
 from .ui import Display
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps
 
@@ -20,6 +22,8 @@ class ContextFull(PipelineError):
 
 
 class Client:
+    provider = "llamacpp"
+
     def __init__(self, settings: dict[str, Any], ui: Display):
         self.settings, self.ui = settings, ui
         host = settings.get("host", "127.0.0.1")
@@ -31,14 +35,18 @@ class Client:
         if url.username or url.password or url.query or url.fragment:
             raise PipelineError("Credentials, query strings and fragments are not accepted in --host.")
         hostname = f"[{url.hostname}]" if ":" in url.hostname else url.hostname
-        port = url.port or settings.get("port", 8080)
+        # Legacy bare hosts keep port 8080. Explicit URLs use their normal
+        # scheme default unless a port was explicitly configured.
+        explicit_url = "://" in settings.get("host", "127.0.0.1")
+        port = url.port or (settings.get("port") if not explicit_url else None)
+        port = port or (443 if url.scheme == "https" else 80)
         prefix = url.path.rstrip("/")
         if prefix.endswith("/v1"):
             prefix = prefix[:-3]
         self.base = urlunsplit((url.scheme, f"{hostname}:{port}", prefix, "", ""))
         self.timeout = float(settings.get("request_timeout", 1200))
         headers = {}
-        key = os.environ.get("LLAMA_API_KEY")
+        key = os.environ.get(settings.get("credential_env", "LLAMA_API_KEY"))
         if key:
             headers["Authorization"] = f"Bearer {key}"
         self.http = httpx.Client(base_url=self.base + "/", headers=headers,
@@ -48,9 +56,15 @@ class Client:
         self.context = int(settings.get("context_size") or 0)
         self.identity: dict[str, Any] = {}
         self.count_endpoint: bool | None = None
+        self.profile_name = settings.get("profile_name", "local")
+        self.resolved_profile = settings.get("resolved_profile", {})
 
     def close(self):
         self.http.close()
+
+    @property
+    def tokenizer_identity(self) -> dict[str, Any]:
+        return {"provider": "llamacpp", "model": self.model, "model_identity": self.identity}
 
     def post(self, path: str, body: dict) -> dict:
         try:
@@ -96,20 +110,31 @@ class Client:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise PipelineError(f"Cannot discover llama.cpp at {self.base}: {exc}") from exc
 
-    def count(self, text: str) -> int:
+    def count(self, text: str, recorder: AttemptRecorder | None = None) -> int:
         key = digest(text)
         if key not in self._tokens:
+            if recorder:
+                recorder.event("outbound", "http_request", {"method": "POST", "path": "/tokenize",
+                                                              "body": {"content": text, "add_special": False, "parse_special": False}})
             data = self.post("/tokenize", {"content": text, "add_special": False, "parse_special": False})
+            if recorder:
+                recorder.event("inbound", "http_response", {"path": "/tokenize", "body": data})
             tokens = data.get("tokens")
             if not isinstance(tokens, list):
                 raise PipelineError("/tokenize did not return a token list. No estimated fallback is used.")
             self._tokens[key] = len(tokens)
         return self._tokens[key]
 
-    def count_request(self, body: dict) -> int:
+    def count_request(self, body: dict, recorder: AttemptRecorder | None = None) -> int:
         # Recent llama.cpp can count the exact rendered prompt including the template.
         if self.count_endpoint is not False:
+            if recorder:
+                recorder.event("outbound", "http_request", {"method": "POST", "path": "/v1/chat/completions/input_tokens", "body": body})
             response = self.http.post("v1/chat/completions/input_tokens", json=body)
+            if recorder:
+                recorder.event("inbound", "http_response", {"path": "/v1/chat/completions/input_tokens",
+                                                              "status": response.status_code,
+                                                              "body": response.text[:2000]})
             if response.is_success:
                 n = response.json().get("input_tokens")
                 if isinstance(n, int):
@@ -121,13 +146,17 @@ class Client:
             self.count_endpoint = False
         # /apply-template has been available for longer. A margin covers auxiliary
         # grammar/reasoning/template data on versions that do not count it exactly.
-        response = self.http.post("apply-template", json={
-            "messages": body["messages"], "chat_template_kwargs": body.get("chat_template_kwargs", {})
-        })
+        template_body = {"messages": body["messages"], "chat_template_kwargs": body.get("chat_template_kwargs", {})}
+        if recorder:
+            recorder.event("outbound", "http_request", {"method": "POST", "path": "/apply-template", "body": template_body})
+        response = self.http.post("apply-template", json=template_body)
+        if recorder:
+            recorder.event("inbound", "http_response", {"path": "/apply-template", "status": response.status_code,
+                                                          "body": response.text[:2000]})
         if response.is_success and isinstance(response.json().get("prompt"), str):
-            return self.count(response.json()["prompt"]) + 512
+            return self.count(response.json()["prompt"], recorder) + 512
         # This fallback still tokenizes real input; it is conservative, not chars/4.
-        return self.count(dumps(body["messages"])) + 2048
+        return self.count(dumps(body["messages"]), recorder) + 2048
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict:
         cfg = self.settings["passes"][str(pass_no)]
@@ -157,20 +186,35 @@ class Client:
             body[key] = value
         return body
 
-    def preflight(self, body: dict) -> int:
-        count = self.count_request(body)
+    def preflight(self, body: dict, recorder: AttemptRecorder | None = None) -> int:
+        count = self.count_request(body, recorder)
         required = count + body["max_tokens"] + 1024
         if required > self.context:
             raise ContextFull(
                 f"Request needs {required:,} tokens including output reserve and margin; "
                 f"server permits {self.context:,}. No source text was truncated."
             )
+        if recorder:
+            recorder.event("inbound", "token_count_result", {"input_tokens": count})
+            recorder.context({
+                "method": "llama.cpp native complete-request count or documented tokenizer fallback",
+                "quality": "provider_exact" if self.count_endpoint else "verified_tokenizer_with_estimated_wrapper",
+                "tokenizer_identity": {"provider": "llamacpp", "model": self.model},
+                "input_tokens": count,
+                "capacity_tokens": self.context,
+                "planning_output_reserve": body["max_tokens"],
+                "safety_margin": 1024,
+                "required_tokens": required,
+                "silent_truncation": False,
+            })
         return count
 
-    def generate(self, body: dict, directory: Path) -> tuple[str, dict]:
+    def generate(self, body: dict, directory: Path, recorder: AttemptRecorder | None = None) -> tuple[str, dict]:
         """Read SSE incrementally, persist partial output, accept only complete EOS."""
         directory.mkdir(parents=True, exist_ok=True)
         atomic_json(directory / "request.json", body)
+        if recorder:
+            recorder.transport_request(body, body.get("response_format", {}).get("schema", {}))
         answer, thought = [], []
         finish = None
         info: dict[str, Any] = {"model": self.model, "events": 0}
@@ -196,6 +240,13 @@ class Client:
                     response_ref.append(response)
                     if not response.is_success:
                         response.read()
+                        if recorder:
+                            recorder.event("inbound", "http_error", {
+                                "status": response.status_code,
+                                "headers": {k: v for k, v in response.headers.items()
+                                            if k.lower() in {"x-request-id", "retry-after"}},
+                                "body": response.text[:1500],
+                            })
                         raise PipelineError(f"Completion HTTP {response.status_code}: {response.text[:1500]}")
                     buffer = []
                     for line in response.iter_lines():
@@ -211,6 +262,8 @@ class Client:
                         payload, buffer = "\n".join(buffer), []
                         if payload == "[DONE]":
                             break
+                        if recorder:
+                            recorder.event("inbound", "sse_frame", payload)
                         event = json.loads(payload)
                         if "error" in event:
                             raise PipelineError(f"Server stream error: {event['error']}")
@@ -241,6 +294,18 @@ class Client:
                                     else:
                                         n_thought += len(text)
                             self.ui.received(n_answer, n_thought)
+            usage = info.get("usage") or {}
+            if recorder:
+                normalized = normalized_usage(
+                    input_tokens=usage.get("prompt_tokens"),
+                    cached_input_tokens=(usage.get("prompt_tokens_details") or {}).get("cached_tokens"),
+                    output_tokens=usage.get("completion_tokens"),
+                    reasoning_output_tokens=(usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    source="llamacpp_sse_usage", scope="attempt",
+                    status="reported" if usage else "unavailable",
+                )
+                recorder.usage([usage] if usage else [], normalized)
             if finish != "stop":
                 raise PipelineError(f"Incomplete completion (finish_reason={finish!r}). Saved partial files; not a checkpoint.")
             raw = "".join(answer).strip()
@@ -255,7 +320,10 @@ class Client:
             atomic_text(directory / "answer.txt", raw + "\n")
             atomic_text(directory / "reasoning.txt", "".join(thought))
             info.update(finish_reason=finish, elapsed_seconds=round(time.monotonic() - started, 3))
+            info["usage_status"] = "reported" if info.get("usage") else "unavailable"
             atomic_json(directory / "response_meta.json", info)
+            if recorder:
+                recorder.write_answer(raw, "".join(thought))
             return raw, info
         except (httpx.HTTPError, json.JSONDecodeError, OSError) as exc:
             raise PipelineError(f"Stream interrupted: {exc}. This stage was not completed.") from exc
