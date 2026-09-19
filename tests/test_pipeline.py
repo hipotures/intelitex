@@ -318,6 +318,7 @@ def test_analysis_plan_reuses_imported_section_token_count(tmp_path):
 
     class NoRetokenizeClient:
         context = 131072
+        tokenizer_identity = {"provider": "llamacpp", "model": "test"}
         def count(self, text):
             raise AssertionError("analysis planner should reuse source_tokens for fitting sections")
 
@@ -326,6 +327,7 @@ def test_analysis_plan_reuses_imported_section_token_count(tmp_path):
             "id": "ch0001",
             "number": 1,
             "source_tokens": 9000,
+            "source_tokens_tokenizer": {"provider": "llamacpp", "model": "test"},
             "blocks": [
                 {"id": "B0000001", "kind": "p", "text": "First paragraph."},
                 {"id": "B0000002", "kind": "p", "text": "Second paragraph."},

@@ -1,10 +1,109 @@
 # Intelitex
 
-**Intelitex** is a local Python workflow for an **unpacked EPUB / HTML folder** and a running
-`llama-server`. It imports text once, analyzes the entire book, **stops for human
+**Intelitex** is a local Python workflow for an **unpacked EPUB / HTML folder** and a configured
+native LLM transport. It imports text once, analyzes the entire book, **stops for human
 terminology approval**, and then translates the next requested number of natural translation units.
 Completed model calls survive interruption and are not repeated merely because
 you start another session.
+
+## Native LLM transports and communication evidence / v1.11
+
+Intelitex now supports three independent transports behind the same five-pass
+pipeline contract:
+
+- `llamacpp`: the existing llama.cpp HTTP/SSE client, native tokenizer and
+  complete-request preflight;
+- `openai`: the native foreground Responses API with strict structured output,
+  `store: false`, `truncation: disabled`, and `/v1/responses/input_tokens`;
+- `codex`: a fresh persisted `codex app-server` thread per attempt, over JSONL
+  stdio, configured as isolated thin inference rather than a coding agent.
+
+Models, capacities, efforts, endpoints and rates are profile/catalog data. The
+default settings contain a working local profile and disabled cloud templates;
+they deliberately do not claim that any cloud model is available to the user.
+Enable cloud profiles only after setting an explicit opaque model ID, verified
+context capacity, and credential reference (OpenAI), or an explicitly authorized
+Codex authentication source.
+
+Selection precedence for a new call is: `--pass-profile P=NAME`, `--profile
+NAME`, saved `pass_profiles`, then `default_profile`. Command overrides never
+modify saved settings. Existing accepted checkpoints keep their provenance and
+are not regenerated merely because profile selection changes.
+
+Every physical attempt creates `attempt.json` before provider preflight and
+retains the exact semantic request, trusted instructions, source payload,
+canonical and transport schemas, native outbound/inbound messages, partial and
+final output, usage snapshots, immutable pricing snapshot, safe diagnostics and
+independent generation/validation/evidence/checkpoint states. This happens with
+debug disabled. Credentials are redacted before persistence. If recording fails,
+generation stops; missing provider usage is represented as unknown, never zero.
+
+Useful offline and no-generation commands:
+
+```bash
+uv run translate.py profiles --project "$PROJECT"
+uv run translate.py doctor --project "$PROJECT"
+uv run translate.py attempts --project "$PROJECT"
+uv run translate.py attempts --project "$PROJECT" --attempt artifacts/pass1/ch0001_a001/<fingerprint>/attempt_001
+uv run translate.py usage --project "$PROJECT"
+uv run translate.py catalog-import --project "$PROJECT" /path/to/validated-models.json
+```
+
+`catalog-import` validates a versioned JSON catalog and atomically activates it
+under the project. A failed import leaves the previous catalog untouched. Price
+changes never rewrite historical `pricing.json` snapshots. Unknown prices do not
+block inference. Codex API-equivalent estimates are labeled estimates, not
+subscription invoices or provider-reported charges.
+
+Example enabled profiles (replace model IDs and capacities only with values
+verified for the intended account/runtime):
+
+```json
+{
+  "default_profile": "local",
+  "pass_profiles": {"1": "codex-analysis"},
+  "profiles": {
+    "local": {
+      "provider": "llamacpp",
+      "enabled": true,
+      "model": null,
+      "endpoint": "127.0.0.1",
+      "context_size": null,
+      "planning_output_reserve": 16000,
+      "request_timeout": 1200,
+      "seed": 42,
+      "options": {"port": 8080, "thinking": "off", "request_extra": {}}
+    },
+    "codex-analysis": {
+      "provider": "codex",
+      "enabled": true,
+      "model": "<verified-model-id>",
+      "context_size": 100000,
+      "planning_output_reserve": 16000,
+      "max_output_tokens": null,
+      "request_timeout": 1200,
+      "reasoning_effort": "<verified-effort>",
+      "executable": "codex",
+      "options": {"auth_source": "/explicitly/authorized/auth.json"}
+    }
+  }
+}
+```
+
+Codex uses private application-owned homes and an empty work directory outside
+the project/source tree. Only an explicitly configured `auth_source` is copied;
+user configuration, skills, rules, memories, plugins and trust settings are not.
+All discovered skills are disabled and re-listed before a thread starts. The
+saved rollout is copied into the attempt and the temporary authentication copy is
+removed after the child process is reaped. App-server can still add its small
+platform-owned read-only sandbox instruction and date/timezone wrapper, so this
+mode is not advertised as a completely bare model request.
+
+Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When
+`state.sqlite3` exists, Intelitex first creates a SQLite backup under `backups/`.
+Frozen source IDs, review choices, approvals, checkpoints and old artifacts are
+not rewritten. Old token counts without matching tokenizer provenance are not
+reused for a different tokenizer.
 
 ### Clear scoped review counters / v1.10
 
@@ -140,13 +239,15 @@ or silently imported.
 ## Requirements
 
 - Linux (the project lock uses `fcntl`), Python 3.11 or later, and `uv`.
-- A running llama.cpp server reachable over HTTP. Model weights stay on that server.
+- A configured inference profile: a reachable llama.cpp server, an explicitly
+  configured OpenAI credential, or an isolated Codex app-server authentication source.
 - HTML, HTM, or XHTML input files. An unpacked EPUB root with its OPF/NCX metadata
   is preferable to a folder containing only isolated HTML files.
 
 `uv run translate.py ...` installs script dependencies into an isolated environment;
 it does not install them into system Python. Keep `translate.py`, `bookpipe/`,
-`prompts/`, and `settings.default.json` together. No cloud model is called.
+`prompts/`, `catalog/`, and `settings.default.json` together. Cloud providers are
+called only when the user selects and configures such a profile.
 Dependencies may need downloading on the first `uv` invocation.
 
 ## Quick start
