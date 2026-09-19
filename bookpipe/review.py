@@ -275,7 +275,7 @@ HTML = r'''<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Terminology Review · v1.9</title>
+<title>Intelitex · Terminology Review</title>
 <style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#f7f7f8;--line:#dddde2;--muted:#67676f;--panel:#fff;--accent:#202124;--soft:#f0f0f3;--ok:#176b3a;--warn:#8a5a00;--info:#315b8a}
 *{box-sizing:border-box}html,body{height:100%}body{margin:0;height:100vh;display:flex;flex-direction:column;overflow:hidden}button,input,textarea{font:inherit}button{cursor:pointer}

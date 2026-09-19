@@ -9,3 +9,7 @@ projects/
 *.sqlite3-shm
 *.epub
 *.mobi
+
+# Public-domain EPUB fixtures/examples may be committed deliberately.
+!examples/public-domain/*.epub
+!examples/public-domain/**/*.epub

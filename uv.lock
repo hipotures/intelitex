@@ -147,7 +147,7 @@ wheels = [
 ]
 
 [[package]]
-name = "local-book-translation"
+name = "intelitex"
 version = "1.10.0"
 source = { virtual = "." }
 dependencies = [

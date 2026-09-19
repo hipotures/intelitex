@@ -1,6 +1,6 @@
-# Local book translation
+# Intelitex
 
-A local Python workflow for an **unpacked EPUB / HTML folder** and a running
+**Intelitex** is a local Python workflow for an **unpacked EPUB / HTML folder** and a running
 `llama-server`. It imports text once, analyzes the entire book, **stops for human
 terminology approval**, and then translates the next requested number of natural translation units.
 Completed model calls survive interruption and are not repeated merely because

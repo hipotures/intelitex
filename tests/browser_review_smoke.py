@@ -45,8 +45,8 @@ with tempfile.TemporaryDirectory() as temporary:
             bridge_js="<script>window.fetch=async(url,options={})=>{const r=await window.backendFetch(url,options);return {ok:r.status<400,status:r.status,json:async()=>JSON.parse(r.text)}};</script>"
             html=html.replace('<script>\nconst labels',bridge_js+'<script>\nconst labels')
             page.set_content(html)
-            expect(page.locator('[data-cat=all]')).to_contain_text('3/6')
-            expect(page.locator('[data-cat=people]')).to_contain_text('2/3')
+            expect(page.locator('[data-cat=all]')).to_have_text('All 6')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 3')
             expect(page.locator('.translation-placeholder').first).to_contain_text('Not translated yet')
             y1=page.locator('#saveNext').bounding_box()['y']
             # Different evidence lengths must not move the action button.
@@ -56,30 +56,30 @@ with tempfile.TemporaryDirectory() as temporary:
             button=page.locator('#saveNext').bounding_box();kbd=page.locator('#saveNext .kbd').bounding_box()
             assert abs((button['y']+button['height']/2)-(kbd['y']+kbd['height']/2))<1
             page.locator('[data-filter=uncertain]').click()
-            expect(page.locator('[data-cat=all]')).to_contain_text('1/3')
-            expect(page.locator('[data-cat=people]')).to_contain_text('1/2')
+            expect(page.locator('[data-cat=all]')).to_have_text('All 3')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 2')
             page.locator('[data-cat=people]').click()
             expect(page.locator('[data-filter=all]')).to_have_text('All 3')
             expect(page.locator('[data-filter=uncertain]')).to_have_text('Uncertain 2')
             expect(page.locator('#detail h2')).to_have_text('Entity 1')
             page.locator('#saveNext').click()
-            expect(page.locator('[data-cat=people]')).to_contain_text('0/2')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 2')
             expect(page.locator('[data-cat=people]')).to_have_class('chip active complete ')
             expect(page.locator('#saveNext')).to_be_disabled()
             # Switch back to All: one high-confidence person is still pending.
             page.locator('[data-filter=all]').click()
-            expect(page.locator('[data-cat=people]')).to_contain_text('1/3')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 3')
             assert 'complete' not in page.locator('[data-cat=people]').get_attribute('class')
             page.locator('[data-id=T000003]').click()
             page.locator('#custom').fill('Custom name')
             page.locator('#userNotes').fill('Check this after translation.')
             # No wait for autosave: the filter action must flush both edits.
             page.locator('[data-filter=notes]').click()
-            expect(page.locator('[data-cat=people]')).to_contain_text('1/1')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 1')
             expect(page.locator('[data-filter=notes]')).to_have_text('Notes 1')
             page.on('dialog',lambda d:d.accept())
             page.locator('#bulkBtn').click()
-            expect(page.locator('[data-cat=people]')).to_contain_text('0/1')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 1')
             stored=read_json(root/'terms.review.json')
             assert stored['terms'][2]['custom']=='Custom name'
             assert stored['terms'][2]['user_notes']=='Check this after translation.'
@@ -88,16 +88,16 @@ with tempfile.TemporaryDirectory() as temporary:
             assert stored['confirmed'] is False
             assert list(root.glob('history/review_before_bulk_*.json'))
             page.locator('[data-filter=unreviewed]').click()
-            expect(page.locator('[data-cat=people]')).to_contain_text('0/0')
+            expect(page.locator('[data-cat=people]')).to_have_text('People 0')
             assert 'complete' in page.locator('[data-cat=people]').get_attribute('class')
             expect(page.locator('#detail .empty')).to_be_visible()
             page.locator('[data-cat=all]').click()
             expect(page.locator('#detail h2')).to_have_text('Entity 5')
             page.locator('#search').fill('nonexistent')
-            expect(page.locator('[data-cat=all]')).to_contain_text('0/0')
+            expect(page.locator('[data-cat=all]')).to_have_text('All 0')
             assert 'complete' not in page.locator('[data-cat=all]').get_attribute('class')
             assert not errors,errors
             browser.close()
-        print('Browser checks passed: intersections, both counts, scoped green state, empty distinction, fixed footer, shortcut alignment, draft flush, notes, bulk preservation.')
+        print('Browser checks passed: scoped single counts, green completion state, empty distinction, fixed footer, shortcut alignment, draft flush, notes, bulk preservation.')
     finally:
         server.shutdown();server.server_close();thread.join()
