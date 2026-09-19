@@ -1,0 +1,605 @@
+from __future__ import annotations
+
+import copy
+import json
+import re
+from pathlib import Path
+from typing import Any, Callable
+
+import jsonschema
+
+from .client import Client, ContextFull
+from .importer import pack_blocks, split_long
+from .schemas import SCHEMAS
+from .store import Store
+from .ui import Display
+from .util import PipelineError, atomic_json, atomic_text, digest, dumps, normalized, occurs, read_json
+
+
+def exact_ids(rows: list[dict], field: str, expected: list[str], *, ordered: bool = False):
+    got = [x[field] for x in rows]
+    if len(got) != len(expected) or set(got) != set(expected):
+        raise PipelineError(f"ID coverage mismatch: missing={sorted(set(expected)-set(got))[:12]}, "
+                            f"unexpected={sorted(set(got)-set(expected))[:12]}, duplicates={len(got)-len(set(got))}")
+    if ordered and got != expected:
+        raise PipelineError("Source block order was changed.")
+
+
+def _existing_memory_sources(inputs: dict) -> set[str]:
+    """Canonical source forms already established by prior P1 sections."""
+    memory = inputs.get("EXISTING_MEMORY") or {}
+    result = set()
+    for bucket in ("matched", "catalogue"):
+        for term in memory.get(bucket, []) or []:
+            source = term.get("source") if isinstance(term, dict) else None
+            if isinstance(source, str) and source.strip():
+                result.add(normalized(source))
+    return result
+
+
+def validate_result(pass_no: int, value: dict, inputs: dict):
+    jsonschema.Draft202012Validator(SCHEMAS[pass_no]).validate(value)
+    blocks = {b["id"]: b for b in inputs["SOURCE_BLOCKS"]}
+    if pass_no == 1:
+        seen = set()
+        section_text = "\n".join(b["text"] for b in inputs["SOURCE_BLOCKS"])
+        existing_sources = _existing_memory_sources(inputs)
+        for term in value["terms"]:
+            key = normalized(term["source"])
+            if key in seen:
+                raise PipelineError(f"Duplicate term: {term['source']}")
+            seen.add(key)
+            if not set(term["evidence"]) <= set(blocks):
+                raise PipelineError(f"Unknown term evidence for {term['source']}.")
+            cited = "\n".join(blocks[b]["text"] for b in term["evidence"])
+            if not any(occurs(cited, s) for s in [term["source"]] + term["aliases"]):
+                raise PipelineError(f"Term/alias is not attested in its cited source blocks: {term['source']}")
+            # aliases are claimed as source variants, so every newly returned
+            # alias must actually occur somewhere in this source unit. Existing
+            # aliases need not be replayed by P1 and are retained in Store.merge_analysis.
+            bad_aliases = [a for a in term["aliases"] if not occurs(section_text, a)]
+            if bad_aliases:
+                raise PipelineError(f"Unattested alias(es) for {term['source']}: {bad_aliases[:8]}")
+            # A canonical source may be absent from the current section only if
+            # it is the already-established source form of an existing memory entry
+            # and an attested alias is what appears in the current text.
+            if not occurs(section_text, term["source"]) and key not in existing_sources:
+                raise PipelineError(f"Unattested canonical source form: {term['source']}")
+        for fact in value["observations"]:
+            unknown = sorted(set(fact["evidence"]) - set(blocks))
+            if unknown:
+                raise PipelineError(f"Observation has invented evidence IDs: {unknown[:12]}; about={fact.get('about', [])!r}")
+    elif pass_no in (2, 4):
+        sentences = {s["id"]: s for s in inputs["SOURCE_SENTENCES"]}
+        exact_ids(value["checks"], "sid", list(sentences))
+        if pass_no == 2:
+            records = value["issues"]
+        else:
+            records = value["corrections"]
+        for issue in records:
+            if issue["sid"] not in sentences:
+                raise PipelineError("Issue refers to an unknown source sentence.")
+            span = normalized(issue["source_span"])
+            if not span or span not in normalized(sentences[issue["sid"]]["text"]):
+                raise PipelineError(f"source_span is not an exact quote for {issue['sid']}.")
+            if pass_no == 4:
+                drafts = {b["id"]: b["text"] for b in inputs["POLISH_DRAFT"]["translations"]}
+                if issue["block_id"] not in drafts:
+                    raise PipelineError("Correction refers to unknown draft block.")
+                if issue["draft_span"] and normalized(issue["draft_span"]) not in normalized(drafts[issue["block_id"]]):
+                    raise PipelineError("draft_span is not found in the specified draft block.")
+        if pass_no == 4:
+            has_correction = {x["sid"] for x in records}
+            if has_correction != {x["sid"] for x in value["checks"] if x["status"] == "needs_correction"}:
+                raise PipelineError("Correction ledger and sentence statuses disagree.")
+    else:
+        exact_ids(value["translations"], "id", list(blocks), ordered=True)
+        for result in value["translations"]:
+            if not result["text"].strip():
+                raise PipelineError("Empty translated block.")
+            if re.search(r"<think>|### PASS [1-5]|```json", result["text"]):
+                raise PipelineError("Analysis/pipeline markup leaked into a translation block.")
+
+def response_schema(pass_no: int, inputs: dict) -> dict:
+    """Return the effective response schema for this exact request.
+
+    Pass 1 evidence is constrained to the block IDs that actually exist in the
+    current source unit. llama.cpp compiles response_format into a grammar, so
+    invented evidence IDs become impossible at generation time rather than a
+    post-hoc validation failure.
+    """
+    schema = copy.deepcopy(SCHEMAS[pass_no])
+    if pass_no == 1:
+        allowed = [b["id"] for b in inputs["SOURCE_BLOCKS"]]
+        evidence_item = {"type": "string", "enum": allowed}
+        schema["properties"]["terms"]["items"]["properties"]["evidence"]["items"] = copy.deepcopy(evidence_item)
+        schema["properties"]["observations"]["items"]["properties"]["evidence"]["items"] = copy.deepcopy(evidence_item)
+    return schema
+
+
+def conservative_repair(pass_no: int, value: dict, inputs: dict) -> tuple[dict, list[dict]]:
+    """Apply only repairs that cannot add unsupported information.
+
+    P1 repair policy:
+    - observations with invented evidence IDs are dropped as a whole;
+    - aliases not literally attested in the current source unit are removed;
+    - if a term is real but its cited evidence missed the block containing its
+      lexical form, an exact-match source block is appended deterministically;
+    - if none of the term's source forms occurs anywhere in the current source
+      unit, the whole term delta is dropped rather than guessed or regenerated.
+
+    Existing memory is not edited here. Store.merge_analysis preserves already
+    established aliases/canonical forms, so pruning an unsupported alias from a
+    single P1 delta cannot erase prior knowledge.
+    """
+    if pass_no != 1 or not isinstance(value, dict):
+        return value, []
+    if not isinstance(value.get("observations"), list) or not isinstance(value.get("terms"), list):
+        return value, []
+
+    repaired = copy.deepcopy(value)
+    blocks = inputs.get("SOURCE_BLOCKS") or []
+    by_id = {b.get("id"): b for b in blocks if isinstance(b, dict) and isinstance(b.get("id"), str)}
+    allowed = set(by_id)
+    section_text = "\n".join(str(b.get("text", "")) for b in blocks if isinstance(b, dict))
+    existing_sources = _existing_memory_sources(inputs)
+    repairs: list[dict] = []
+
+    # First repair lexical term deltas. Unknown evidence IDs remain fatal: the
+    # response schema should already make them impossible for new generations.
+    kept_terms = []
+    for index, term in enumerate(repaired["terms"]):
+        if not isinstance(term, dict):
+            kept_terms.append(term)
+            continue
+        evidence = term.get("evidence")
+        if not isinstance(evidence, list) or any(bid not in allowed for bid in evidence):
+            kept_terms.append(term)
+            continue
+
+        source = term.get("source", "")
+        aliases = term.get("aliases") if isinstance(term.get("aliases"), list) else []
+        forms = [x for x in [source] + aliases if isinstance(x, str) and x.strip()]
+
+        # Remove aliases the model proposed but which are not source-attested in
+        # this unit. Existing aliases from memory are preserved by the database.
+        attested_aliases = [a for a in aliases if isinstance(a, str) and occurs(section_text, a)]
+        removed_aliases = [a for a in aliases if a not in attested_aliases]
+        if removed_aliases:
+            term["aliases"] = attested_aliases
+            aliases = attested_aliases
+            forms = [x for x in [source] + aliases if isinstance(x, str) and x.strip()]
+            repairs.append({
+                "action": "remove_unattested_aliases",
+                "index": index,
+                "source": source,
+                "aliases": removed_aliases,
+            })
+
+        # If the model invented an unattested new canonical form but supplied an
+        # attested alias, promote that exact source form. Do not do this for a
+        # canonical source already established in EXISTING_MEMORY.
+        if (isinstance(source, str) and source.strip() and not occurs(section_text, source)
+                and normalized(source) not in existing_sources):
+            replacement = next((a for a in aliases if occurs(section_text, a)), None)
+            if replacement:
+                old = source
+                term["source"] = replacement
+                term["aliases"] = [a for a in aliases if normalized(a) != normalized(replacement)]
+                source = replacement
+                aliases = term["aliases"]
+                forms = [source] + aliases
+                repairs.append({
+                    "action": "promote_attested_alias_to_source",
+                    "index": index,
+                    "old_source": old,
+                    "new_source": replacement,
+                })
+
+        cited_text = "\n".join(str(by_id[bid].get("text", "")) for bid in evidence)
+        if not any(occurs(cited_text, form) for form in forms):
+            # The lexical form may be present elsewhere in the same section even
+            # if the model cited a contextual block. Add the earliest exact-match
+            # block; this is deterministic grounding, not an inferred reference.
+            matching = []
+            for block in blocks:
+                text = str(block.get("text", ""))
+                matched_form = next((form for form in forms if occurs(text, form)), None)
+                if matched_form:
+                    matching.append((block["id"], matched_form))
+            if matching:
+                bid, matched_form = matching[0]
+                if bid not in term["evidence"]:
+                    term["evidence"].append(bid)
+                repairs.append({
+                    "action": "add_exact_term_evidence",
+                    "index": index,
+                    "source": term.get("source", source),
+                    "block_id": bid,
+                    "matched_form": matched_form,
+                })
+            else:
+                repairs.append({
+                    "action": "drop_unattested_term",
+                    "index": index,
+                    "source": term.get("source", source),
+                    "aliases": term.get("aliases", []),
+                })
+                continue
+        kept_terms.append(term)
+    repaired["terms"] = kept_terms
+
+    # Observations cannot be repaired by guessing another source block. If an
+    # evidence ID is invalid, discard the complete observation.
+    kept_obs = []
+    for index, fact in enumerate(repaired["observations"]):
+        evidence = fact.get("evidence") if isinstance(fact, dict) else None
+        if not isinstance(evidence, list):
+            kept_obs.append(fact)
+            continue
+        invalid = [bid for bid in evidence if bid not in allowed]
+        if invalid:
+            repairs.append({
+                "action": "drop_observation",
+                "index": index,
+                "invalid_evidence_ids": invalid,
+                "about": fact.get("about", []),
+                "statement": fact.get("statement", ""),
+            })
+            continue
+        kept_obs.append(fact)
+    repaired["observations"] = kept_obs
+    return repaired, repairs
+
+
+_RECOVERY_TRANSIENT_INPUT_KEYS = {
+    "VALIDATION_ERROR",
+    "RETRY_INSTRUCTION",
+    "ALLOWED_EVIDENCE_IDS",
+}
+
+
+def _recovery_signature(body: dict) -> dict:
+    """Normalize a request for semantic recovery matching.
+
+    Completed retry attempts from older versions may contain validation-only
+    fields in the user JSON. Those fields do not change the underlying source
+    unit and must not prevent reuse. Transport-only streaming settings and the
+    response schema are also deliberately ignored. Everything else, including
+    model/settings/request_extra and the actual system+user content, remains
+    part of the signature.
+    """
+    value = copy.deepcopy(body)
+    value.pop("response_format", None)
+    value.pop("stream", None)
+    value.pop("stream_options", None)
+
+    messages = value.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            try:
+                payload = json.loads(content)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                for key in _RECOVERY_TRANSIENT_INPUT_KEYS:
+                    payload.pop(key, None)
+                message["content"] = dumps(payload)
+    return value
+
+
+def _compatible_completed_attempts(key_root: Path, body: dict) -> list[Path]:
+    """Find completed older attempts whose semantic request matches this one.
+
+    v1.2 retry requests carried VALIDATION_ERROR / RETRY_INSTRUCTION and an
+    ALLOWED_EVIDENCE_IDS helper in the user payload. v1.3 compared the complete
+    messages literally, so a real attempt_002 could not be recovered even
+    though the source request was identical. Recovery now strips only those
+    transient retry fields before comparison.
+    """
+    if not key_root.exists():
+        return []
+    wanted = _recovery_signature(body)
+    found = []
+    for attempt in key_root.glob("*/attempt_*"):
+        answer = attempt / "answer.txt"
+        request = attempt / "request.json"
+        meta = attempt / "response_meta.json"
+        if not (answer.is_file() and request.is_file() and meta.is_file()):
+            continue
+        try:
+            old = read_json(request)
+            metadata = read_json(meta)
+        except Exception:
+            continue
+        if metadata.get("finish_reason") != "stop":
+            continue
+        if _recovery_signature(old) != wanted:
+            continue
+        found.append(attempt)
+    return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+class Runner:
+    def __init__(self, store: Store, client: Client, settings: dict, ui: Display):
+        self.store, self.client, self.settings, self.ui = store, client, settings, ui
+
+    def run(self, pass_no: int, key: str, inputs: dict) -> tuple[dict, str, str]:
+        prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
+        schema = response_schema(pass_no, inputs)
+        fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+        cached = self.store.job(key, fingerprint)
+        if cached:
+            validate_result(pass_no, cached["value"], inputs)
+            return cached["value"], cached["path"], fingerprint
+        work = self.store.root / "artifacts" / key / fingerprint[:20]
+        work.mkdir(parents=True, exist_ok=True)
+        atomic_json(work / "inputs.json", inputs)
+        atomic_text(work / "prompt.txt", prompt)
+        # Before generating again, recover a completed compatible response from
+        # an older fingerprint if possible. This is especially useful after a
+        # validation-only failure in a previous program version.
+        recovery_body = self.client.body(prompt, inputs, schema, pass_no)
+        key_root = self.store.root / "artifacts" / key
+        for attempt in _compatible_completed_attempts(key_root, recovery_body):
+            try:
+                raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
+                clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
+                value = json.loads(clean)
+                value, repairs = conservative_repair(pass_no, value, inputs)
+                validate_result(pass_no, value, inputs)
+            except (OSError, json.JSONDecodeError, jsonschema.ValidationError, PipelineError):
+                continue
+            path = work / "result.json"
+            atomic_json(path, value)
+            meta = read_json(attempt / "response_meta.json")
+            recovery = {
+                "source_attempt": str(attempt.relative_to(self.store.root)),
+                "repairs": repairs,
+            }
+            atomic_json(work / "recovery.json", recovery)
+            self.store.save_job(key, fingerprint, path, {**meta, "recovered_from": recovery["source_attempt"],
+                                                        "validation_repairs": repairs,
+                                                        "settings": self.settings["passes"][str(pass_no)]})
+            self.ui.phase(f"P{pass_no}/5 | {key} | recovered completed response; no model call")
+            if repairs:
+                self.ui.message(f"Recovered {key}; applied {len(repairs)} conservative validation repair(s). See {work / 'recovery.json'}")
+            return value, str(path.relative_to(self.store.root)), fingerprint
+        last_error = ""
+        attempts = max(1, int(self.settings.get("json_retries", 1)) + 1)
+        for retry in range(attempts):
+            payload = copy.deepcopy(inputs)
+            if retry:
+                payload["VALIDATION_ERROR"] = last_error[:1800]
+                payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."
+                if pass_no == 1:
+                    payload["ALLOWED_EVIDENCE_IDS"] = [b["id"] for b in inputs["SOURCE_BLOCKS"]]
+            body = self.client.body(prompt, payload, schema, pass_no)
+            input_tokens = self.client.preflight(body)
+            number = len(list(work.glob("attempt_*"))) + 1
+            attempt = work / f"attempt_{number:03d}"
+            self.ui.phase(f"P{pass_no}/5 | {key} | waiting for model; input {input_tokens:,} tokens")
+            # A failed HTTP or length-limited request is NOT blindly retried; first
+            # inspect/save its partial output. Only invalid completed JSON is retried.
+            raw, meta = self.client.generate(body, attempt)
+            try:
+                clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
+                value = json.loads(clean)
+                value, repairs = conservative_repair(pass_no, value, inputs)
+                if repairs:
+                    atomic_json(attempt / "validation_repairs.json", repairs)
+                validate_result(pass_no, value, inputs)
+            except (json.JSONDecodeError, jsonschema.ValidationError, PipelineError) as exc:
+                last_error = str(exc)
+                atomic_text(attempt / "validation_error.txt", last_error + "\n")
+                if retry + 1 == attempts:
+                    raise PipelineError(f"P{pass_no} failed validation. Artifacts: {attempt}\n{last_error[:1400]}") from exc
+                continue
+            path = work / "result.json"
+            atomic_json(path, value)
+            if pass_no in (3, 5):
+                atomic_text(work / "result.txt", "\n\n".join(b["text"] for b in value["translations"]) + "\n")
+            self.store.save_job(key, fingerprint, path, {**meta, "input_tokens_preflight": input_tokens,
+                                                        "settings": self.settings["passes"][str(pass_no)]})
+            return value, str(path.relative_to(self.store.root)), fingerprint
+        raise PipelineError("No completed result.")
+
+
+def source_blocks(blocks: list[dict]) -> list[dict]:
+    result = []
+    for b in blocks:
+        item = {"id": b["id"], "kind": b["kind"], "text": b["text"]}
+        if b.get("scene_id"):
+            item["scene_id"] = b["scene_id"]
+        if b.get("scene_start"):
+            item["scene_start"] = True
+        result.append(item)
+    return result
+
+
+def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> list[dict]:
+    saved = store.root / "analysis_plan.json"
+    if saved.exists():
+        return read_json(saved)
+    source_budget = client.context - settings["memory_tokens"] - settings["passes"]["1"]["max_tokens"] - 6000
+    source_budget = int(source_budget * 0.8)
+    if settings.get("analysis_source_limit", 0):
+        source_budget = min(source_budget, settings["analysis_source_limit"])
+    if source_budget < 1024:
+        raise PipelineError("Too little context for Pass 1 with configured reserves. Reduce budgets or increase server context.")
+    units = []
+    for chapter in book["chapters"]:
+        # Import already tokenized the complete natural section. Reuse that count.
+        # This avoids thousands of synchronous /tokenize calls over individual
+        # paragraphs before P1 can even start.
+        cached_tokens = int(chapter.get("source_tokens") or 0)
+        if cached_tokens and cached_tokens <= source_budget:
+            groups = [chapter["blocks"]]
+        else:
+            # Compatibility/fallback for older manifests or exceptionally large
+            # sections. Only then do the more expensive block-level tokenization.
+            blocks = []
+            for block in chapter["blocks"]:
+                if client.count(block["text"]) <= source_budget:
+                    blocks.append(block)
+                    continue
+                for idx, (start, end) in enumerate(split_long(block["text"], client.count, source_budget), 1):
+                    piece = copy.deepcopy(block)
+                    piece.update(parent_id=block["id"], start=start, end=end,
+                                 id=f"{block['id']}.a{idx}", text=block["text"][start:end])
+                    blocks.append(piece)
+            groups = pack_blocks(blocks, client.count, source_budget, source_budget)
+        for idx, group in enumerate(groups, 1):
+            units.append({"id": f"{chapter['id']}_a{idx:03d}", "chapter_id": chapter["id"],
+                          "chapter_number": chapter["number"], "part": idx, "parts": len(groups), "blocks": group})
+    atomic_json(saved, units)
+    return units
+
+
+def analyze(store: Store, book: dict, client: Client, settings: dict, ui: Display):
+    plan = analysis_plan(store, book, client, settings)
+    runner = Runner(store, client, settings, ui)
+    done = sum(bool(store.get("analysis:" + u["id"])) for u in plan)
+    for unit in plan:
+        ui.overall("P1/5 | analysis sections", done, len(plan))
+        ui.chapter(f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part", unit["part"]-1, unit["parts"])
+        receipt = store.get("analysis:" + unit["id"])
+        if receipt:
+            if not store.job(receipt["key"], receipt["fingerprint"]):
+                raise PipelineError("Analysis receipt has no valid checkpoint.")
+            continue
+        snapshot_path = store.root / "analysis_inputs" / (unit["id"] + ".json")
+        if snapshot_path.exists():
+            inputs = read_json(snapshot_path)
+        else:
+            text = "\n\n".join(b["text"] for b in unit["blocks"])
+            memory = store.analysis_memory(text, client.count, settings["memory_tokens"])
+            inputs = {"SECTION_ID": unit["id"], "SOURCE_BLOCKS": source_blocks(unit["blocks"]), "EXISTING_MEMORY": memory}
+            atomic_json(snapshot_path, inputs)
+        key = "pass1/" + unit["id"]
+        value, path, fp = runner.run(1, key, inputs)
+        store.merge_analysis(key, fp, value, unit["blocks"], unit["chapter_id"])
+        with store.db:
+            store.set("analysis:" + unit["id"], {"key": key, "fingerprint": fp, "path": path})
+        done += 1
+        ui.overall("P1/5 | analysis sections", done, len(plan))
+        ui.chapter(f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part", unit["part"], unit["parts"])
+    with store.db:
+        store.set("analysis_done", True)
+    path = store.write_review(book["source_fingerprint"])
+    ui.phase("Analysis complete; human terminology review required. No prose translation generated.")
+    ui.message(f"Review data: {path}\nNext: review --project {store.root}")
+
+
+def tail(text: str, client: Client, maximum: int) -> str:
+    if maximum <= 0:
+        return ""
+    if client.count(text) <= maximum:
+        return text
+    lo, hi, best = 0, len(text), len(text)
+    while lo <= hi:
+        mid = (lo+hi)//2
+        if client.count(text[mid:]) <= maximum:
+            best, hi = mid, mid-1
+        else:
+            lo = mid+1
+    cut = text.find(" ", best)
+    return text[cut+1:] if cut >= 0 else text[best:]
+
+
+def previous_context(store: Store, book: dict, chunk: dict, client: Client, maximum: int) -> dict:
+    chapters = {c["id"]: c for c in book["chapters"]}
+    current_ch = chapters[chunk["chapter_id"]]
+    candidates = []
+    for prior in book["chunks"]:
+        if prior["number"] >= chunk["number"]:
+            break
+        same = prior["chapter_id"] == chunk["chapter_id"]
+        same_thread = current_ch.get("thread_id") and current_ch["thread_id"] == chapters[prior["chapter_id"]].get("thread_id")
+        if same or same_thread:
+            candidates.append(prior)
+    for prior in reversed(candidates):
+        state = store.chunk(prior["id"])
+        if state.get("final_path"):
+            result = store.checked_result(state["final_path"])
+            return {"source_chunk_id": prior["id"],
+                    "english": tail("\n\n".join(b["text"] for b in prior["blocks"]), client, maximum),
+                    "polish": tail("\n\n".join(b["text"] for b in result["translations"]), client, maximum)}
+    return {"source_chunk_id": None, "english": "", "polish": ""}
+
+
+def translate(store: Store, book: dict, client: Client, settings: dict, ui: Display, limit: int):
+    if not store.get("analysis_done"):
+        raise PipelineError("Run analyze to completion first. Translation does not trigger analysis implicitly.")
+    if not store.get("approved"):
+        raise PipelineError("Review terms.review.json and run approve before translation.")
+    if limit < 0:
+        raise PipelineError("--continue must be 0 (all) or a positive number of unfinished chunks.")
+    runner = Runner(store, client, settings, ui)
+    pending = [c for c in book["chunks"] if store.chunk(c["id"])["status"] != "done"]
+    todo = pending[:limit] if limit else pending
+    done = len(book["chunks"]) - len(pending)
+    bychapter = {c["id"]: c for c in book["chapters"]}
+    for run_idx, chunk in enumerate(todo, 1):
+        chapter = bychapter[chunk["chapter_id"]]
+        ui.overall(f"Translation | book units | this run {run_idx-1}/{len(todo)}", done, len(book["chunks"]))
+        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 0, 4)
+        # Capture continuity per chunk. A resumed call must not accidentally use
+        # text generated AFTER this chunk in a previous run.
+        context = previous_context(store, book, chunk, client, settings["continuity_tokens"])
+        memory, deps = store.translation_memory(chunk, context["english"], client.count, settings["memory_tokens"])
+        blocks = source_blocks(chunk["blocks"])
+        common = {"CHUNK_ID": chunk["id"], "SOURCE_BLOCKS": blocks, **memory, "PREVIOUS_CONTEXT": context}
+        p2, _, _ = runner.run(2, f"pass2/{chunk['id']}", {**common, "SOURCE_SENTENCES": chunk["sentences"]})
+        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 1, 4)
+        p3, _, _ = runner.run(3, f"pass3/{chunk['id']}", {**common, "SEMANTIC_AUDIT": p2})
+        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 2, 4)
+        p4, _, _ = runner.run(4, f"pass4/{chunk['id']}", {**common, "SOURCE_SENTENCES": chunk["sentences"], "POLISH_DRAFT": p3, "SEMANTIC_AUDIT": p2})
+        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 3, 4)
+        p5, final_path, _ = runner.run(5, f"pass5/{chunk['id']}", {**common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4})
+        store.finish_chunk(chunk["id"], final_path, deps, digest(memory["APPROVED_LEXICON"]))
+        export_text(store, book)
+        done += 1
+        ui.overall(f"Translation | book units | this run {run_idx}/{len(todo)}", done, len(book["chunks"]))
+        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 4, 4)
+    export_text(store, book)
+    ui.phase(f"Stopped after {len(todo)} completed unit(s). Rerun translate --continue N to proceed.")
+
+
+def export_text(store: Store, book: dict):
+    """Render only a contiguous readable prefix. Keep old finals for stale chunks."""
+    prefix, chapter_parts, status = [], {}, []
+    stopped = False
+    last_parent = None
+    for chunk in book["chunks"]:
+        state = store.chunk(chunk["id"])
+        status.append({"chunk": chunk["id"], "status": state["status"]})
+        if not state.get("final_path"):
+            stopped = True
+        if stopped:
+            continue
+        path = store.root / state["final_path"]
+        if not path.exists():
+            raise PipelineError(f"Missing final artifact: {path}")
+        final = store.checked_result(state["final_path"])
+        mapping = {r["id"]: r["text"].strip() for r in final["translations"]}
+        parts = chapter_parts.setdefault(chunk["chapter_id"], [])
+        for block in chunk["blocks"]:
+            value = mapping[block["id"]]
+            same_parent = last_parent == block["parent_id"]
+            sep = " " if same_parent else "\n\n"
+            if not prefix:
+                sep = ""
+            prefix.append(sep + value)
+            parts.append((" " if same_parent else "\n\n") + value)
+            last_parent = block["parent_id"]
+    atomic_text(store.root / "translation.txt", "".join(prefix).strip() + ("\n" if prefix else ""))
+    for cid, parts in chapter_parts.items():
+        atomic_text(store.root / "translated_chapters" / f"{cid}.txt", "".join(parts).strip() + "\n")
+    atomic_json(store.root / "translation.status.json", {"chunks": status,
+                 "note": "Output is a contiguous completed prefix. Old translations of stale chunks remain visible until regenerated."})

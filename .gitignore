@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.env
+projects/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.epub
+*.mobi

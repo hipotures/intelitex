@@ -1,0 +1,38 @@
+{
+  "format_version": 1,
+  "host": "127.0.0.1",
+  "port": 8080,
+  "model": null,
+  "context_size": null,
+  "thinking": "off",
+  "request_timeout": 1200,
+  "seed": 42,
+  "json_retries": 1,
+  "analysis_source_limit": 0,
+  "memory_tokens": 12000,
+  "continuity_tokens": 600,
+  "request_extra": {},
+  "passes": {
+    "1": {
+      "temperature": 0.1,
+      "max_tokens": 12000
+    },
+    "2": {
+      "temperature": 0.1,
+      "max_tokens": 12000
+    },
+    "3": {
+      "temperature": 0.2,
+      "max_tokens": 16000
+    },
+    "4": {
+      "temperature": 0.05,
+      "max_tokens": 12000
+    },
+    "5": {
+      "temperature": 0.15,
+      "max_tokens": 16000
+    }
+  },
+  "whole_section_char_limit": 10000
+}
