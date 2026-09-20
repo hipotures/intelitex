@@ -84,6 +84,66 @@ class Store:
         with self.db:
             self.db.executemany("INSERT OR IGNORE INTO chunks(id) VALUES(?)", [(c["id"],) for c in book["chunks"]])
 
+    def seed_series(self, seed: dict):
+        """Seed inherited memory atomically without treating the new book as approved."""
+        if self.db.execute("SELECT 1 FROM terms LIMIT 1").fetchone() or self.db.execute("SELECT 1 FROM facts LIMIT 1").fetchone():
+            raise PipelineError("Series memory can only seed an empty new Store.")
+        terms = seed.get("terms")
+        observations = seed.get("observations")
+        if not isinstance(terms, list) or not isinstance(observations, list):
+            raise PipelineError("series.seed.json has invalid terms or observations.")
+        with self.db:
+            for term in terms:
+                meanings = [{
+                    "text": note["text"],
+                    "confidence": note["confidence"],
+                    "evidence": [],
+                    "series_inherited": True,
+                    "series_first_seen_volume": term["first_seen_volume"],
+                } for note in term["meaning_notes"]]
+                candidate = {
+                    "text": term["polish"],
+                    "reasons": ["Approved in the previous series volume."],
+                    "evidence": [],
+                    "confidence": "high",
+                    "series_inherited": True,
+                }
+                data = {
+                    "source": term["source"],
+                    "aliases": copy.deepcopy(term["aliases"]),
+                    "category": term["category"],
+                    "meanings": meanings,
+                    "candidates": [candidate],
+                    "evidence": [],
+                    "series_context": copy.deepcopy(term["series_context"]),
+                    "series_inherited": True,
+                    "series_first_seen_volume": term["first_seen_volume"],
+                    "series_review_required": False,
+                }
+                self.db.execute(
+                    "INSERT INTO terms(data,choice,approved) VALUES(?,?,1)",
+                    (dumps(data), term["polish"]),
+                )
+            for observation in observations:
+                item = {
+                    "about": copy.deepcopy(observation["about"]),
+                    "kind": observation["kind"],
+                    "statement": observation["statement"],
+                    "confidence": observation["confidence"],
+                    "evidence": [],
+                    "series_inherited": True,
+                    "series_first_seen_volume": observation["first_seen_volume"],
+                }
+                self.db.execute("INSERT INTO facts VALUES(?,?)", (digest(item), dumps(item)))
+            self.set("series_seed", {
+                "format_version": seed["format_version"],
+                "series_id": seed["series_id"],
+                "from_volume": seed["from_volume"],
+                "to_volume": seed["to_volume"],
+                "source_snapshot": copy.deepcopy(seed["source_snapshot"]),
+            })
+        self.export_memory()
+
     def chunk(self, cid: str) -> dict:
         row = self.db.execute("SELECT * FROM chunks WHERE id=?", (cid,)).fetchone()
         return dict(row) if row else {"id": cid, "status": "pending", "final_path": None, "deps": "[]"}
@@ -116,6 +176,17 @@ class Store:
                 else:
                     data = {"source": incoming["source"], "aliases": [], "category": incoming["category"],
                             "meanings": [], "candidates": [], "evidence": []}
+                if existing and data.get("series_inherited") is True:
+                    disagreement = []
+                    preferred = incoming["candidates"][0]["text"]
+                    if normalized(preferred) != normalized(existing["choice"] or ""):
+                        disagreement.append("preferred_candidate")
+                    if incoming["category"] != existing["category"]:
+                        disagreement.append("category")
+                        data["category"] = incoming["category"]
+                    if disagreement:
+                        data["series_review_required"] = True
+                        data["series_disagreement"] = unique(data.get("series_disagreement", []) + disagreement)
                 data["aliases"] = unique(data["aliases"] + [n for n in names if normalized(n) != normalized(data["source"])])
                 data["evidence"] = unique(data["evidence"] + evidence)
                 data["meanings"] = unique(data["meanings"] + [{"text": incoming["meaning"],
@@ -156,9 +227,15 @@ class Store:
         items = self.terms()
         matched, other = [], []
         for term in items:
+            meaning_notes = [x["text"] for x in term["meanings"][-2:]]
+            if term.get("series_inherited") is True:
+                for context in term.get("series_context", [])[:3]:
+                    statement = context.get("statement")
+                    if isinstance(statement, str) and statement not in meaning_notes:
+                        meaning_notes.append(statement)
             compact = {"id": term["id"], "source": term["source"], "aliases": term["aliases"],
                        "chosen": term["choice"], "candidates": [c["text"] for c in term["candidates"]],
-                       "meaning_notes": [x["text"] for x in term["meanings"][-2:]]}
+                       "meaning_notes": meaning_notes}
             bucket = matched if any(occurs(source, s) for s in [term["source"]] + term["aliases"]) else other
             bucket.append(compact)
         result = {"matched": matched, "catalogue": [], "catalogue_incomplete": False}
@@ -193,11 +270,16 @@ class Store:
             term_names = {normalized(x) for x in [term["source"], *term["aliases"]]}
             observations = [copy.deepcopy(f) for f in facts
                             if any(normalized(a) in term_names for a in f.get("about", []) if isinstance(a, str))]
-            result["terms"].append({"id": term["id"], "source": term["source"], "aliases": term["aliases"],
+            inherited_reviewed = term.get("series_inherited") is True and not term.get("series_review_required", False)
+            entry = {"id": term["id"], "source": term["source"], "aliases": term["aliases"],
                 "category": term["category"], "meaning_notes": term["meanings"],
                 "observations": observations, "candidates": candidates, "select": selected,
                 "custom": term["choice"] if term["choice"] and not any(c["text"] == term["choice"] for c in candidates) else "",
-                "reviewed": False, "user_notes": "", "evidence": term["evidence"]})
+                "reviewed": inherited_reviewed, "user_notes": "", "evidence": term["evidence"]}
+            if term.get("series_inherited") is True:
+                entry["review_method"] = "inherited" if inherited_reviewed else "series_disagreement"
+                entry["series_review_required"] = bool(term.get("series_review_required"))
+            result["terms"].append(entry)
         atomic_json(path, result)
         self.write_review_html(result)
         return path
@@ -282,15 +364,18 @@ class Store:
         for term in selected:
             evidence_order = {e["block_id"]: e["order"] for e in term["evidence"]}
             available_notes = [m for m in term["meanings"]
-                               if m["evidence"] and all(evidence_order.get(b, float("inf")) <= end_order
-                                                        for b in m["evidence"])]
+                               if m.get("series_inherited") is True
+                               or (m.get("evidence") and all(evidence_order.get(b, float("inf")) <= end_order
+                                                        for b in m["evidence"]))]
             lexicon.append({"id": term["id"], "source": term["source"], "aliases": term["aliases"],
                             "polish": term["choice"], "category": term["category"],
                             "meaning_notes": available_notes[-2:]})
         # No narrative/factual conclusions from later source positions are injected.
-        observations = [f for f in self.facts() if f["available_from_order"] <= end_order
-                        and f["chapter_id"] == chunk["chapter_id"]
-                        and any(occurs(source, n) for n in f["about"])]
+        observations = [f for f in self.facts()
+                        if any(occurs(source, n) for n in f["about"])
+                        and (f.get("series_inherited") is True
+                             or (f["available_from_order"] <= end_order
+                                 and f["chapter_id"] == chunk["chapter_id"]))]
         result = {"APPROVED_LEXICON": lexicon, "OBSERVATIONS": observations}
         if count(dumps(result)) > limit:
             raise PipelineError("Relevant translation memory is too large. Increase memory_tokens; nothing was silently removed.")

@@ -18,6 +18,7 @@ from .review import run_review_server
 from .operations import attempt_report, doctor_report, print_json, profile_report, usage_report
 from .profiles import migrate_settings_file, validate_profiles
 from .provider_registry import ProviderPool
+from .series import continuation_metadata, prepare_handoff, validate_series_metadata
 from .store import Store
 from .ui import Display
 from .util import PipelineError, atomic_json, atomic_text, digest, project_lock, reader_lock, read_json, plan_fingerprint
@@ -54,6 +55,8 @@ def parser() -> argparse.ArgumentParser:
                            help="Override a pass profile for this command; repeatable.")
         if name == "import":
             s.add_argument("folder", type=Path)
+            s.add_argument("--previous-volume", type=Path,
+                           help="Seed this import from the immediately preceding approved Intelitex project.")
             s.add_argument("--opf", type=Path, help="Select an OPF package if several exist.")
             s.add_argument("--input-encoding", help="Explicit HTML decoding override; default reads declared encoding/BOM.")
             s.add_argument("--chapter-mode", choices=["auto", "file", "headings"], default="auto")
@@ -157,7 +160,13 @@ def check_model(client: Client, book: dict, allowed: bool, ui: Display):
 def local_status(store: Store, book: dict, ui: Display):
     statuses = [store.chunk(c["id"])["status"] for c in book["chunks"]]
     terms = store.terms()
+    series_line = ""
+    series_path = store.root / "series.json"
+    if series_path.is_file():
+        series = validate_series_metadata(store.root, book["source_fingerprint"], read_json(series_path))
+        series_line = f"Series: {series['series_id']} | volume {series['volume']}\n"
     ui.message(f"Book: {book['metadata'].get('title') or Path(book['source_root']).name}\n"
+               f"{series_line}"
                f"Narrative sections: {len(book['chapters'])}\nTranslation units: {len(statuses)} | done: {statuses.count('done')} | stale: {statuses.count('stale')} | pending: {statuses.count('pending')}\n"
                f"P1 complete: {bool(store.get('analysis_done'))}\nHuman approval: {bool(store.get('approved'))}\n"
                f"Terms: {len(terms)} | retained candidates: {sum(len(t['candidates']) for t in terms)}\n"
@@ -233,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise PipelineError("Incomplete or unrelated project database found. Use a new project directory.")
                 if root.is_relative_to(args.folder.resolve()):
                     raise PipelineError("Keep the project outside the input folder to avoid importing generated files.")
+                handoff = prepare_handoff(args.previous_volume, root) if args.previous_volume else None
                 settings = effective_settings(root, args)
                 settings["whole_section_char_limit"] = args.whole_section_limit
                 if args.whole_section_limit <= 0:
@@ -257,12 +267,22 @@ def main(argv: list[str] | None = None) -> int:
                     shutil.copy2(prompt, prompts / prompt.name)
                 store = Store(root)
                 store.register_chunks(book)
+                if handoff:
+                    seed_path = root / "series.seed.json"
+                    atomic_json(seed_path, handoff["seed"])
+                    store.seed_series(handoff["seed"])
+                    series = continuation_metadata(book["source_fingerprint"], handoff, digest(seed_path.read_bytes()))
+                    atomic_json(root / "series.json", series)
                 # book.json is the completed-import marker, written last.
                 atomic_json(root / "book.json", book)
                 matter = len(book.get("non_narrative_sections", []))
                 ui.message(f"Imported {len(book['chapters'])} narrative sections and {len(book['chunks'])} translation units. "
                            f"Excluded {matter} front/back-matter section(s) from analysis/translation.\n"
                            f"Extracted UTF-8 text: {root / 'extracted'}\nNext: analyze --project {root}")
+                if handoff:
+                    ui.message(f"Series continuation: {handoff['series_id']} volume {handoff['previous_volume'] + 1}; "
+                               f"inherited {len(handoff['seed']['terms'])} term(s) and "
+                               f"{len(handoff['seed']['observations'])} observation(s).")
                 for warning in book["warnings"]:
                     ui.message("NOTE: " + warning)
                 return 0

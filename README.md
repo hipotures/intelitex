@@ -419,6 +419,33 @@ No repeated input path, manual source cutting, or copying intermediate JSON is
 needed. Host and port are saved at import. They may be overridden on `analyze` or
 `translate` without repeating the import.
 
+### Continue a series
+
+To initialize a later volume with memory from the immediately preceding approved
+Intelitex project, add `--previous-volume` to its otherwise normal import:
+
+```bash
+uv run translate.py import /path/to/unpacked-volume-2 \
+  --project "$HOME/translations/series-volume-2" \
+  --previous-volume "$HOME/translations/series-volume-1"
+```
+
+The first legacy predecessor is atomically given only a `series.json` sidecar as
+volume 1; its frozen `book.json`, database, prompts, checkpoints and translations
+are not rewritten. Each continuation automatically uses the same opaque series ID
+and the next volume number. Intelitex deterministically compacts the predecessor's
+canonical approved terminology and reusable P1 observations into
+`series.seed.json` without an LLM call, then seeds the new Store before its first
+analysis request. The predecessor must have completed P1 and terminology approval
+(`book_memory.json` plus a consistent `lexicon.approved.json`), but its prose
+translation need not be complete.
+
+Inherited choices are already selected and reviewed in the next volume. A recurring
+term is reopened for review only when current P1 prefers a different Polish form or
+changes its category; new terms follow the ordinary review flow. The new book still
+requires its own `analyze -> review -> approve -> translate` cycle. Imports without
+`--previous-volume` remain standalone and create no series artifacts.
+
 ## Exactly what the stages mean
 
 | Stage | Scope | Output / behavior |
@@ -685,6 +712,8 @@ from being overwritten by additional exports.
 ```text
 project/
   book.json                    # frozen sources, sections, chunks, stable IDs
+  series.json                  # optional immutable series/volume identity sidecar
+  series.seed.json             # optional deterministic inherited-memory snapshot
   analysis_plan.json           # P1 work units
   settings.json
   state.sqlite3                # authoritative checkpoints, memory, choices, history
