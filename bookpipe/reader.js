@@ -138,17 +138,106 @@
     return {current, start, end};
   }
 
+  const GESTURES = ['tap', 'long', 'drag', 'off'];
+
+  function gestureSettings(saved = {}) {
+    const result = {markerGesture: 'drag', contextGesture: 'long'};
+    const valid = value => GESTURES.includes(value);
+    const hasNew = valid(saved.markerGesture) || valid(saved.contextGesture);
+    if (hasNew) {
+      if (valid(saved.markerGesture)) result.markerGesture = saved.markerGesture;
+      if (valid(saved.contextGesture)) result.contextGesture = saved.contextGesture;
+    } else if (valid(saved.gesture)) {
+      result.markerGesture = saved.gesture;
+      result.contextGesture = ['long', 'drag', 'tap', 'off'].find(value =>
+        value === 'off' || value !== result.markerGesture
+      );
+    }
+    if (result.markerGesture !== 'off' && result.markerGesture === result.contextGesture) {
+      result.contextGesture = ['long', 'drag', 'tap', 'off'].find(value =>
+        value === 'off' || value !== result.markerGesture
+      );
+    }
+    return result;
+  }
+
+  function assignGesture(current, key, value) {
+    if (!['markerGesture', 'contextGesture'].includes(key) || !GESTURES.includes(value)) return {...current};
+    const other = key === 'markerGesture' ? 'contextGesture' : 'markerGesture';
+    const result = {...current};
+    const previous = result[key];
+    if (value !== 'off' && result[other] === value) result[other] = previous;
+    result[key] = value;
+    return result;
+  }
+
+  function createContextDismissalGuard() {
+    let open = false;
+    let openingPointer = null;
+    let dismissPointer = null;
+    let suppressOpeningClick = false;
+    let suppressDismissClick = false;
+    return {
+      open(pointerId = null) {
+        open = true;
+        openingPointer = pointerId;
+        dismissPointer = null;
+        suppressOpeningClick = pointerId !== null;
+        suppressDismissClick = false;
+      },
+      close() {
+        open = false;
+        openingPointer = dismissPointer = null;
+        suppressOpeningClick = suppressDismissClick = false;
+      },
+      isOpen() { return open; },
+      consume(type, outside, pointerId = null) {
+        if (open && openingPointer !== null && type === 'pointerup' && pointerId === openingPointer) {
+          openingPointer = null;
+          suppressOpeningClick = true;
+          return true;
+        }
+        if (open && suppressOpeningClick && type === 'click') {
+          suppressOpeningClick = false;
+          return true;
+        }
+        if (open) {
+          if (!outside) return false;
+          open = false;
+          if (type === 'pointerdown') {
+            dismissPointer = pointerId;
+            suppressDismissClick = true;
+          }
+          return true;
+        }
+        if (dismissPointer !== null && type === 'pointerup' && pointerId === dismissPointer) {
+          dismissPointer = null;
+          return true;
+        }
+        if (suppressDismissClick && type === 'click') {
+          suppressDismissClick = false;
+          return true;
+        }
+        return false;
+      },
+    };
+  }
+
   const helpers = {
     utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange,
     wordPosition, progressAtLocation, viewportBlockPosition,
     createSerialQueue, createRequestGate, markerLayout, inlineRuns, markerAnchor,
+    gestureSettings, assignGesture, createContextDismissalGuard,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
   if (typeof document === 'undefined') return;
 
   const $ = id => document.getElementById(id);
-  const DEFAULTS = {fontSize: 20, fontFamily: 'serif', lineHeight: 1.7, contentWidth: 42, theme: 'light', gesture: 'tap'};
+  const DEFAULTS = {
+    fontSize: 20, fontFamily: 'serif', lineHeight: 1.7, contentWidth: 42, theme: 'light',
+    markerGesture: 'drag', contextGesture: 'long',
+  };
   const FONT_STACKS = {
     serif: 'ui-serif, Charter, "Bitstream Charter", Georgia, serif',
     sans: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
@@ -167,6 +256,7 @@
   let noticeTimer = null;
   let progressFrame = null;
   let progressPopupTimer = null;
+  let pendingContextInteraction = null;
   let renderedChapterId = null;
   let fallbackHighlights = [];
   let progressWordSpans = new Map();
@@ -174,13 +264,19 @@
   let settings = loadSettings();
   const enqueueMarkerMutation = createSerialQueue();
   const chapterRequests = createRequestGate();
+  const contextRequests = createRequestGate();
+  const contextDismissal = createContextDismissalGuard();
   const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
     ? new Intl.Segmenter('pl', {granularity: 'word'}) : null;
 
   function loadSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-      return {...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {})};
+      const source = saved && typeof saved === 'object' ? saved : {};
+      const result = {...DEFAULTS, ...source, ...gestureSettings(source)};
+      delete result.gesture;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(result));
+      return result;
     } catch (_) { return {...DEFAULTS}; }
   }
 
@@ -195,8 +291,8 @@
     doc.style.setProperty('--reader-leading', String(Number(settings.lineHeight)));
     doc.style.setProperty('--reader-width', `${Number(settings.contentWidth)}rem`);
     doc.style.setProperty('--reader-font', FONT_STACKS[settings.fontFamily] || FONT_STACKS.serif);
-    $('chapter').classList.toggle('gesture-drag', settings.gesture === 'drag');
-    $('chapter').classList.toggle('gesture-long', settings.gesture === 'long');
+    $('chapter').classList.toggle('gesture-drag', [settings.markerGesture, settings.contextGesture].includes('drag'));
+    $('chapter').classList.toggle('gesture-long', [settings.markerGesture, settings.contextGesture].includes('long'));
     for (const key of Object.keys(DEFAULTS)) if ($(key)) $(key).value = String(settings[key]);
     requestAnimationFrame(() => { positionMarkers(); updateReadingProgress(); });
   }
@@ -390,15 +486,99 @@
     return snapped ? {block: first.block, text, ...snapped} : null;
   }
 
-  function flashRange(range) {
+  function flashRange(range, kind = 'marker') {
     for (const rect of range.getClientRects()) {
       if (!rect.width || !rect.height) continue;
       const flash = document.createElement('span');
-      flash.className = 'range-flash';
+      flash.className = `range-flash${kind === 'empty-context' ? ' empty-context' : ''}`;
       Object.assign(flash.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`});
       document.body.append(flash);
       setTimeout(() => flash.remove(), 1050);
     }
+  }
+
+  function hideContextCard() {
+    $('contextOverlay').hidden = true;
+    $('contextBody').replaceChildren();
+  }
+
+  function closeContextCard() {
+    contextRequests.next();
+    pendingContextInteraction = null;
+    contextDismissal.close();
+    hideContextCard();
+  }
+
+  function renderContextCard(result, openingPointer = null) {
+    clearMarkerControl();
+    hideProgressPopup();
+    $('tocPanel').hidden = true;
+    $('settingsPanel').hidden = true;
+    $('contextTitle').textContent = result.title;
+    const body = $('contextBody');
+    body.replaceChildren();
+    if (result.statements.length) {
+      const list = document.createElement('ul');
+      list.className = 'context-statements';
+      for (const statement of result.statements) {
+        const item = document.createElement('li');
+        item.textContent = statement;
+        list.append(item);
+      }
+      body.append(list);
+    }
+    if (result.earlier_mentions.length) {
+      const heading = document.createElement('h3');
+      heading.textContent = 'Earlier mentions';
+      body.append(heading);
+      for (const mention of result.earlier_mentions) {
+        const item = document.createElement('figure');
+        item.className = 'context-mention';
+        const quote = document.createElement('blockquote');
+        quote.textContent = mention.text;
+        const caption = document.createElement('figcaption');
+        caption.textContent = mention.chapter_title;
+        item.append(quote, caption);
+        body.append(item);
+      }
+    }
+    contextDismissal.open(openingPointer);
+    $('contextOverlay').hidden = false;
+    $('contextClose').focus({preventScroll: true});
+  }
+
+  async function requestContext(location, pointerId = null) {
+    if (!location || !renderedChapterId) return;
+    const request = contextRequests.next();
+    const interaction = {pointerId, clickFinished: false};
+    pendingContextInteraction = interaction;
+    const range = textRange(location.block, location.start, location.end);
+    const payload = {
+      chapter_id: renderedChapterId,
+      block_id: location.block.dataset.blockId,
+      start: location.start,
+      end: location.end,
+      text: Array.from(location.text).slice(location.start, location.end).join(''),
+    };
+    try {
+      const result = await api('/api/context', {method: 'POST', body: JSON.stringify(payload)});
+      if (!contextRequests.isCurrent(request) || renderedChapterId !== payload.chapter_id) return;
+      if (pendingContextInteraction === interaction) pendingContextInteraction = null;
+      if (!result.available) {
+        if (range && location.block.isConnected) flashRange(range, 'empty-context');
+        return;
+      }
+      renderContextCard(result, interaction.clickFinished ? null : pointerId);
+    } catch (error) {
+      if (pendingContextInteraction === interaction) pendingContextInteraction = null;
+      if (contextRequests.isCurrent(request)) showNotice(error.message, 3500);
+    }
+  }
+
+  function dispatchGesture(gesture, location, pointerId = null) {
+    if (!location) return;
+    if (settings.markerGesture === gesture) createMarker(location);
+    else if (settings.contextGesture === gesture) requestContext(location, pointerId);
   }
 
   function createMarker(location) {
@@ -508,6 +688,7 @@
   }
 
   function openMarker(marker, button) {
+    closeContextCard();
     clearMarkerControl();
     const location = markerLocation(marker);
     if (!location) return showNotice('Stored marker no longer maps to this chapter.', 3000);
@@ -600,6 +781,7 @@
     const target = metadata.chapters[targetIndex];
     const request = chapterRequests.next();
     chapterIndex = targetIndex;
+    closeContextCard();
     clearMarkerControl();
     document.body.classList.add('loading');
     const chapterNode = $('chapter');
@@ -662,17 +844,17 @@
   }
 
   function onPointerDown(event) {
-    if (!event.isPrimary || event.button !== 0 || event.target.closest('.gutter-marker')) return;
+    if (contextDismissal.isOpen() || !event.isPrimary || event.button !== 0 || event.target.closest('.gutter-marker')) return;
     const block = event.target.closest('.reader-block');
     if (!block) return;
     const start = locationAtPoint(event.clientX, event.clientY);
     if (!start) return;
     pointer = {id: event.pointerId, x: event.clientX, y: event.clientY, start, fired: false, time: performance.now(), timer: null};
-    if (settings.gesture === 'long') {
+    if ([settings.markerGesture, settings.contextGesture].includes('long')) {
       pointer.timer = setTimeout(() => {
         if (!pointer) return;
         pointer.fired = true;
-        createMarker(normalizedLocation(pointer.start));
+        dispatchGesture('long', normalizedLocation(pointer.start), pointer.id);
       }, LONG_PRESS_MS);
     }
   }
@@ -681,7 +863,8 @@
     if (!pointer || event.pointerId !== pointer.id) return;
     const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
     if (Math.hypot(dx, dy) > MOVE_TOLERANCE) cancelLongPress();
-    if (settings.gesture === 'drag' && Math.abs(dx) >= DRAG_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.2) event.preventDefault();
+    if ([settings.markerGesture, settings.contextGesture].includes('drag')
+        && Math.abs(dx) >= DRAG_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.2) event.preventDefault();
   }
 
   function onPointerUp(event) {
@@ -690,14 +873,35 @@
     cancelLongPress();
     pointer = null;
     const dx = event.clientX - state.x, dy = event.clientY - state.y;
-    if (settings.gesture === 'tap' && Math.hypot(dx, dy) <= MOVE_TOLERANCE) {
-      createMarker(normalizedLocation(locationAtPoint(event.clientX, event.clientY) || state.start));
-    } else if (settings.gesture === 'drag' && Math.abs(dx) >= DRAG_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      createMarker(normalizedLocation(state.start, locationAtPoint(event.clientX, event.clientY)));
+    if (!state.fired && Math.hypot(dx, dy) <= MOVE_TOLERANCE) {
+      dispatchGesture('tap', normalizedLocation(locationAtPoint(event.clientX, event.clientY) || state.start), state.id);
+    } else if (!state.fired && Math.abs(dx) >= DRAG_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      dispatchGesture('drag', normalizedLocation(state.start, locationAtPoint(event.clientX, event.clientY)), state.id);
     }
   }
 
+  function consumeContextEvent(event) {
+    if (event.type === 'click' && pendingContextInteraction && !contextDismissal.isOpen()) {
+      pendingContextInteraction.clickFinished = true;
+    }
+    const target = event.target?.closest ? event.target : null;
+    const outside = !target?.closest('#contextCard') || Boolean(target?.closest('#contextClose'));
+    const wasOpen = contextDismissal.isOpen();
+    if (!contextDismissal.consume(event.type, outside, event.pointerId ?? null)) return;
+    cancelLongPress();
+    pointer = null;
+    if (wasOpen && !contextDismissal.isOpen()) {
+      contextRequests.next();
+      hideContextCard();
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
   function bindControls() {
+    document.addEventListener('pointerdown', consumeContextEvent, true);
+    document.addEventListener('pointerup', consumeContextEvent, true);
+    document.addEventListener('click', consumeContextEvent, true);
     $('previousButton').onclick = () => loadChapter(chapterIndex - 1);
     $('nextButton').onclick = () => loadChapter(chapterIndex + 1);
     $('tocButton').onclick = event => { event.stopPropagation(); $('settingsPanel').hidden = true; $('tocPanel').hidden = !$('tocPanel').hidden; };
@@ -705,7 +909,8 @@
     $('fullscreenButton').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
     $('readingProgress').onclick = showProgressPopup;
     $('deleteMarker').onclick = deleteActiveMarker;
-    for (const key of Object.keys(DEFAULTS)) {
+    $('contextClose').onclick = closeContextCard;
+    for (const key of ['fontSize', 'fontFamily', 'lineHeight', 'contentWidth', 'theme']) {
       const control = $(key);
       if (!control) continue;
       control.addEventListener('input', () => {
@@ -713,12 +918,20 @@
         applySettings(); saveSettings();
       });
     }
+    for (const key of ['markerGesture', 'contextGesture']) {
+      $(key).addEventListener('change', () => {
+        settings = assignGesture(settings, key, $(key).value);
+        applySettings();
+        saveSettings();
+      });
+    }
     $('chapter').addEventListener('pointerdown', onPointerDown);
     document.addEventListener('pointermove', onPointerMove, {passive: false});
     document.addEventListener('pointerup', onPointerUp);
     document.addEventListener('pointercancel', () => { cancelLongPress(); pointer = null; });
     $('chapter').addEventListener('contextmenu', event => {
-      if (settings.gesture === 'long' && event.target.closest('.reader-block')) event.preventDefault();
+      if ([settings.markerGesture, settings.contextGesture].includes('long')
+          && event.target.closest('.reader-block')) event.preventDefault();
     });
     document.addEventListener('click', event => {
       if (!event.target.closest('.panel') && !event.target.closest('#tocButton') && !event.target.closest('#settingsButton')) {
@@ -729,7 +942,7 @@
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
-        $('tocPanel').hidden = true; $('settingsPanel').hidden = true; clearMarkerControl(); hideProgressPopup();
+        $('tocPanel').hidden = true; $('settingsPanel').hidden = true; clearMarkerControl(); hideProgressPopup(); closeContextCard();
       }
     });
     window.addEventListener('resize', () => { positionMarkers(); scheduleReadingProgress(); });

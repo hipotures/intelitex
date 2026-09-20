@@ -6,7 +6,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .util import PipelineError, digest, inside, read_json
+from .util import PipelineError, digest, inside, normalized, occurs, read_json
 
 
 _INLINE_FORMATTING = re.compile(
@@ -48,6 +48,14 @@ class ReaderContext:
         self.root = root.resolve()
         self._book_data: dict | None = None
         self._canonical_blocks: set[tuple[str, str]] = set()
+        self._block_orders: dict[str, int] = {}
+        self._chapter_titles: dict[str, str] = {}
+        self._verified_blocks: dict[str, dict[str, str]] = {}
+        self._mention_blocks: dict[str, set[str]] = {}
+        self._memory_stamp: tuple[int, int] | None = None
+        self._memory_data: dict = {"terms": [], "observations": []}
+        self._terms_by_form: dict[str, list[dict]] = {}
+        self._observations_by_about: dict[str, list[dict]] = {}
 
     def _book(self) -> dict:
         if self._book_data is not None:
@@ -69,7 +77,167 @@ class ReaderContext:
             for block in chapter.get("blocks", []) if isinstance(block, dict)
             if isinstance(chapter.get("id"), str) and isinstance(block.get("id"), str)
         }
+        serial = 0
+        for chapter in book["chapters"]:
+            chapter_id = chapter.get("id")
+            if not isinstance(chapter_id, str):
+                continue
+            self._chapter_titles[chapter_id] = chapter.get("title") or chapter_id
+            for block in chapter.get("blocks", []):
+                if not isinstance(block, dict) or not isinstance(block.get("id"), str):
+                    continue
+                serial += 1
+                order = block.get("order")
+                self._block_orders[block["id"]] = order if type(order) is int else serial
+        for chunk in book["chunks"]:
+            chapter_id = chunk.get("chapter_id")
+            for piece in chunk.get("blocks", []):
+                if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+                    continue
+                parent = piece.get("parent_id", piece["id"])
+                if parent in self._block_orders:
+                    self._block_orders[piece["id"]] = self._block_orders[parent]
         return book
+
+    def _memory(self) -> dict:
+        """Cache the local P1 memory, refreshing only when its file changes."""
+        path = self.root / "book_memory.json"
+        if not path.is_file():
+            self._memory_stamp = None
+            self._memory_data = {"terms": [], "observations": []}
+            self._terms_by_form = {}
+            self._observations_by_about = {}
+            return {"terms": [], "observations": []}
+        stat = path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        if stamp == self._memory_stamp:
+            return self._memory_data
+        memory = read_json(path)
+        if not isinstance(memory, dict):
+            raise PipelineError("book_memory.json must contain a JSON object.")
+        terms, observations = memory.get("terms", []), memory.get("observations", [])
+        if not isinstance(terms, list) or not isinstance(observations, list):
+            raise PipelineError("book_memory.json has invalid terms or observations.")
+        self._memory_data = {"terms": terms, "observations": observations}
+        self._terms_by_form = {}
+        for term in terms:
+            if not isinstance(term, dict):
+                continue
+            forms = [term.get("source")]
+            if term.get("approved") is True:
+                forms.append(term.get("choice"))
+            form_keys = {normalized(form) for form in forms if isinstance(form, str) and normalized(form)}
+            for form_key in form_keys:
+                self._terms_by_form.setdefault(form_key, []).append(term)
+        self._observations_by_about = {}
+        for observation in observations:
+            if not isinstance(observation, dict) or not isinstance(observation.get("about"), list):
+                continue
+            about_keys = {normalized(value) for value in observation["about"]
+                          if isinstance(value, str) and normalized(value)}
+            for about_key in about_keys:
+                self._observations_by_about.setdefault(about_key, []).append(observation)
+        self._memory_stamp = stamp
+        return self._memory_data
+
+    def _evidence_before(self, evidence: object, cutoff: int) -> bool:
+        return (
+            isinstance(evidence, list)
+            and bool(evidence)
+            and all(isinstance(block_id, str) and self._block_orders.get(block_id, cutoff) < cutoff
+                    for block_id in evidence)
+        )
+
+    @staticmethod
+    def _short_excerpt(text: str, phrase: str, limit: int = 180) -> str:
+        compact = re.sub(r"\s+", " ", text).strip()
+        match = re.search(r"(?<!\w)" + re.escape(phrase.strip()) + r"(?!\w)", compact, re.IGNORECASE)
+        if not match or len(compact) <= limit:
+            return compact[:limit]
+        half = max(24, (limit - len(match.group(0))) // 2)
+        start, end = max(0, match.start() - half), min(len(compact), match.end() + half)
+        if start:
+            boundary = compact.find(" ", start)
+            start = boundary + 1 if boundary >= 0 and boundary < match.start() else start
+        if end < len(compact):
+            boundary = compact.rfind(" ", match.end(), end)
+            end = boundary if boundary > match.end() else end
+        return ("…" if start else "") + compact[start:end] + ("…" if end < len(compact) else "")
+
+    def context(self, chapter_id: str, block_id: str, start: int, end: int, submitted: str) -> dict:
+        """Return only knowledge fully evidenced before the selected canonical block."""
+        self._book()
+        if not isinstance(chapter_id, str) or not isinstance(block_id, str):
+            raise PipelineError("chapter_id and block_id must be strings.")
+        if type(start) is not int or type(end) is not int:
+            raise PipelineError("Context offsets must be integer Unicode code-point offsets.")
+        if not isinstance(submitted, str):
+            raise PipelineError("Context text must be a string.")
+        cutoff = self._block_orders.get(block_id)
+        if cutoff is None or (chapter_id, block_id) not in self._canonical_blocks:
+            raise PipelineError(f"Unknown canonical block {block_id} in chapter {chapter_id}.")
+        text = self.block_text(chapter_id, block_id)
+        if not 0 <= start < end <= len(text):
+            raise PipelineError("Context offsets are outside the translated block.")
+        if text[start:end] != submitted:
+            raise PipelineError("Selected text no longer matches the checkpoint-verified translated block.")
+        selected = submitted.strip()
+        selected_key = normalized(selected)
+        if not selected_key:
+            raise PipelineError("Context text must contain a visible word.")
+
+        self._memory()
+        matches = self._terms_by_form.get(selected_key, [])
+
+        statements: list[str] = []
+        # More than one exact term match is ambiguous; earlier prose can still be
+        # returned, but semantic records are not merged across identities.
+        if len(matches) == 1:
+            term = matches[0]
+            for note in term.get("meanings", []):
+                if (isinstance(note, dict) and isinstance(note.get("text"), str)
+                        and note["text"].strip() and self._evidence_before(note.get("evidence"), cutoff)):
+                    statements.append(note["text"].strip())
+            source_key = normalized(term.get("source", ""))
+            for observation in self._observations_by_about.get(source_key, []):
+                available = observation.get("available_from_order")
+                about = observation.get("about")
+                if (type(available) is not int or available >= cutoff
+                        or not self._evidence_before(observation.get("evidence"), cutoff)
+                        or not isinstance(about, list)
+                        or source_key not in {normalized(value) for value in about if isinstance(value, str)}):
+                    continue
+                statement = observation.get("statement")
+                if isinstance(statement, str) and statement.strip():
+                    statements.append(statement.strip())
+
+        statements = list(dict.fromkeys(statements))[:4]
+        earlier_mentions = []
+        first_word = _READER_WORDS.search(selected)
+        candidate_ids = self._mention_blocks.get(normalized(first_word.group()), set()) if first_word else set()
+        for previous_id in sorted(candidate_ids, key=lambda value: self._block_orders.get(value, cutoff)):
+            item = self._verified_blocks[previous_id]
+            order = self._block_orders.get(previous_id)
+            previous_text = item.get("text", "")
+            if order is None or order >= cutoff or not occurs(previous_text, selected):
+                continue
+            earlier_mentions.append({
+                "chapter_id": item["chapter_id"],
+                "chapter_title": self._chapter_titles.get(item["chapter_id"], item["chapter_id"]),
+                "block_id": previous_id,
+                "text": self._short_excerpt(previous_text, selected),
+            })
+            if len(earlier_mentions) == 3:
+                break
+
+        if not statements and not earlier_mentions:
+            return {"available": False}
+        return {
+            "available": True,
+            "title": selected,
+            "statements": statements,
+            "earlier_mentions": earlier_mentions,
+        }
 
     def has_canonical_block(self, chapter_id: str, block_id: str) -> bool:
         self._book()
@@ -242,6 +410,10 @@ class ReaderContext:
             result["unavailable"] = {"after_blocks": len(blocks), "reason": unavailable_reason}
         if stale_units:
             result["warning"] = "This chapter includes checkpoint-verified P5 text from stale translation units."
+        for block in blocks:
+            self._verified_blocks[block["id"]] = {"chapter_id": chapter_id, "text": block["text"]}
+            for match in _READER_WORDS.finditer(block["text"]):
+                self._mention_blocks.setdefault(normalized(match.group()), set()).add(block["id"])
         return result
 
     def block_text(self, chapter_id: str, block_id: str) -> str:

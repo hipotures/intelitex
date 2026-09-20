@@ -222,6 +222,71 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .marker-control button { min-height: 2.5rem; padding: .45rem .75rem; border: 0; border-radius: .3rem; background: var(--control); cursor: pointer; }
 .marker-control button:hover { color: var(--accent); }
 
+.context-overlay {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.context-card {
+  position: relative;
+  width: min(42rem, calc(100vw - 2rem));
+  max-width: 100%;
+  max-height: min(76vh, 44rem);
+  overflow: auto;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid var(--rule);
+  border-radius: .8rem;
+  background: var(--sheet);
+  box-shadow: 0 1.25rem 4rem color-mix(in srgb, var(--shadow) 78%, transparent);
+  overscroll-behavior: contain;
+  font-family: var(--reader-font);
+}
+.context-close {
+  position: absolute;
+  top: .45rem;
+  right: .45rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+.context-close:hover { background: var(--paper); color: var(--ink); }
+.context-kicker {
+  margin: 0 3rem .35rem 0;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.context-card h2 { margin: 0 3rem 1rem 0; font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.15; font-weight: 550; }
+.context-card h3 {
+  margin: 1.5rem 0 .65rem;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: .72rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.context-statements { margin: 0; padding-left: 1.2rem; }
+.context-statements li { padding-left: .25rem; line-height: 1.55; }
+.context-statements li + li { margin-top: .65rem; }
+.context-mention { margin: 0; padding: .8rem 0 0; border-top: 1px solid var(--rule); }
+.context-mention + .context-mention { margin-top: .8rem; }
+.context-mention blockquote { margin: 0; color: var(--ink); font-size: .94em; line-height: 1.55; }
+.context-mention figcaption { margin-top: .35rem; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: .7rem; }
+
 .notice {
   position: fixed;
   z-index: 60;
@@ -248,6 +313,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   pointer-events: none;
   animation: marker-flash 1s ease-out forwards;
 }
+.range-flash.empty-context { background: color-mix(in srgb, var(--accent) 32%, transparent); }
 .marker-preview-fallback {
   position: fixed;
   z-index: 9;
@@ -267,6 +333,7 @@ body.loading #chapter { opacity: .35; }
   .chapter-display-title { margin-bottom: 2em; }
   .gutter-marker { right: calc(100% - .1rem); }
   .settings-panel label { grid-template-columns: 6.6rem 1fr; }
+  .context-card { width: calc(100vw - 2rem); max-height: 74vh; padding: 1.25rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

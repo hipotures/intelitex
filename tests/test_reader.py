@@ -21,8 +21,8 @@ def make_reader_project(tmp_path, *, pieces=False, translated=2):
     root = tmp_path / "project"
     root.mkdir()
     canonical = [
-        {"id": "B0000001", "kind": "p", "text": "English one."},
-        {"id": "B0000002", "kind": "p", "text": "English two."},
+        {"id": "B0000001", "kind": "p", "text": "English one.", "order": 1},
+        {"id": "B0000002", "kind": "p", "text": "English two.", "order": 2},
     ]
     if pieces:
         chunks = [
@@ -117,6 +117,93 @@ def test_reader_progress_counts_only_the_contiguous_available_prefix(tmp_path):
             "blocks": [{"id": "B0000001", "start": 0, "words": 3}],
         }],
     }
+
+
+def make_context_project(tmp_path):
+    root, paths = make_reader_project(tmp_path)
+    atomic_json(paths[0], {"translations": [{"id": "B0000001", "text": "Drugi pojawił się wcześniej."}]})
+    book = read_json(root / "book.json")
+    future = {"id": "B0000003", "kind": "p", "text": "English future.", "order": 3}
+    future_chunk = {
+        "id": "ch0001_c0003", "chapter_id": "ch0001", "number": 3,
+        "blocks": [{**future, "parent_id": future["id"]}],
+    }
+    book["chapters"][0]["blocks"].append(future)
+    book["chapters"][0]["chunk_ids"].append(future_chunk["id"])
+    book["chunks"].append(future_chunk)
+    atomic_json(root / "book.json", book)
+    store = Store(root)
+    store.save_job("pass5/ch0001_c0001", "fingerprint-1", paths[0], {})
+    store.register_chunks(book)
+    store.close()
+    atomic_json(root / "book_memory.json", {
+        "format_version": 1,
+        "terms": [{
+            "id": "T000001", "source": "Second", "aliases": ["Later identity"],
+            "category": "other", "choice": "Drugi", "approved": True,
+            "evidence": [
+                {"block_id": "B0000001", "chapter_id": "ch0001", "order": 1},
+                {"block_id": "B0000002", "chapter_id": "ch0001", "order": 2},
+                {"block_id": "B0000003", "chapter_id": "ch0001", "order": 3},
+            ],
+            "meanings": [
+                {"text": "Known before the selection.", "confidence": "high", "evidence": ["B0000001"]},
+                {"text": "Learned in the current block.", "confidence": "high", "evidence": ["B0000002"]},
+                {"text": "Learned in the future.", "confidence": "high", "evidence": ["B0000003"]},
+                {"text": "Needs early and future evidence.", "confidence": "high", "evidence": ["B0000001", "B0000003"]},
+            ],
+            "candidates": [],
+        }],
+        "observations": [
+            {"about": ["Second"], "kind": "continuity", "statement": "Earlier observation.",
+             "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
+            {"about": ["Second"], "kind": "continuity", "statement": "Current observation.",
+             "confidence": "high", "evidence": ["B0000002"], "available_from_order": 2},
+            {"about": ["Second"], "kind": "continuity", "statement": "Future observation.",
+             "confidence": "high", "evidence": ["B0000003"], "available_from_order": 3},
+            {"about": ["Second"], "kind": "continuity", "statement": "Mislabelled future observation.",
+             "confidence": "high", "evidence": ["B0000003"], "available_from_order": 1},
+            {"about": ["Later identity"], "kind": "reference", "statement": "Future alias relationship.",
+             "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
+        ],
+    })
+    return root
+
+
+def test_context_helper_returns_only_complete_pre_cutoff_evidence(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    context.progress()
+    result = context.context("ch0001", "B0000002", 0, 5, "Drugi")
+    assert result == {
+        "available": True,
+        "title": "Drugi",
+        "statements": ["Known before the selection.", "Earlier observation."],
+        "earlier_mentions": [{
+            "chapter_id": "ch0001", "chapter_title": "Rozdział Łódź",
+            "block_id": "B0000001", "text": "Drugi pojawił się wcześniej.",
+        }],
+    }
+    assert not any("current" in statement.lower() or "future" in statement.lower()
+                   for statement in result["statements"])
+
+
+def test_context_helper_returns_unavailable_without_earlier_safe_knowledge(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    context.progress()
+    assert context.context("ch0001", "B0000002", 6, 12, "polski") == {"available": False}
+
+
+def test_context_helper_rejects_stale_selection_and_never_calls_a_model(tmp_path, monkeypatch):
+    from bookpipe.client import Client
+
+    root = make_context_project(tmp_path)
+    monkeypatch.setattr(Client, "generate", lambda *args, **kwargs: pytest.fail("Context Helper called a model"))
+    context = ReaderContext(root)
+    assert context.context("ch0001", "B0000002", 0, 5, "Drugi")["available"] is True
+    with pytest.raises(PipelineError, match="no longer matches"):
+        context.context("ch0001", "B0000002", 0, 5, "Inny")
 
 
 def test_reader_labels_checkpointed_stale_translation(tmp_path):
@@ -352,6 +439,14 @@ def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
             chapter = client.get("/api/chapters/ch0001")
             assert chapter.status_code == 200
             assert chapter.json()["blocks"][0]["id"] == "B0000001"
+            context = client.post("/api/context", json={
+                "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6, "text": "Zażółć",
+            })
+            assert context.status_code == 200 and context.json() == {"available": False}
+            stale_context = client.post("/api/context", json={
+                "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6, "text": "Changed",
+            })
+            assert stale_context.status_code == 400 and "no longer matches" in stale_context.json()["error"]
             payload = {
                 "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6,
                 "text": "Zażółć", "revision": metadata["marker_state"]["_revision"],

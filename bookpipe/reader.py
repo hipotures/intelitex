@@ -168,10 +168,19 @@ HTML = """<!doctype html>
     <label>Line height <input id="lineHeight" type="range" min="1.35" max="2.1" step="0.05"></label>
     <label>Content width <input id="contentWidth" type="range" min="32" max="54" step="1"></label>
     <label>Theme <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option></select></label>
-    <label>Marker gesture <select id="gesture"><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag / swipe</option></select></label>
+    <label>Marker gesture <select id="markerGesture"><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag / swipe</option><option value="off">Off</option></select></label>
+    <label>Context Helper <select id="contextGesture"><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag / swipe</option><option value="off">Off</option></select></label>
   </aside>
   <main id="reader" tabindex="-1"><article id="chapter" lang="pl" aria-live="polite"></article></main>
   <div id="markerControl" class="marker-control" hidden><button id="deleteMarker" type="button">Delete marker</button></div>
+  <div id="contextOverlay" class="context-overlay" hidden>
+    <section id="contextCard" class="context-card" role="dialog" aria-modal="true" aria-labelledby="contextTitle">
+      <button id="contextClose" class="context-close" type="button" aria-label="Close context">×</button>
+      <div class="context-kicker">Known so far</div>
+      <h2 id="contextTitle"></h2>
+      <div id="contextBody"></div>
+    </section>
+  </div>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
 </body>
 </html>
@@ -214,7 +223,7 @@ class ReaderHandler(BaseHTTPRequestHandler):
     def _body(self) -> dict:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if content_type != "application/json":
-            raise PipelineError("Mutation requests require application/json.")
+            raise PipelineError("JSON requests require application/json.")
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
@@ -268,7 +277,17 @@ class ReaderHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            if urlparse(self.path).path != "/api/markers":
+            path = urlparse(self.path).path
+            if path == "/api/context":
+                body = self._body()
+                expected = {"chapter_id", "block_id", "start", "end", "text"}
+                if set(body) != expected:
+                    raise PipelineError("Context request must contain only chapter_id, block_id, start, end, and text.")
+                self._json(self.server.context.context(
+                    body["chapter_id"], body["block_id"], body["start"], body["end"], body["text"]
+                ))
+                return
+            if path != "/api/markers":
                 self._error(PipelineError("Not found."), HTTPStatus.NOT_FOUND)
                 return
             body = self._body()

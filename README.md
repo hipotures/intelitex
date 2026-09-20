@@ -298,9 +298,20 @@ on an untrusted network.
 Reader markers are written atomically to `translation.review.json`. Format 1
 records the source-book fingerprint and a minimal list of marker IDs, canonical
 chapter/block IDs, Unicode code-point offsets, and the exact captured Polish
-substring. Reader appearance, gesture choice, and reading position remain in the
-browser's `localStorage`. Marker classification, prose review, and correction are
-future work; the Reader does not call a model or modify P5 artifacts.
+substring. Reader appearance, gesture choices, and reading position remain in the
+browser's `localStorage`. Marker and Context Helper gestures are assigned
+independently; the defaults are horizontal drag for a marker and long press for
+context. Assigning an occupied gesture swaps the two assignments, and either action
+may be turned off.
+
+The read-only Context Helper uses `book_memory.json`, canonical block order, P1
+evidence, and previously checksum-verified P5 text. It matches only exact normalized
+source forms or approved Polish choices. At canonical block order `N`, a meaning or
+observation is eligible only when every cited evidence block has order `< N` (and an
+observation's `available_from_order` is also `< N`). Current-block and later evidence,
+aliases, and ambiguous identity links are excluded. The helper does not call a model,
+change marker data, or modify translation artifacts or pipeline state. Marker
+classification, prose review, and correction remain future work.
 
 ### Pass 1 lexical-grounding recovery / v1.5
 

@@ -114,3 +114,43 @@ test('an outdated marker remains anchored locally without claiming an exact matc
   assert.deepEqual(R.markerAnchor('Nowy tekst akapitu', {start: 5, end: 10, text: 'tekst'}),
     {current: true, start: 5, end: 10});
 });
+
+test('gesture defaults, migration, and assignment swapping stay unambiguous', () => {
+  assert.deepEqual(R.gestureSettings({}), {markerGesture: 'drag', contextGesture: 'long'});
+  assert.deepEqual(R.gestureSettings({gesture: 'tap'}), {markerGesture: 'tap', contextGesture: 'long'});
+  assert.deepEqual(R.gestureSettings({gesture: 'long'}), {markerGesture: 'long', contextGesture: 'drag'});
+  assert.deepEqual(
+    R.assignGesture({markerGesture: 'drag', contextGesture: 'long'}, 'contextGesture', 'drag'),
+    {markerGesture: 'long', contextGesture: 'drag'},
+  );
+  assert.deepEqual(
+    R.assignGesture({markerGesture: 'off', contextGesture: 'long'}, 'markerGesture', 'long'),
+    {markerGesture: 'long', contextGesture: 'off'},
+  );
+});
+
+test('context dismissal consumes the complete tap sequence before a tap action can run', () => {
+  const guard = R.createContextDismissalGuard();
+  let tapActions = 0;
+  const send = (type, outside, pointerId) => {
+    if (!guard.consume(type, outside, pointerId) && type === 'click') tapActions += 1;
+  };
+  guard.open();
+  send('pointerdown', true, 7);
+  send('pointerup', true, 7);
+  send('click', true, null);
+  assert.equal(guard.isOpen(), false);
+  assert.equal(tapActions, 0);
+  send('click', true, null);
+  assert.equal(tapActions, 1);
+});
+
+test('release and click from the gesture that opened context are consumed without closing it', () => {
+  const guard = R.createContextDismissalGuard();
+  guard.open(9);
+  assert.equal(guard.consume('pointerup', true, 9), true);
+  assert.equal(guard.consume('click', true, null), true);
+  assert.equal(guard.isOpen(), true);
+  assert.equal(guard.consume('pointerdown', true, 10), true);
+  assert.equal(guard.isOpen(), false);
+});
