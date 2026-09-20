@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -771,6 +772,25 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
         if same_model_effort else
         f"The semantic Pass-1 rules, exact source strings and order, memory values and order, production Codex client, isolation, sandbox, approval policy, and output task were held constant. At the user's request, the compact call changed model/effort from `{semantic.get('requested_model')}`/`{semantic.get('reasoning_effort')}` to `{compact_requested_model}`/`{compact_requested_effort}` in addition to the compact input/output representation and schema. This cross-model comparison cannot attribute quality, token, or latency differences solely to transport encoding."
     )
+    harness_section = ""
+    harness_config = status.get("codex_harness_suppression")
+    harness_audit = status.get("harness_rollout_verification")
+    if harness_config:
+        harness_section = f"""
+## Codex harness suppression
+
+This run used a scratch-only model-catalog override for `{harness_config.get('model')}`: `use_responses_lite` changed from `{str(harness_config.get('use_responses_lite_before')).lower()}` to `false`, `multi_agent_version` changed from `{harness_config.get('multi_agent_version_before')}` to `null`, and app-server received `include_collaboration_mode_instructions=false` plus `include_environment_context=false`. The override and launcher remained below the private scratch directory; production transport configuration was not changed.
+
+| Rollout check | Result |
+| --- | --- |
+| Automatic harness audit | {harness_audit.get('status', 'not_run') if harness_audit else 'not_run'} |
+| Exact P1 prompt segments | {harness_audit.get('task_prompt_segments', 'unavailable') if harness_audit else 'unavailable'} ({fmt(harness_audit.get('task_prompt_characters')) if harness_audit else 'unavailable'} characters) |
+| Platform permission segments | {harness_audit.get('permission_segments', 'unavailable') if harness_audit else 'unavailable'} ({fmt(harness_audit.get('permission_characters')) if harness_audit else 'unavailable'} characters) |
+| Unexpected developer segments | {harness_audit.get('unexpected_developer_segments', 'unavailable') if harness_audit else 'unavailable'} |
+| Forbidden Codex/collaboration/environment markers | {', '.join(harness_audit.get('forbidden_markers', [])) or 'none' if harness_audit else 'unavailable'} |
+
+The inspected rollout retained the platform-owned read-only sandbox instruction. It contained no Codex coding-agent prompt, primary-agent collaboration block, multi-agent-mode block, environment-context block, skills/apps/plugins instruction block, or other unexpected developer message. This verifies suppression of the Codex collaboration harness for this run, but it is not a completely bare model request because the 341-character sandbox instruction remains.
+"""
     report_text = f"""# Pass-1 compact transport experiment results{variant}
 
 ## Executive summary
@@ -798,6 +818,7 @@ The live project `/home/user/translations/evolutionary-void-v3` was treated as r
 The baseline used canonical block objects, canonical memory objects, canonical long output keys, and the request-specific evidence-ID enums. The compact request used `[i,k,s,f,t]` block rows plus one `BLOCK_KINDS` lookup, compact lossless memory rows, short output keys, integer codes, and local integer evidence indices restored to canonical IDs before validation. The experimental output schema is flat: no `$ref`, `$defs`, recursion, schema composition, regex, or request-specific evidence enum.
 
 {fairness}
+{harness_section}
 
 ## Request/schema size
 
@@ -872,12 +893,67 @@ After the manual difference review, decide whether to run a small repeated bench
     atomic_text(report, report_text)
 
 
+def inspect_harness_rollout(attempt_dir: Path, expected_prompt: str) -> dict[str, Any]:
+    rollout = attempt_dir / "codex" / "rollout.jsonl"
+    if not rollout.is_file():
+        raise PipelineError("Harness verification requires the copied Codex rollout.")
+    developer_segments: list[str] = []
+    all_message_text: list[str] = []
+    base_instruction = None
+    for line in rollout.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line)
+        if record.get("type") == "session_meta":
+            base = (record.get("payload") or {}).get("base_instructions")
+            base_instruction = base.get("text") if isinstance(base, dict) else base
+        if record.get("type") != "response_item":
+            continue
+        payload = record.get("payload") or {}
+        if payload.get("type") != "message":
+            continue
+        segments = [item.get("text") for item in payload.get("content", []) if isinstance(item.get("text"), str)]
+        all_message_text.extend(segments)
+        if payload.get("role") == "developer":
+            developer_segments.extend(segments)
+    permissions = [text for text in developer_segments if text.startswith("<permissions instructions>")]
+    prompt_count = sum(text == expected_prompt for text in developer_segments)
+    unexpected = [
+        text for text in developer_segments
+        if text != expected_prompt and not text.startswith("<permissions instructions>")
+    ]
+    joined = "\n".join(all_message_text)
+    forbidden_markers = [
+        marker for marker in (
+            "You are Codex, an agent based on",
+            "You are `/root`, the primary agent",
+            "<multi_agent_mode>",
+            "<environment_context>",
+            "<skills_instructions>",
+            "<apps_instructions>",
+            "<plugins_instructions>",
+        )
+        if marker in joined
+    ]
+    passed = prompt_count == 1 and not unexpected and not forbidden_markers
+    return {
+        "status": "passed" if passed else "failed",
+        "task_prompt_segments": prompt_count,
+        "task_prompt_characters": len(expected_prompt),
+        "permission_segments": len(permissions),
+        "permission_characters": sum(len(text) for text in permissions),
+        "unexpected_developer_segments": len(unexpected),
+        "unexpected_developer_characters": sum(len(text) for text in unexpected),
+        "forbidden_markers": forbidden_markers,
+        "base_instructions": base_instruction,
+    }
+
+
 def run_live(
     scratch: Path,
     report: Path,
     *,
     model: str | None = None,
     effort: str | None = None,
+    disable_codex_harness: bool = False,
 ) -> dict[str, Any]:
     scratch = scratch.resolve()
     if not (scratch / "manifest.json").is_file():
@@ -901,6 +977,9 @@ def run_live(
         "project_root": str(scratch),
         "runtime_root": str(scratch / "provider-runtimes"),
     })
+    harness_suppression = None
+    if disable_codex_harness:
+        harness_suppression = prepare_harness_suppression(scratch, selected, requested_model)
 
     compact_root = scratch / "compact"
     attempt_dir = compact_root / "attempt_001"
@@ -942,6 +1021,7 @@ def run_live(
         "strict_validation": "not_run",
         "requested_model": requested_model,
         "requested_effort": requested_effort,
+        "codex_harness_suppression": harness_suppression,
     }
     try:
         count = client.preflight(body, recorder)
@@ -950,6 +1030,11 @@ def run_live(
         print(f"Compact preflight: {count:,} UTF-8 bytes (developer instructions + minified input); not tokens", file=sys.stderr)
         raw, meta = client.generate(body, attempt_dir, recorder)
         status.update({"generation": "completed", "response_meta": meta})
+        if disable_codex_harness:
+            audit = inspect_harness_rollout(attempt_dir, prompt)
+            status["harness_rollout_verification"] = audit
+            if audit["status"] != "passed":
+                raise PipelineError(f"Codex harness suppression verification failed: {audit}")
         clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
         compact_value = json.loads(clean)
         jsonschema.Draft202012Validator(COMPACT_SCHEMA).validate(compact_value)
@@ -1008,6 +1093,11 @@ def regenerate_report(scratch: Path, report: Path) -> dict[str, Any]:
     canonical = semantic["input_payload"]
     compact_value = read_json(scratch / "compact" / "compact.result.json")
     _, maps = compact_input(canonical)
+    prompt = compact_instructions(semantic["trusted_instructions"])
+    if status.get("codex_harness_suppression"):
+        status["harness_rollout_verification"] = inspect_harness_rollout(
+            scratch / "compact" / "attempt_001", prompt
+        )
     try:
         jsonschema.Draft202012Validator(COMPACT_SCHEMA).validate(compact_value)
         status["compact_schema_validation"] = "passed"
@@ -1029,6 +1119,73 @@ def regenerate_report(scratch: Path, report: Path) -> dict[str, Any]:
     return status
 
 
+def prepare_harness_suppression(
+    scratch: Path,
+    profile: dict[str, Any],
+    model: str,
+) -> dict[str, Any]:
+    """Create a scratch-only non-Lite Codex launcher for one experiment."""
+    executable = shutil.which(profile.get("executable") or "codex")
+    if not executable:
+        raise PipelineError("Codex executable was not found for harness suppression.")
+    options = profile.get("options") or {}
+    auth_source = options.get("auth_source")
+    if not auth_source:
+        raise PipelineError("Harness suppression requires the authorized Codex auth source path.")
+    source_catalog = Path(auth_source).expanduser().resolve().parent / "models_cache.json"
+    if not source_catalog.is_file():
+        raise PipelineError(f"Codex model cache was not found beside the auth source: {source_catalog}")
+    catalog = read_json(source_catalog)
+    models = catalog.get("models")
+    if not isinstance(models, list):
+        raise PipelineError("Codex model cache has no models array.")
+    matches = [entry for entry in models if isinstance(entry, dict) and entry.get("slug") == model]
+    if len(matches) != 1:
+        raise PipelineError(f"Expected exactly one model-catalog entry for {model!r}; found {len(matches)}.")
+    original_responses_lite = matches[0].get("use_responses_lite")
+    original_multi_agent = matches[0].get("multi_agent_version")
+    matches[0]["use_responses_lite"] = False
+    matches[0]["multi_agent_version"] = None
+
+    root = scratch / "harness-suppression"
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    catalog_path = root / "models.json"
+    # The cache may contain account-scoped identity and fetch metadata.  The
+    # static override needs only the complete model array.
+    atomic_json(catalog_path, {"models": models})
+    os.chmod(catalog_path, 0o600)
+    extra = [
+        "-c", "include_collaboration_mode_instructions=false",
+        "-c", "include_environment_context=false",
+        "-c", f"model_catalog_json={json.dumps(str(catalog_path))}",
+    ]
+    wrapper = root / "codex-no-harness"
+    quoted_executable = shlex.quote(executable)
+    atomic_text(
+        wrapper,
+        "#!/bin/sh\n"
+        'if [ "$1" = "app-server" ]; then\n'
+        f"  exec {quoted_executable} \"$@\" {shlex.join(extra)}\n"
+        "fi\n"
+        f'exec {quoted_executable} "$@"\n',
+    )
+    os.chmod(wrapper, 0o700)
+    profile["executable"] = str(wrapper)
+    return {
+        "requested": True,
+        "source_catalog": str(source_catalog),
+        "scratch_catalog": str(catalog_path),
+        "wrapper": str(wrapper),
+        "model": model,
+        "use_responses_lite_before": original_responses_lite,
+        "use_responses_lite_after": False,
+        "multi_agent_version_before": original_multi_agent,
+        "multi_agent_version_after": None,
+        "include_collaboration_mode_instructions": False,
+        "include_environment_context": False,
+    }
+
+
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     sub = value.add_subparsers(dest="command", required=True)
@@ -1042,6 +1199,7 @@ def parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--report", type=Path, required=True)
     run_parser.add_argument("--model")
     run_parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh"))
+    run_parser.add_argument("--disable-codex-harness", action="store_true")
     report_parser = sub.add_parser("report", help="regenerate the report from an existing run; never calls a model")
     report_parser.add_argument("--scratch", type=Path, required=True)
     report_parser.add_argument("--report", type=Path, required=True)
@@ -1062,7 +1220,13 @@ def main() -> int:
             )
             print(json.dumps({"scratch": str(scratch.resolve()), **manifest["selected_baseline"]}, ensure_ascii=False, indent=2))
         elif args.command == "run":
-            status = run_live(args.scratch, args.report, model=args.model, effort=args.effort)
+            status = run_live(
+                args.scratch,
+                args.report,
+                model=args.model,
+                effort=args.effort,
+                disable_codex_harness=args.disable_codex_harness,
+            )
             print(json.dumps(status, ensure_ascii=False, indent=2))
         else:
             status = regenerate_report(args.scratch, args.report)
