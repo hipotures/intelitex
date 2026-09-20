@@ -217,7 +217,13 @@ def _snapshot(paths: list[Path]) -> dict[str, tuple[int, int, str]]:
     return {str(path): (path.stat().st_size, path.stat().st_mtime_ns, sha256(path)) for path in paths}
 
 
-def prepare(project: Path, scratch: Path) -> dict[str, Any]:
+def prepare(
+    project: Path,
+    scratch: Path,
+    *,
+    task_key: str | None = None,
+    attempt_number: int | None = None,
+) -> dict[str, Any]:
     project = project.resolve()
     scratch = scratch.resolve()
     if scratch == project or scratch.is_relative_to(project):
@@ -225,6 +231,10 @@ def prepare(project: Path, scratch: Path) -> dict[str, Any]:
     if scratch.exists() and any(scratch.iterdir()):
         raise PipelineError(f"Scratch directory is not empty: {scratch}")
     candidates = completed_candidates(project)
+    if task_key is not None:
+        candidates = [row for row in candidates if row["semantic"].get("task_key") == task_key]
+    if attempt_number is not None:
+        candidates = [row for row in candidates if row["semantic"].get("attempt_no") == attempt_number]
     if not candidates:
         raise PipelineError("No stable completed Pass-1 baseline with complete evidence was found.")
     selected = candidates[0]
@@ -667,6 +677,12 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
     compact_usage = read_json(compact_usage_path) if compact_usage_path.is_file() else {}
     compact_meta_path = scratch / "compact" / "attempt_001" / "response_meta.json"
     compact_meta = read_json(compact_meta_path) if compact_meta_path.is_file() else status.get("response_meta", {})
+    compact_requested_model = compact_meta.get("requested_model") or status.get("requested_model")
+    compact_requested_effort = compact_meta.get("requested_effort") or status.get("requested_effort")
+    same_model_effort = (
+        semantic.get("requested_model") == compact_requested_model
+        and semantic.get("reasoning_effort") == compact_requested_effort
+    )
     comparison = compare_results(baseline_result, compact_result) if compact_result else None
     baseline_timing = transport_timing(scratch / "baseline" / "attempt" / "transport.jsonl")
     compact_timing = transport_timing(scratch / "compact" / "attempt_001" / "transport.jsonl")
@@ -738,8 +754,8 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
 | Evidence overlap (intersection / union) | {comparison['evidence_overlap']['intersection']} / {comparison['evidence_overlap']['union']} ({comparison['evidence_overlap']['ratio']:.1%}) |
 | Observation overlap by normalized `about + kind` | {comparison['observation_overlap']['intersection']} / {comparison['observation_overlap']['union']} ({comparison['observation_overlap']['ratio']:.1%}) |
 """
-        old_only = ", ".join(f"`{x}`" for x in comparison["baseline_only"][:30]) or "none"
-        new_only = ", ".join(f"`{x}`" for x in comparison["compact_only"][:30]) or "none"
+        old_only = ", ".join(f"`{x}`" for x in comparison["baseline_only"]) or "none"
+        new_only = ", ".join(f"`{x}`" for x in comparison["compact_only"]) or "none"
         semantic_lines = f"""The two calls are stochastic; the accepted baseline is a comparator, not ground truth. Mechanical disagreements were reviewed against the copied source evidence, with attention to unsupported terms, missed reusable terms, identity merges, and evidence errors.
 
 - Baseline-only source forms: {old_only}.
@@ -749,7 +765,13 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
 
     compact_elapsed = compact_meta.get("elapsed_seconds")
     baseline_elapsed = baseline_meta.get("elapsed_seconds")
-    report_text = f"""# Pass-1 compact transport experiment results
+    variant = "" if same_model_effort else f" — {compact_requested_model}/{compact_requested_effort} cross-model variant"
+    fairness = (
+        "The semantic Pass-1 rules, exact source strings and order, memory values and order, model, effort, production Codex client, isolation, sandbox, approval policy, and output task were held constant. The changed variables were the input/output transport representation, schema, and the minimum contract wording needed to describe them."
+        if same_model_effort else
+        f"The semantic Pass-1 rules, exact source strings and order, memory values and order, production Codex client, isolation, sandbox, approval policy, and output task were held constant. At the user's request, the compact call changed model/effort from `{semantic.get('requested_model')}`/`{semantic.get('reasoning_effort')}` to `{compact_requested_model}`/`{compact_requested_effort}` in addition to the compact input/output representation and schema. This cross-model comparison cannot attribute quality, token, or latency differences solely to transport encoding."
+    )
+    report_text = f"""# Pass-1 compact transport experiment results{variant}
 
 ## Executive summary
 
@@ -761,7 +783,8 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
 - Codex CLI: `{baseline_meta.get('cli_version', 'unavailable')}`
 - Baseline: `{semantic['task_key']}`, attempt {semantic['attempt_no']}
 - Source blocks: {len(canonical['SOURCE_BLOCKS']):,}
-- Requested model/effort: `{semantic.get('requested_model')}` / `{semantic.get('reasoning_effort')}`
+- Baseline requested model/effort: `{semantic.get('requested_model')}` / `{semantic.get('reasoning_effort')}`
+- Compact requested model/effort: `{compact_requested_model}` / `{compact_requested_effort}`
 - Baseline reported model/effort: `{baseline_meta.get('reported_model')}` / `{baseline_meta.get('reported_effort')}`
 - Compact reported model/effort: `{compact_meta.get('reported_model', 'unavailable')}` / `{compact_meta.get('reported_effort', 'unavailable')}`
 - Experiment status: `{status.get('generation', 'unknown')}`; strict validation: `{status.get('strict_validation', 'not_run')}`
@@ -774,7 +797,7 @@ The live project `/home/user/translations/evolutionary-void-v3` was treated as r
 
 The baseline used canonical block objects, canonical memory objects, canonical long output keys, and the request-specific evidence-ID enums. The compact request used `[i,k,s,f,t]` block rows plus one `BLOCK_KINDS` lookup, compact lossless memory rows, short output keys, integer codes, and local integer evidence indices restored to canonical IDs before validation. The experimental output schema is flat: no `$ref`, `$defs`, recursion, schema composition, regex, or request-specific evidence enum.
 
-The semantic Pass-1 rules, exact source strings and order, memory values and order, model, effort, production Codex client, isolation, sandbox, approval policy, and output task were held constant. The changed variables were the input/output transport representation, schema, and the minimum contract wording needed to describe them.
+{fairness}
 
 ## Request/schema size
 
@@ -830,6 +853,7 @@ The compact schema removed the two request-specific arrays of {len(canonical['SO
 ## Confounders and limitations
 
 - This is one compact run compared with one earlier accepted baseline run, so sampling variance and provider load are confounded with representation changes.
+- Model/effort were {"held constant" if same_model_effort else "intentionally changed, making this a cross-model rather than transport-only comparison"}.
 - The baseline and compact calls may experience different account-level queueing, cache state, and concurrent provider load.
 - App-server is an agent runtime and may add its small platform-owned sandbox/environment wrapper even in the isolated thin configuration.
 - Baseline first-output timing may be unavailable if that CLI event was not recorded; no timing is inferred.
@@ -848,7 +872,13 @@ After the manual difference review, decide whether to run a small repeated bench
     atomic_text(report, report_text)
 
 
-def run_live(scratch: Path, report: Path) -> dict[str, Any]:
+def run_live(
+    scratch: Path,
+    report: Path,
+    *,
+    model: str | None = None,
+    effort: str | None = None,
+) -> dict[str, Any]:
     scratch = scratch.resolve()
     if not (scratch / "manifest.json").is_file():
         raise PipelineError("Scratch has not been prepared.")
@@ -859,17 +889,18 @@ def run_live(scratch: Path, report: Path) -> dict[str, Any]:
     run_self_tests(canonical, compact, maps)
     prompt = compact_instructions(semantic["trusted_instructions"])
 
+    requested_model = model or semantic["requested_model"]
+    requested_effort = effort or semantic["reasoning_effort"]
+    profile_name = semantic["profile"] if model is None and effort is None else f"experiment-{requested_model}-{requested_effort}"
     selected = copy.deepcopy(semantic["resolved_profile"])
+    selected.update({"model": requested_model, "reasoning_effort": requested_effort})
+    resolved_profile = copy.deepcopy(selected)
     selected.update({
-        "profile_name": semantic["profile"],
-        "resolved_profile": copy.deepcopy(semantic["resolved_profile"]),
+        "profile_name": profile_name,
+        "resolved_profile": resolved_profile,
         "project_root": str(scratch),
         "runtime_root": str(scratch / "provider-runtimes"),
     })
-    if selected.get("model") != semantic.get("requested_model"):
-        raise PipelineError("Copied profile model differs from the baseline requested model.")
-    if selected.get("reasoning_effort") != semantic.get("reasoning_effort"):
-        raise PipelineError("Copied profile effort differs from the baseline requested effort.")
 
     compact_root = scratch / "compact"
     attempt_dir = compact_root / "attempt_001"
@@ -878,9 +909,9 @@ def run_live(scratch: Path, report: Path) -> dict[str, Any]:
         "task_key": semantic["task_key"],
         "attempt_number": 1,
         "provider": "codex",
-        "profile": semantic["profile"],
-        "requested_model": semantic["requested_model"],
-        "requested_effort": semantic["reasoning_effort"],
+        "profile": profile_name,
+        "requested_model": requested_model,
+        "requested_effort": requested_effort,
     })
     experimental_semantic = SemanticRequest(
         task_key=semantic["task_key"],
@@ -891,14 +922,14 @@ def run_live(scratch: Path, report: Path) -> dict[str, Any]:
         input_payload=compact,
         output_schema=COMPACT_SCHEMA,
         schema_version=1,
-        profile=semantic["profile"],
+        profile=profile_name,
         provider="codex",
-        requested_model=semantic["requested_model"],
-        reasoning_effort=semantic["reasoning_effort"],
+        requested_model=requested_model,
+        reasoning_effort=requested_effort,
         planning_output_reserve=int(selected["planning_output_reserve"]),
         enforced_output_cap=selected.get("max_output_tokens"),
         timeout_seconds=float(selected.get("request_timeout", 1200)),
-        resolved_profile=semantic["resolved_profile"],
+        resolved_profile=resolved_profile,
     )
     recorder.semantic(experimental_semantic.as_dict(), P1)
     client = CodexAppServerClient(selected, Display(quiet=False))
@@ -909,6 +940,8 @@ def run_live(scratch: Path, report: Path) -> dict[str, Any]:
         "evidence_index_validation": "not_run",
         "canonical_expansion": "not_run",
         "strict_validation": "not_run",
+        "requested_model": requested_model,
+        "requested_effort": requested_effort,
     }
     try:
         count = client.preflight(body, recorder)
@@ -948,8 +981,8 @@ def run_live(scratch: Path, report: Path) -> dict[str, Any]:
             generation = status["generation"]
         meta = status.get("response_meta", {
             "provider": "codex",
-            "requested_model": semantic["requested_model"],
-            "requested_effort": semantic["reasoning_effort"],
+            "requested_model": requested_model,
+            "requested_effort": requested_effort,
             "status": "failed",
         })
         recorder.finish(
@@ -1002,9 +1035,13 @@ def parser() -> argparse.ArgumentParser:
     prepare_parser = sub.add_parser("prepare", help="copy a stable baseline and run deterministic self-tests")
     prepare_parser.add_argument("--project", type=Path, required=True)
     prepare_parser.add_argument("--scratch", type=Path)
+    prepare_parser.add_argument("--task-key")
+    prepare_parser.add_argument("--attempt-number", type=int)
     run_parser = sub.add_parser("run", help="run one compact request from an already prepared scratch copy")
     run_parser.add_argument("--scratch", type=Path, required=True)
     run_parser.add_argument("--report", type=Path, required=True)
+    run_parser.add_argument("--model")
+    run_parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh"))
     report_parser = sub.add_parser("report", help="regenerate the report from an existing run; never calls a model")
     report_parser.add_argument("--scratch", type=Path, required=True)
     report_parser.add_argument("--report", type=Path, required=True)
@@ -1017,10 +1054,15 @@ def main() -> int:
         if args.command == "prepare":
             scratch = args.scratch or Path(tempfile.mkdtemp(prefix="intelitex-pass1-compact-transport-"))
             scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
-            manifest = prepare(args.project, scratch)
+            manifest = prepare(
+                args.project,
+                scratch,
+                task_key=args.task_key,
+                attempt_number=args.attempt_number,
+            )
             print(json.dumps({"scratch": str(scratch.resolve()), **manifest["selected_baseline"]}, ensure_ascii=False, indent=2))
         elif args.command == "run":
-            status = run_live(args.scratch, args.report)
+            status = run_live(args.scratch, args.report, model=args.model, effort=args.effort)
             print(json.dumps(status, ensure_ascii=False, indent=2))
         else:
             status = regenerate_report(args.scratch, args.report)
