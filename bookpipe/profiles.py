@@ -101,6 +101,11 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
             raise PipelineError(f"Profile {name!r} has unknown provider {provider!r}.")
         if not isinstance(profile.get("options", {}), dict):
             raise PipelineError(f"Profile {name!r} options must be an object.")
+        p1_wire_format = profile.get("options", {}).get("p1_wire_format")
+        if provider == "codex" and p1_wire_format not in {None, "compact-v1", "canonical"}:
+            raise PipelineError(
+                f"Profile {name!r} options.p1_wire_format must be 'compact-v1' or 'canonical'."
+            )
         def secret_key(value: Any) -> bool:
             if isinstance(value, dict):
                 for key, item in value.items():

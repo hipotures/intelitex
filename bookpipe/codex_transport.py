@@ -13,6 +13,7 @@ from typing import Any
 
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder, redact
+from .p1_compact import build_transport
 from .ui import Display
 from .util import PipelineError, atomic_text, dumps
 
@@ -256,6 +257,27 @@ class CodexAppServerClient:
         return len(text.encode("utf-8"))
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
+        wire_format = self.settings.get("options", {}).get("p1_wire_format", "compact-v1") if pass_no == 1 else "canonical"
+        if pass_no == 1 and wire_format not in {"compact-v1", "canonical"}:
+            raise PipelineError(f"Unknown Codex Pass-1 wire format: {wire_format!r}")
+        if pass_no == 1 and wire_format == "compact-v1":
+            transport = build_transport(prompt, inputs)
+            return {
+                "model": self.model,
+                "effort": self.settings.get("reasoning_effort"),
+                "developer_instructions": transport.developer_instructions,
+                "input": dumps(transport.input_payload),
+                "output_schema": transport.output_schema,
+                "pass_no": pass_no,
+                "wire_format": transport.wire_format,
+                # Decoder-only maps: retained in process memory and never
+                # included in the app-server transport request.
+                "codec_context": {
+                    "block_ids": list(transport.block_ids),
+                    "block_id_to_index": dict(transport.block_id_to_index),
+                    "scene_ids": list(transport.scene_ids),
+                },
+            }
         return {
             "model": self.model,
             "effort": self.settings.get("reasoning_effort"),
@@ -263,6 +285,7 @@ class CodexAppServerClient:
             "input": dumps(inputs),
             "output_schema": schema,
             "pass_no": pass_no,
+            "wire_format": "canonical",
         }
 
     def preflight(self, body: dict, recorder: AttemptRecorder | None = None) -> int:
@@ -373,6 +396,7 @@ class CodexAppServerClient:
         if not base:
             raise PipelineError("Codex base instructions must be non-empty.")
         transport_plan = {
+            "wire_format": body.get("wire_format", "canonical"),
             "argv": argv, "environment": {"CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(sqlite_home), "cwd": str(work)},
             "thread": {
                 "model": self.model, "cwd": str(work), "sandbox": "read-only",
@@ -489,6 +513,7 @@ class CodexAppServerClient:
                 "turn_id": rpc.state["turn_id"], "thread_path": rpc.state["thread_path"],
                 "rollout_copy": str(copied.relative_to(directory)),
                 "status": "completed", "finish_reason": "stop",
+                "wire_format": body.get("wire_format", "canonical"),
                 "usage_status": normalized["status"],
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "isolation": {

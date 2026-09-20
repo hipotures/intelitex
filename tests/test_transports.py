@@ -250,7 +250,8 @@ def test_codex_interleaving_isolation_usage_and_rollout(tmp_path, quiet_ui):
         "profile_name": "codex-low", "resolved_profile": {"provider": "codex", "reasoning_effort": "low"},
         "provider": "codex", "model": "gpt-5.6-luna", "context_size": 10000,
         "planning_output_reserve": 100, "request_timeout": 5, "reasoning_effort": "low",
-        "executable": str(executable), "options": {"late_usage_wait": 0.2}, "project_root": str(project),
+        "executable": str(executable), "options": {"late_usage_wait": 0.2, "p1_wire_format": "canonical"},
+        "project_root": str(project),
     }
     client = CodexAppServerClient(profile, quiet_ui)
     attempt = project / "artifacts" / "attempt_001"
@@ -334,7 +335,8 @@ def test_all_real_pass_schemas_compile_for_cloud_transports(tmp_path, quiet_ui, 
     codex = CodexAppServerClient({
         "profile_name": "c", "resolved_profile": {}, "provider": "codex", "model": "opaque/model:id",
         "context_size": 100000, "planning_output_reserve": 1000, "request_timeout": 1,
-        "reasoning_effort": "low", "executable": "codex", "options": {}, "project_root": str(tmp_path),
+        "reasoning_effort": "low", "executable": "codex", "options": {"p1_wire_format": "canonical"},
+        "project_root": str(tmp_path),
     }, quiet_ui)
     try:
         for pass_no in range(1, 6):

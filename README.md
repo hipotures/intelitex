@@ -106,6 +106,41 @@ safety. Exact provider-reported token usage is shown only after a completed
 turn and retained in `usage.json`. The historical `memory_tokens` setting is
 measured with this same conservative byte counter when a Codex profile is used.
 
+### Compact Codex Pass-1 wire format
+
+Codex Pass 1 uses `compact-v1` by default. This is only the physical app-server
+wire representation: source blocks use local integer indices, the response has
+short field names, and the flat transport schema does not repeat the canonical
+block-ID enum. Intelitex decodes the raw response before its existing Pass-1
+repair and validation steps.
+
+Canonical project and storage formats are unchanged. The task fingerprint is
+still computed only from the project Pass-1 prompt, canonical input, and
+canonical response schema. Consequently old accepted checkpoints and compatible
+completed verbose Codex attempts remain reusable, including after an interrupted
+translation resumes at P4 when P2/P3 are already accepted. Mixed verbose and
+compact attempt artifacts require no conversion or project migration.
+
+Each compact attempt retains both layers: canonical `request.semantic.json` and
+`schema.canonical.json`, actual compact `request.transport.json` and
+`schema.transport.json`, raw compact `answer.txt`, decoded
+`decoded.canonical.json`, and the canonical accepted `result.json`. Response
+metadata records `wire_format: compact-v1`.
+
+For rollback or debugging, set the Codex profile option below. It changes only
+transport and does not change semantic task identity:
+
+```json
+{
+  "options": {
+    "p1_wire_format": "canonical"
+  }
+}
+```
+
+Passes 2-5 and the llama.cpp and native OpenAI transports intentionally remain
+canonical.
+
 Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When
 `state.sqlite3` exists, Intelitex first creates a SQLite backup under `backups/`.
 Frozen source IDs, review choices, approvals, checkpoints and old artifacts are

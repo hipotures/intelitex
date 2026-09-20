@@ -134,6 +134,10 @@ class AttemptRecorder:
         self._remember("request.transport.json", "request.json", "schema.transport.json")
         self.event("outbound", "request", request)
 
+    def decoded_canonical(self, value: dict[str, Any]) -> None:
+        self._write_json("decoded.canonical.json", value)
+        self._remember("decoded.canonical.json")
+
     def context(self, value: dict[str, Any]) -> None:
         self._write_json("context.json", value)
         self._remember("context.json")

@@ -13,6 +13,7 @@ from .catalog import apply_estimate, load_catalog, pricing_snapshot
 from .contracts import SemanticRequest, preflight_display, preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
+from .p1_compact import decode_output as decode_compact_p1
 from .schemas import SCHEMAS
 from .store import Store
 from .ui import Display
@@ -303,7 +304,25 @@ def _semantic_execution_signature(value: dict) -> dict:
     resolved = value.get("resolved_profile")
     if isinstance(resolved, dict):
         resolved.pop("selection_provenance", None)
+        options = resolved.get("options")
+        if isinstance(options, dict):
+            options.pop("p1_wire_format", None)
     return value
+
+
+def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_context: dict | None = None) -> dict:
+    if wire_format == "canonical":
+        if not isinstance(value, dict):
+            raise PipelineError("Canonical model result is not an object.")
+        return value
+    if wire_format == "compact-v1":
+        block_ids = (codec_context or {}).get("block_ids")
+        if block_ids is None:
+            # Recovery reconstructs the deterministic local map from the
+            # canonical semantic input retained with the old attempt.
+            block_ids = [block["id"] for block in inputs["SOURCE_BLOCKS"]]
+        return decode_compact_p1(value, block_ids)
+    raise PipelineError(f"Unknown response wire format: {wire_format!r}")
 
 
 def _compatible_completed_attempts(key_root: Path, body: dict, semantic: dict | None = None) -> list[Path]:
@@ -375,7 +394,14 @@ class Runner:
         # Before generating again, recover a completed compatible response from
         # an older fingerprint if possible. This is especially useful after a
         # validation-only failure in a previous program version.
-        recovery_body = provider.body(prompt, inputs, schema, pass_no)
+        # Codex request.json contains an app-server transport plan rather than
+        # the value returned by body(), so its legacy fallback comparison was
+        # never useful. Avoid running the new codec before an attempt evidence
+        # boundary exists; canonical request.semantic.json remains authoritative.
+        if getattr(provider, "provider", "llamacpp") == "codex" and pass_no == 1:
+            recovery_body = {}
+        else:
+            recovery_body = provider.body(prompt, inputs, schema, pass_no)
         base_semantic = SemanticRequest(
             task_key=key, task_fingerprint=fingerprint, pass_no=pass_no, attempt_no=0,
             trusted_instructions=prompt, input_payload=inputs, output_schema=schema,
@@ -393,14 +419,14 @@ class Runner:
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
                 clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
-                value = json.loads(clean)
+                meta = read_json(attempt / "response_meta.json")
+                value = _decode_transport_result(json.loads(clean), meta.get("wire_format", "canonical"), inputs)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 validate_result(pass_no, value, inputs)
             except (OSError, json.JSONDecodeError, jsonschema.ValidationError, PipelineError):
                 continue
             path = work / "result.json"
             atomic_json(path, value)
-            meta = read_json(attempt / "response_meta.json")
             recovery = {
                 "source_attempt": str(attempt.relative_to(self.store.root)),
                 "repairs": repairs,
@@ -446,15 +472,15 @@ class Runner:
             recorder.semantic(semantic.as_dict(), schema)
             catalog, catalog_path = load_catalog(self.store.root)
             recorder.pricing(pricing_snapshot(catalog, catalog_path, semantic.provider, semantic.requested_model))
-            body = provider.body(prompt, payload, schema, pass_no)
-            # llama.cpp discovery is required for a null model/context and is
-            # recorded inside the already-created attempt boundary.
-            if getattr(provider, "provider", "llamacpp") == "llamacpp" and not getattr(provider, "identity", {}).get("id"):
-                recorder.event("outbound", "provider_discovery", {"provider": "llamacpp", "base": getattr(provider, "base", None)})
-                identity = provider.discover()
-                recorder.event("inbound", "provider_discovery", identity)
-                body = provider.body(prompt, payload, schema, pass_no)
             try:
+                body = provider.body(prompt, payload, schema, pass_no)
+                # llama.cpp discovery is required for a null model/context and
+                # is recorded inside the already-created attempt boundary.
+                if getattr(provider, "provider", "llamacpp") == "llamacpp" and not getattr(provider, "identity", {}).get("id"):
+                    recorder.event("outbound", "provider_discovery", {"provider": "llamacpp", "base": getattr(provider, "base", None)})
+                    identity = provider.discover()
+                    recorder.event("inbound", "provider_discovery", identity)
+                    body = provider.body(prompt, payload, schema, pass_no)
                 input_count = provider.preflight(body, recorder)
             except BaseException as exc:
                 recorder.finish(generation="not_submitted", validation="not_run",
@@ -486,7 +512,11 @@ class Runner:
                 recorder.pricing(apply_estimate(snapshot, read_json(attempt / "usage.json")))
             try:
                 clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
-                value = json.loads(clean)
+                value = _decode_transport_result(
+                    json.loads(clean), meta.get("wire_format", "canonical"), inputs, body.get("codec_context")
+                )
+                if meta.get("wire_format") == "compact-v1":
+                    recorder.decoded_canonical(value)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 if repairs:
                     atomic_json(attempt / "validation_repairs.json", repairs)
