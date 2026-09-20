@@ -154,3 +154,124 @@ test('release and click from the gesture that opened context are consumed withou
   assert.equal(guard.consume('pointerdown', true, 10), true);
   assert.equal(guard.isOpen(), false);
 });
+
+function fakeTimers() {
+  const jobs = [];
+  return {
+    jobs,
+    setTimer(callback, delay) {
+      const job = {callback, delay, cancelled: false};
+      jobs.push(job);
+      return job;
+    },
+    clearTimer(job) { job.cancelled = true; },
+    run(job) { if (!job.cancelled) job.callback(); },
+  };
+}
+
+test('header auto-hide accepts only the supported values and defaults to off', () => {
+  assert.equal(R.headerAutoHideSetting(undefined), 0);
+  assert.equal(R.headerAutoHideSetting('5'), 5);
+  assert.equal(R.headerAutoHideSetting(10), 10);
+  assert.equal(R.headerAutoHideSetting(15), 15);
+  assert.equal(R.headerAutoHideSetting(8), 0);
+});
+
+test('header activity resets its auto-hide timer', () => {
+  const timers = fakeTimers();
+  const changes = [];
+  const controller = R.createHeaderAutoHideController({
+    onChange: hidden => changes.push(hidden), panelsOpen: () => false,
+    setTimer: timers.setTimer, clearTimer: timers.clearTimer,
+  });
+  controller.configure(5);
+  const first = timers.jobs.at(-1);
+  assert.equal(first.delay, 5000);
+  controller.activity();
+  const second = timers.jobs.at(-1);
+  assert.equal(first.cancelled, true);
+  timers.run(first);
+  assert.deepEqual(changes, []);
+  timers.run(second);
+  assert.deepEqual(changes, [true]);
+  controller.show();
+  assert.deepEqual(changes, [true, false]);
+  assert.equal(controller.state().scheduled, true);
+});
+
+test('an open header panel suspends auto-hide until it closes', () => {
+  const timers = fakeTimers();
+  let panelOpen = false;
+  let hidden = false;
+  const controller = R.createHeaderAutoHideController({
+    onChange: value => { hidden = value; }, panelsOpen: () => panelOpen,
+    setTimer: timers.setTimer, clearTimer: timers.clearTimer,
+  });
+  controller.configure(10);
+  const beforePanel = timers.jobs.at(-1);
+  panelOpen = true;
+  controller.panelChanged();
+  assert.equal(beforePanel.cancelled, true);
+  assert.equal(controller.state().scheduled, false);
+  panelOpen = false;
+  controller.panelChanged();
+  timers.run(timers.jobs.at(-1));
+  assert.equal(hidden, true);
+});
+
+test('header visibility changes only the overlay and leaves prose position untouched', () => {
+  const classes = new Set();
+  const body = {classList: {toggle(name, active) { active ? classes.add(name) : classes.delete(name); }}};
+  const attributes = {};
+  const header = {inert: false, setAttribute(name, value) { attributes[name] = value; }};
+  const position = {scrollY: 842, saved: {blockId: 'B7', relative: 0.42}};
+  const before = JSON.stringify(position);
+  R.applyHeaderVisibility(body, header, true);
+  assert.equal(classes.has('header-hidden'), true);
+  assert.equal(header.inert, true);
+  R.applyHeaderVisibility(body, header, false);
+  assert.equal(classes.has('header-hidden'), false);
+  assert.equal(attributes['aria-hidden'], 'false');
+  assert.equal(JSON.stringify(position), before);
+});
+
+test('top-zone single and double taps are disambiguated without mixed actions', () => {
+  const timers = fakeTimers();
+  const actions = [];
+  const taps = R.createTapDisambiguator({
+    onSingle: () => actions.push('progress'), onDouble: () => actions.push('header'),
+    delay: 300, setTimer: timers.setTimer, clearTimer: timers.clearTimer,
+  });
+  taps.tap();
+  assert.deepEqual(actions, []);
+  timers.run(timers.jobs.at(-1));
+  assert.deepEqual(actions, ['progress']);
+
+  taps.tap();
+  const pendingSingle = timers.jobs.at(-1);
+  taps.tap();
+  assert.equal(pendingSingle.cancelled, true);
+  timers.run(pendingSingle);
+  assert.deepEqual(actions, ['progress', 'header']);
+});
+
+test('top-zone pointer and click events are consumed before prose gestures', () => {
+  let prevented = 0, stopped = 0, proseActions = 0;
+  const event = {
+    preventDefault() { prevented += 1; },
+    stopImmediatePropagation() { stopped += 1; },
+  };
+  R.consumeTopZoneEvent(event);
+  if (!stopped) proseActions += 1;
+  assert.deepEqual({prevented, stopped, proseActions}, {prevented: 1, stopped: 1, proseActions: 0});
+});
+
+test('chapter end offers only the next chapter in the readable prefix', () => {
+  const chapters = [
+    {id: 'ch1', title: 'One'}, {id: 'ch2', title: 'Two'}, {id: 'ch3', title: 'Three'},
+  ];
+  const progress = {chapters: [{id: 'ch1'}, {id: 'ch2'}]};
+  assert.deepEqual(R.chapterEndState(chapters, progress, 0), {kind: 'next', index: 1, title: 'Two'});
+  assert.deepEqual(R.chapterEndState(chapters, progress, 1), {kind: 'end'});
+  assert.deepEqual(R.chapterEndState(chapters, {chapters: [{id: 'ch1'}]}, 0), {kind: 'end'});
+});

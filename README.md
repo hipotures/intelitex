@@ -304,6 +304,14 @@ independently; the defaults are horizontal drag for a marker and long press for
 context. Assigning an occupied gesture swaps the two assignments, and either action
 may be turned off.
 
+The Reader header is a fixed overlay, so hiding it never moves the prose or changes
+the saved reading position. `Header auto-hide` may be Off (the default) or 5, 10,
+or 15 seconds; open header panels suspend the timer. When hidden, the thin progress
+line remains at the physical top edge: a single tap there opens progress details,
+while a double tap within 300 ms reveals the header without first opening progress.
+The end of each readable chapter links to the next chapter in the currently
+available translated prefix, or reports the end of the available translation.
+
 The read-only Context Helper uses `book_memory.json`, canonical block order, P1
 evidence, and previously checksum-verified P5 text. It matches only exact normalized
 source forms or approved Polish choices. At canonical block order `N`, a meaning or

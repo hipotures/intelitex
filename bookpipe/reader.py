@@ -152,13 +152,13 @@ HTML = """<!doctype html>
     <button id="nextButton" class="icon-button" type="button" aria-label="Next chapter">›</button>
     <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings">Aa</button>
     <button id="fullscreenButton" class="icon-button" type="button" aria-label="Toggle fullscreen">⛶</button>
-    <button id="readingProgress" class="reading-progress" type="button" aria-label="Show reading progress" aria-controls="progressPopup" aria-expanded="false"><span id="readingProgressFill"></span></button>
-    <div id="progressPopup" class="progress-popup" role="status" hidden>
-      <strong id="progressPercent"></strong>
-      <span id="progressCounts"></span>
-      <span id="progressAvailable"></span>
-    </div>
   </header>
+  <button id="readingProgress" class="reading-progress" type="button" aria-label="Show reading progress" aria-controls="progressPopup" aria-expanded="false"><span id="readingProgressFill"></span></button>
+  <div id="progressPopup" class="progress-popup" role="status" hidden>
+    <strong id="progressPercent"></strong>
+    <span id="progressCounts"></span>
+    <span id="progressAvailable"></span>
+  </div>
   <aside id="tocPanel" class="panel toc-panel" hidden aria-label="Table of contents">
     <h2>Contents</h2><nav id="toc"></nav>
   </aside>
@@ -168,6 +168,7 @@ HTML = """<!doctype html>
     <label>Line height <input id="lineHeight" type="range" min="1.35" max="2.1" step="0.05"></label>
     <label>Content width <input id="contentWidth" type="range" min="32" max="54" step="1"></label>
     <label>Theme <select id="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option></select></label>
+    <label>Header auto-hide <select id="headerAutoHide"><option value="0">Off</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
     <label>Marker gesture <select id="markerGesture"><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag / swipe</option><option value="off">Off</option></select></label>
     <label>Context Helper <select id="contextGesture"><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag / swipe</option><option value="off">Off</option></select></label>
   </aside>

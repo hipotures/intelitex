@@ -223,11 +223,100 @@
     };
   }
 
+  const AUTO_HIDE_SECONDS = [0, 5, 10, 15];
+
+  function headerAutoHideSetting(value) {
+    const seconds = Number(value);
+    return AUTO_HIDE_SECONDS.includes(seconds) ? seconds : 0;
+  }
+
+  function createHeaderAutoHideController({onChange, panelsOpen, setTimer = setTimeout, clearTimer = clearTimeout}) {
+    let seconds = 0;
+    let timer = null;
+    let hidden = false;
+    const cancel = () => {
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    };
+    const change = value => {
+      if (hidden === value) return;
+      hidden = value;
+      onChange(hidden);
+    };
+    const schedule = () => {
+      cancel();
+      if (!seconds || hidden || panelsOpen()) return;
+      timer = setTimer(() => {
+        timer = null;
+        if (!panelsOpen()) change(true);
+      }, seconds * 1000);
+    };
+    return {
+      configure(value) {
+        seconds = headerAutoHideSetting(value);
+        if (!seconds) {
+          cancel();
+          change(false);
+        } else {
+          schedule();
+        }
+      },
+      activity() { schedule(); },
+      panelChanged() { if (panelsOpen()) cancel(); else schedule(); },
+      show() { change(false); schedule(); },
+      state() { return {seconds, hidden, scheduled: timer !== null}; },
+    };
+  }
+
+  function applyHeaderVisibility(body, header, hidden) {
+    body.classList.toggle('header-hidden', hidden);
+    header.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    header.inert = hidden;
+  }
+
+  function createTapDisambiguator({onSingle, onDouble, delay = 300, setTimer = setTimeout, clearTimer = clearTimeout}) {
+    let pending = null;
+    return {
+      tap() {
+        if (pending !== null) {
+          clearTimer(pending);
+          pending = null;
+          onDouble();
+          return;
+        }
+        pending = setTimer(() => {
+          pending = null;
+          onSingle();
+        }, delay);
+      },
+      cancel() {
+        if (pending !== null) clearTimer(pending);
+        pending = null;
+      },
+      pending() { return pending !== null; },
+    };
+  }
+
+  function consumeTopZoneEvent(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function chapterEndState(chapters, progress, index) {
+    const available = new Set((progress?.chapters || []).map(chapter => chapter.id));
+    const nextIndex = index + 1;
+    const next = chapters?.[nextIndex];
+    if (next && available.has(next.id)) return {kind: 'next', index: nextIndex, title: next.title};
+    return {kind: 'end'};
+  }
+
   const helpers = {
     utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange,
     wordPosition, progressAtLocation, viewportBlockPosition,
     createSerialQueue, createRequestGate, markerLayout, inlineRuns, markerAnchor,
     gestureSettings, assignGesture, createContextDismissalGuard,
+    headerAutoHideSetting, createHeaderAutoHideController, applyHeaderVisibility,
+    createTapDisambiguator, consumeTopZoneEvent, chapterEndState,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
@@ -236,7 +325,7 @@
   const $ = id => document.getElementById(id);
   const DEFAULTS = {
     fontSize: 20, fontFamily: 'serif', lineHeight: 1.7, contentWidth: 42, theme: 'light',
-    markerGesture: 'drag', contextGesture: 'long',
+    headerAutoHide: 0, markerGesture: 'drag', contextGesture: 'long',
   };
   const FONT_STACKS = {
     serif: 'ui-serif, Charter, "Bitstream Charter", Georgia, serif',
@@ -266,6 +355,14 @@
   const chapterRequests = createRequestGate();
   const contextRequests = createRequestGate();
   const contextDismissal = createContextDismissalGuard();
+  const headerAutoHide = createHeaderAutoHideController({
+    onChange: hidden => applyHeaderVisibility(document.body, document.querySelector('.reader-bar'), hidden),
+    panelsOpen: () => headerPanelOpen(),
+  });
+  const topZoneTaps = createTapDisambiguator({
+    onSingle: () => showProgressPopup(),
+    onDouble: () => { hideProgressPopup(); headerAutoHide.show(); },
+  });
   const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
     ? new Intl.Segmenter('pl', {granularity: 'word'}) : null;
 
@@ -274,6 +371,7 @@
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
       const source = saved && typeof saved === 'object' ? saved : {};
       const result = {...DEFAULTS, ...source, ...gestureSettings(source)};
+      result.headerAutoHide = headerAutoHideSetting(source.headerAutoHide);
       delete result.gesture;
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(result));
       return result;
@@ -294,6 +392,7 @@
     $('chapter').classList.toggle('gesture-drag', [settings.markerGesture, settings.contextGesture].includes('drag'));
     $('chapter').classList.toggle('gesture-long', [settings.markerGesture, settings.contextGesture].includes('long'));
     for (const key of Object.keys(DEFAULTS)) if ($(key)) $(key).value = String(settings[key]);
+    headerAutoHide.configure(settings.headerAutoHide);
     requestAnimationFrame(() => { positionMarkers(); updateReadingProgress(); });
   }
 
@@ -440,6 +539,29 @@
     $('progressAvailable').textContent = title ? `Available through ${title}` : 'No translated text is currently available';
   }
 
+  function headerPanelOpen() {
+    return !$('tocPanel').hidden || !$('settingsPanel').hidden || !$('progressPopup').hidden;
+  }
+
+  function closeHeaderMenus() {
+    const changed = !$('tocPanel').hidden || !$('settingsPanel').hidden;
+    $('tocPanel').hidden = true;
+    $('settingsPanel').hidden = true;
+    if (changed) headerAutoHide.panelChanged();
+  }
+
+  function toggleHeaderPanel(panelId, otherId) {
+    hideProgressPopup();
+    $(otherId).hidden = true;
+    $(panelId).hidden = !$(panelId).hidden;
+    headerAutoHide.panelChanged();
+  }
+
+  function updateHeaderMetrics() {
+    const height = document.querySelector('.reader-bar').offsetHeight;
+    if (height) document.documentElement.style.setProperty('--reader-bar-height', `${height}px`);
+  }
+
   function updateReadingProgress() {
     if (!metadata?.progress) return;
     const location = viewportLocation();
@@ -462,19 +584,21 @@
   }
 
   function hideProgressPopup() {
+    const changed = !$('progressPopup').hidden;
     clearTimeout(progressPopupTimer);
     $('progressPopup').hidden = true;
     $('readingProgress').setAttribute('aria-expanded', 'false');
+    if (changed) headerAutoHide.panelChanged();
   }
 
   function showProgressPopup(event) {
-    event.stopPropagation();
-    $('tocPanel').hidden = true;
-    $('settingsPanel').hidden = true;
+    event?.stopPropagation();
+    closeHeaderMenus();
     updateReadingProgress();
     renderProgressPopup();
     $('progressPopup').hidden = false;
     $('readingProgress').setAttribute('aria-expanded', 'true');
+    headerAutoHide.panelChanged();
     clearTimeout(progressPopupTimer);
     progressPopupTimer = setTimeout(hideProgressPopup, 3600);
   }
@@ -512,8 +636,7 @@
   function renderContextCard(result, openingPointer = null) {
     clearMarkerControl();
     hideProgressPopup();
-    $('tocPanel').hidden = true;
-    $('settingsPanel').hidden = true;
+    closeHeaderMenus();
     $('contextTitle').textContent = result.title;
     const body = $('contextBody');
     body.replaceChildren();
@@ -745,7 +868,7 @@
       button.type = 'button';
       button.textContent = chapter.title;
       button.setAttribute('aria-current', index === chapterIndex ? 'true' : 'false');
-      button.onclick = () => { $('tocPanel').hidden = true; loadChapter(index); };
+      button.onclick = () => { closeHeaderMenus(); loadChapter(index); };
       toc.append(button);
     });
   }
@@ -754,12 +877,15 @@
 
   function savePosition() {
     if (!metadata || !currentChapter() || currentChapter().id !== renderedChapterId) return;
-    const top = document.querySelector('.reader-bar').getBoundingClientRect().bottom + 8;
+    const top = window.innerHeight / 2;
     const blocks = Array.from(document.querySelectorAll('.reader-block'));
     const block = blocks.find(node => node.getBoundingClientRect().bottom > top) || blocks.at(-1);
     const rect = block?.getBoundingClientRect();
     const relative = rect && rect.height ? Math.max(0, Math.min(1, (top - rect.top) / rect.height)) : 0;
-    localStorage.setItem(positionKey(), JSON.stringify({chapterId: currentChapter().id, blockId: block?.dataset.blockId || null, relative}));
+    localStorage.setItem(positionKey(), JSON.stringify({
+      chapterId: currentChapter().id, blockId: block?.dataset.blockId || null,
+      relative, anchor: 'viewport-midpoint',
+    }));
   }
 
   function savedPosition() {
@@ -771,8 +897,30 @@
     const block = blockElement(saved.blockId);
     if (!block) return;
     block.scrollIntoView({block: 'start'});
-    const header = document.querySelector('.reader-bar').getBoundingClientRect().height;
-    window.scrollBy(0, Number(saved.relative || 0) * block.getBoundingClientRect().height - header - 8);
+    const anchor = saved.anchor === 'viewport-midpoint'
+      ? window.innerHeight / 2 : document.querySelector('.reader-bar').offsetHeight + 8;
+    window.scrollBy(0, Number(saved.relative || 0) * block.getBoundingClientRect().height - anchor);
+  }
+
+  function renderChapterEnd() {
+    const state = chapterEndState(metadata.chapters, metadata.progress, chapterIndex);
+    const footer = document.createElement('footer');
+    footer.className = 'chapter-end';
+    if (state.kind === 'next') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.append(document.createTextNode('Next chapter →'));
+      if (state.title) {
+        const title = document.createElement('span');
+        title.textContent = state.title;
+        button.append(title);
+      }
+      button.addEventListener('click', () => loadChapter(state.index));
+      footer.append(button);
+    } else {
+      footer.textContent = 'End of available translation';
+    }
+    $('chapter').append(footer);
   }
 
   async function loadChapter(index, restore = null) {
@@ -781,6 +929,9 @@
     const target = metadata.chapters[targetIndex];
     const request = chapterRequests.next();
     chapterIndex = targetIndex;
+    closeHeaderMenus();
+    hideProgressPopup();
+    headerAutoHide.activity();
     closeContextCard();
     clearMarkerControl();
     document.body.classList.add('loading');
@@ -811,6 +962,7 @@
         const boundary = document.createElement('div');
         boundary.className = 'unavailable'; boundary.textContent = chapter.unavailable.reason; chapterNode.append(boundary);
       }
+      renderChapterEnd();
       $('chapterTitle').textContent = chapter.title;
       renderedChapterId = chapter.id;
       document.title = `${chapter.title} · ${metadata.title}`;
@@ -902,19 +1054,31 @@
     document.addEventListener('pointerdown', consumeContextEvent, true);
     document.addEventListener('pointerup', consumeContextEvent, true);
     document.addEventListener('click', consumeContextEvent, true);
-    $('previousButton').onclick = () => loadChapter(chapterIndex - 1);
-    $('nextButton').onclick = () => loadChapter(chapterIndex + 1);
-    $('tocButton').onclick = event => { event.stopPropagation(); $('settingsPanel').hidden = true; $('tocPanel').hidden = !$('tocPanel').hidden; };
-    $('settingsButton').onclick = event => { event.stopPropagation(); $('tocPanel').hidden = true; $('settingsPanel').hidden = !$('settingsPanel').hidden; };
-    $('fullscreenButton').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
-    $('readingProgress').onclick = showProgressPopup;
+    $('previousButton').onclick = () => { headerAutoHide.activity(); loadChapter(chapterIndex - 1); };
+    $('nextButton').onclick = () => { headerAutoHide.activity(); loadChapter(chapterIndex + 1); };
+    $('tocButton').onclick = event => { event.stopPropagation(); toggleHeaderPanel('tocPanel', 'settingsPanel'); };
+    $('settingsButton').onclick = event => { event.stopPropagation(); toggleHeaderPanel('settingsPanel', 'tocPanel'); };
+    $('fullscreenButton').onclick = () => {
+      headerAutoHide.activity();
+      return document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    };
+    for (const type of ['pointerdown', 'pointerup']) {
+      $('readingProgress').addEventListener(type, consumeTopZoneEvent);
+    }
+    $('readingProgress').addEventListener('click', event => {
+      consumeTopZoneEvent(event);
+      topZoneTaps.tap();
+    });
+    for (const owner of [document.querySelector('.reader-bar'), $('tocPanel'), $('settingsPanel')]) {
+      owner.addEventListener('pointerdown', () => headerAutoHide.activity(), true);
+    }
     $('deleteMarker').onclick = deleteActiveMarker;
     $('contextClose').onclick = closeContextCard;
-    for (const key of ['fontSize', 'fontFamily', 'lineHeight', 'contentWidth', 'theme']) {
+    for (const key of ['fontSize', 'fontFamily', 'lineHeight', 'contentWidth', 'theme', 'headerAutoHide']) {
       const control = $(key);
       if (!control) continue;
       control.addEventListener('input', () => {
-        settings[key] = ['fontSize', 'lineHeight', 'contentWidth'].includes(key) ? Number(control.value) : control.value;
+        settings[key] = ['fontSize', 'lineHeight', 'contentWidth', 'headerAutoHide'].includes(key) ? Number(control.value) : control.value;
         applySettings(); saveSettings();
       });
     }
@@ -935,17 +1099,18 @@
     });
     document.addEventListener('click', event => {
       if (!event.target.closest('.panel') && !event.target.closest('#tocButton') && !event.target.closest('#settingsButton')) {
-        $('tocPanel').hidden = true; $('settingsPanel').hidden = true;
+        closeHeaderMenus();
       }
       if (!event.target.closest('.gutter-marker') && !event.target.closest('#markerControl')) clearMarkerControl();
       if (!event.target.closest('#readingProgress') && !event.target.closest('#progressPopup')) hideProgressPopup();
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
-        $('tocPanel').hidden = true; $('settingsPanel').hidden = true; clearMarkerControl(); hideProgressPopup(); closeContextCard();
+        closeHeaderMenus(); clearMarkerControl(); hideProgressPopup(); closeContextCard();
       }
     });
-    window.addEventListener('resize', () => { positionMarkers(); scheduleReadingProgress(); });
+    window.addEventListener('resize', () => { updateHeaderMetrics(); positionMarkers(); scheduleReadingProgress(); });
+    document.addEventListener('fullscreenchange', updateHeaderMetrics);
     window.addEventListener('scroll', () => {
       clearTimeout(positionTimer);
       positionTimer = setTimeout(savePosition, 180);
@@ -956,6 +1121,7 @@
   }
 
   async function start() {
+    updateHeaderMetrics();
     applySettings();
     bindControls();
     metadata = await api('/api/reader');
