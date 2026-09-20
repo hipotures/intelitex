@@ -319,7 +319,18 @@ body.header-hidden .progress-popup { top: 2.35rem; }
 .context-statements { margin: 0; padding-left: 1.2rem; }
 .context-statements li { padding-left: .25rem; line-height: 1.55; }
 .context-statements li + li { margin-top: .65rem; }
+.context-attributes {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .3rem .75rem;
+  margin: 0 0 1rem;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: .82rem;
+}
+.context-attributes dt { color: var(--muted); font-weight: 650; }
+.context-attributes dd { margin: 0; line-height: 1.45; }
 .context-empty { margin: 0; color: var(--muted); font-style: italic; }
+.context-local { margin: 0; color: var(--ink); font-size: .94em; line-height: 1.55; }
 .context-mention { margin: 0; padding: .8rem 0 0; border-top: 1px solid var(--rule); }
 .context-mention + .context-mention { margin-top: .8rem; }
 .context-mention blockquote { margin: 0; color: var(--ink); font-size: .94em; line-height: 1.55; }

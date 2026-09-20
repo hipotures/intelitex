@@ -245,13 +245,17 @@ def test_context_helper_returns_only_complete_pre_cutoff_evidence(tmp_path):
     result = context.context("ch0001", "B0000002", text.index("Alster") + 2)
     assert result == {
         "recognized": True,
+        "matched_text": "Yuri Alster",
+        "display_name": "Yuri Alster",
         "title": "Yuri Alster",
+        "attributes": [],
         "statements": ["Known before the selection.", "Earlier observation."],
         "earlier_mentions": [{
             "chapter_id": "ch0001", "chapter_title": "Rozdział Łódź",
             "block_id": "B0000001",
             "text": "Yuri pojawił się wcześniej. Działu Bezpieczeństwa Pozasłonecznego Connexion używano wcześniej. Statek wrócił.",
         }],
+        "same_block_context": [],
         "range": {"start": 0, "end": 11},
     }
     assert not any("contents" in statement.lower() or "current" in statement.lower() or "future" in statement.lower()
@@ -271,7 +275,8 @@ def test_context_helper_resolves_both_words_of_visible_alias_but_not_future_long
     earlier = context.block_text("ch0001", "B0000001")
     result = context.context("ch0001", "B0000001", earlier.index("Yuri") + 1)
     assert result == {
-        "recognized": True, "title": "Yuri", "statements": [], "earlier_mentions": [],
+        "recognized": True, "matched_text": "Yuri", "display_name": "Yuri", "title": "Yuri",
+        "attributes": [], "statements": [], "earlier_mentions": [], "same_block_context": [],
         "range": {"start": 0, "end": 4},
     }
 
@@ -349,6 +354,146 @@ def test_reader_startup_and_chapter_loading_do_not_match_entities(tmp_path, monk
     context.chapter("ch0001")
     assert context._lexicon_stamp is None
     assert context._memory_stamp is None
+
+
+def make_inflected_context_project(tmp_path):
+    root = make_context_project(tmp_path)
+    text = (
+        "Callum czekał. Callum Hepburn wszedł. Później Callum odpowiedział. "
+        "Yuri czekał. Yuri Alster wszedł. Później Yuri odpowiedział. "
+        "Eldlund weszło. Eldlund było omnią: łączyło płeć męską i żeńską w cyklu tysiąca dni. "
+        "To wyjaśnienie było już przeczytane. Później Eldlund odpowiedziało. "
+        "TAJNA INFORMACJA PO DOTKNIĘCIU. "
+        "Biura Obserwacji Obcych Olyix pilnowano. W Biurze Obserwacji Obcych Olyix pracowała Jessika. "
+        "Zwykłymi osobami nikt się nie zajmował. Nocny Wilk odszedł."
+    )
+    path = root / "artifacts" / "pass5" / "ch0001_c0002" / "result.json"
+    atomic_json(path, {"translations": [{"id": "B0000002", "text": text}]})
+    store = Store(root)
+    store.save_job("pass5/ch0001_c0002", "fingerprint-2", path, {})
+    store.close()
+
+    lexicon = read_json(root / "lexicon.approved.json")
+    lexicon["terms"].extend([
+        {"id": "T000004", "source": "Callum", "aliases": ["Callum Hepburn"], "polish": "Callum"},
+        {"id": "T000066", "source": "Eldlund", "aliases": [], "polish": "Eldlund"},
+        {"id": "T000068", "source": "omnia", "aliases": ["omnias"], "polish": "omnia"},
+        {"id": "T000072", "source": "Olyix Alien Observation Bureau", "aliases": [],
+         "polish": "Biuro Obserwacji Obcych Olyix"},
+        {"id": "T000090", "source": "ordinary person", "aliases": [], "polish": "osoba"},
+        {"id": "T000091", "source": "Alpha", "aliases": ["Nocny Wilk"], "polish": "Alpha"},
+    ])
+    atomic_json(root / "lexicon.approved.json", lexicon)
+
+    memory = read_json(root / "book_memory.json")
+    memory["terms"].extend([
+        {"id": "T000004", "source": "Callum", "aliases": ["Callum Hepburn"], "category": "name",
+         "choice": "Callum", "approved": True,
+         "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}],
+         "meanings": [], "candidates": []},
+        {"id": "T000066", "source": "Eldlund", "aliases": [], "category": "name",
+         "choice": "Eldlund", "approved": True,
+         "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}],
+         "meanings": [], "candidates": []},
+        {"id": "T000068", "source": "omnia", "aliases": ["omnias"], "category": "people",
+         "choice": "omnia", "approved": True,
+         "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}],
+         "meanings": [], "candidates": []},
+        {"id": "T000072", "source": "Olyix Alien Observation Bureau", "aliases": [],
+         "category": "organization", "choice": "Biuro Obserwacji Obcych Olyix", "approved": True,
+         "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}],
+         "meanings": [{"text": "Current-block organization detail.", "evidence": ["B0000002"]}],
+         "candidates": []},
+        {"id": "T000090", "source": "ordinary person", "aliases": [], "category": "other",
+         "choice": "osoba", "approved": True,
+         "evidence": [{"block_id": "B0000003", "chapter_id": "ch0001", "order": 3}],
+         "meanings": [], "candidates": []},
+        {"id": "T000091", "source": "Alpha", "aliases": ["Nocny Wilk"], "category": "name",
+         "choice": "Alpha", "approved": True,
+         "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2,
+                       "excerpt": "The cover identity appears here."}],
+         "meanings": [], "candidates": []},
+    ])
+    memory["observations"].extend([
+        {"about": ["Callum"], "kind": "gender", "statement": "Callum is explicitly male.",
+         "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
+        {"about": ["Callum"], "kind": "gender", "statement": "Future statement says female.",
+         "confidence": "high", "evidence": ["B0000003"], "available_from_order": 3},
+        {"about": ["Eldlund"], "kind": "gender",
+         "statement": "Eldlund uses sie/hir; omnia biology follows a thousand-day gender cycle, not a fixed binary identity.",
+         "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
+    ])
+    atomic_json(root / "book_memory.json", memory)
+    return root, text
+
+
+def test_context_helper_recognizes_conservative_polish_inflection(tmp_path):
+    root, text = make_inflected_context_project(tmp_path)
+    context = ReaderContext(root)
+    omnia = context.context("ch0001", "B0000002", text.index("omnią") + 2)
+    assert omnia["recognized"] is True
+    assert omnia["matched_text"] == "omnią"
+    assert omnia["display_name"] == "omnia"
+
+    for phrase in ("Biura Obserwacji Obcych Olyix", "Biurze Obserwacji Obcych Olyix"):
+        start = text.index(phrase)
+        for word in phrase.split():
+            result = context.context("ch0001", "B0000002", text.index(word, start) + 1)
+            assert result["recognized"] is True
+            assert result["matched_text"] == phrase
+            assert result["display_name"] == "Biuro Obserwacji Obcych Olyix"
+            assert result["statements"] == []
+            if phrase.startswith("Biura"):
+                assert result["attributes"] == []
+                assert result["earlier_mentions"] == []
+                assert result["same_block_context"] == []
+
+    assert context.context("ch0001", "B0000002", text.index("osobami") + 2) == {"recognized": False}
+
+
+def test_context_helper_uses_only_prior_same_block_sentences(tmp_path):
+    root, text = make_inflected_context_project(tmp_path)
+    context = ReaderContext(root)
+    later = text.index("Eldlund", text.index("Eldlund") + 1)
+    later = text.index("Eldlund", later + 1)
+    result = context.context("ch0001", "B0000002", later + 2)
+    local = result["same_block_context"]
+    assert local and "omnią" in local[0]["text"] and "cyklu tysiąca dni" in local[0]["text"]
+    assert "TAJNA INFORMACJA" not in local[0]["text"]
+    assert "TAJNA INFORMACJA" not in str(result)
+
+    first = text.index("Eldlund")
+    first_result = context.context("ch0001", "B0000002", first + 2)
+    assert first_result["recognized"] is True
+    assert first_result["same_block_context"] == []
+
+
+def test_context_helper_promotes_only_safely_seen_full_personal_names(tmp_path):
+    root, text = make_inflected_context_project(tmp_path)
+    context = ReaderContext(root)
+    first_callum = text.index("Callum")
+    later_callum = text.index("Callum", text.index("Callum Hepburn") + len("Callum Hepburn"))
+    assert context.context("ch0001", "B0000002", first_callum + 1)["display_name"] == "Callum"
+    assert context.context("ch0001", "B0000002", later_callum + 1)["display_name"] == "Callum Hepburn"
+
+    first_yuri = text.index("Yuri")
+    later_yuri = text.index("Yuri", text.index("Yuri Alster") + len("Yuri Alster"))
+    assert context.context("ch0001", "B0000002", first_yuri + 1)["display_name"] == "Yuri"
+    assert context.context("ch0001", "B0000002", later_yuri + 1)["display_name"] == "Yuri Alster"
+    assert context.context("ch0001", "B0000002", text.index("Nocny Wilk") + 2) == {"recognized": False}
+
+
+def test_context_helper_structures_only_safe_gender_knowledge(tmp_path):
+    root, text = make_inflected_context_project(tmp_path)
+    context = ReaderContext(root)
+    callum = context.context("ch0001", "B0000002", text.index("Callum") + 1)
+    assert callum["attributes"] == [{"label": "Gender", "value": "male"}]
+    assert not any("Future" in value for attribute in callum["attributes"] for value in attribute.values())
+
+    eldlund = context.context("ch0001", "B0000002", text.index("Eldlund") + 1)
+    assert eldlund["attributes"][0]["label"] == "Gender system"
+    assert "gender cycle" in eldlund["attributes"][0]["value"]
+    assert eldlund["attributes"][0]["value"] not in {"male", "female"}
 
 
 def test_reader_labels_checkpointed_stale_translation(tmp_path):

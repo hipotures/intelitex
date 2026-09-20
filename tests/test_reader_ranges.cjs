@@ -148,6 +148,12 @@ test('context dismissal consumes the complete tap sequence before a tap action c
 test('recognized context opens a card even when no earlier knowledge exists', () => {
   assert.equal(R.contextResultState({recognized: true, statements: [], earlier_mentions: []}), 'card');
   assert.equal(R.contextResultState({recognized: false}), 'flash');
+  assert.equal(R.contextHasKnowledge({recognized: true, attributes: [], statements: [],
+    earlier_mentions: [], same_block_context: []}), false);
+  assert.equal(R.contextHasKnowledge({recognized: true, attributes: [{label: 'Gender', value: 'male'}],
+    statements: [], earlier_mentions: [], same_block_context: []}), true);
+  assert.equal(R.contextHasKnowledge({recognized: true, attributes: [], statements: [],
+    earlier_mentions: [], same_block_context: [{text: 'Earlier sentence.'}]}), true);
 });
 
 test('release and click from the gesture that opened context are consumed without closing it', () => {

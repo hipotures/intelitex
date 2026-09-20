@@ -315,15 +315,26 @@ available translated prefix, or reports the end of the available translation.
 The read-only Context Helper recognizes entities from `lexicon.approved.json` and
 then joins the resolved term ID to contextual knowledge in `book_memory.json`. A
 gesture supplies a position in one checkpoint-verified P5 block; only that block is
-checked for the longest exact normalized approved source, Polish, or visibly present
-alias form. Ordinary prose and ambiguous records are not recognized. A recognized
-entity still opens the card when no earlier context exists. Earlier mentions come
-only from that term's evidence block IDs, so Polish inflection does not require a
-whole-book prose search. At canonical block order `N`, meanings and observations are
-eligible only when every cited non-structural evidence block has order `< N` (and an
-observation's `available_from_order` is also `< N`). Contents/navigation blocks,
-current-block evidence, later evidence, and future identity inference are excluded.
-Normal Reader startup and chapter loading do not build entity occurrence indexes.
+checked for the longest approved source, Polish, or safely established alias form.
+Exact normalized matches win; a small Polish inflection matcher permits only
+diacritic folding and recognized case/number endings while preserving token order,
+phrase width, and exact distinctive-name tokens. Inflected candidates must be backed
+by term evidence from the current or an earlier safe block. Ordinary prose and
+ambiguous records are not recognized. A recognized entity still opens the card when
+no earlier context exists.
+
+For a later occurrence in the same block, only complete Polish P5 sentences from the
+prefix before the touched code-point position may supplement the card. Cross-block
+mentions still come only from that term's evidence block IDs. The title prefers a
+normal full identity form only after that form has appeared in checkpoint-verified
+prose; unrelated aliases require explicit earlier identity evidence, and honorific
+forms do not outrank ordinary personal names. Safe high-confidence gender observations
+are shown as compact attributes, preserving non-binary or cycling gender systems.
+At canonical block order `N`, meanings and observations remain eligible only when
+every cited non-structural evidence block has order `< N` (and an observation's
+`available_from_order` is also `< N`). Contents/navigation blocks, unread current-block
+facts, later evidence, and future identity inference are excluded. Normal Reader
+startup and chapter loading do not initialize morphology or build occurrence indexes.
 The helper does not call a model, change marker data, or modify translation artifacts
 or pipeline state. Marker classification, prose review, and correction remain future
 work.

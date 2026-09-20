@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 from .util import PipelineError, digest, inside, normalized, read_json
@@ -14,6 +15,31 @@ _INLINE_FORMATTING = re.compile(
     r"|(?<!\*)\*([^\s*](?:[^*\n]*[^\s*])?)\*(?!\*)"
 )
 _READER_WORDS = re.compile(r"\w+(?:[’'-]\w+)*", re.UNICODE)
+_POLISH_ENDINGS = (
+    "owego", "owej", "owych", "owymi", "owie", "ami", "ach", "emu", "cie",
+    "ego", "ymi", "ych", "ej", "ow", "om", "em", "ym", "ie", "ze",
+    "a", "e", "i", "y", "o", "u",
+)
+_HONORIFICS = {
+    "mr", "mrs", "ms", "miss", "dr", "doctor", "director", "agent", "saint",
+    "pan", "pani", "doktor", "dyrektor", "dyrektorka", "agentka", "swiety", "swieta",
+}
+
+
+def _fold_token(value: str) -> str:
+    return "".join(character for character in unicodedata.normalize("NFKD", normalized(value))
+                   if not unicodedata.combining(character))
+
+
+def _inflection_roots(value: str) -> set[str]:
+    """Return only mechanically conservative Polish case/number roots."""
+    folded = _fold_token(value)
+    roots = {folded}
+    if folded.isalpha():
+        for ending in _POLISH_ENDINGS:
+            if folded.endswith(ending) and len(folded) - len(ending) >= 4:
+                roots.add(folded[:-len(ending)])
+    return roots
 
 
 def parse_inline_formatting(text: str) -> tuple[str, list[dict[str, int | str]]]:
@@ -55,6 +81,8 @@ class ReaderContext:
         self._verified_blocks: dict[str, dict[str, str]] = {}
         self._lexicon_stamp: tuple[int, int] | None = None
         self._lexicon_forms_by_token: dict[str, list[dict]] = {}
+        self._lexicon_forms_by_root: dict[str, list[dict]] = {}
+        self._lexicon_forms_by_id: dict[str, list[dict]] = {}
         self._memory_stamp: tuple[int, int] | None = None
         self._memory_data: dict = {"terms": [], "observations": []}
         self._terms_by_id: dict[str, dict] = {}
@@ -143,6 +171,8 @@ class ReaderContext:
         if not path.is_file():
             self._lexicon_stamp = None
             self._lexicon_forms_by_token = {}
+            self._lexicon_forms_by_root = {}
+            self._lexicon_forms_by_id = {}
             return self._lexicon_forms_by_token
         stat = path.stat()
         stamp = (stat.st_mtime_ns, stat.st_size)
@@ -153,6 +183,8 @@ class ReaderContext:
         if not isinstance(terms, list):
             raise PipelineError("lexicon.approved.json has no valid terms array.")
         by_token: dict[str, list[dict]] = {}
+        by_root: dict[str, list[dict]] = {}
+        by_id: dict[str, list[dict]] = {}
         seen: set[tuple[str, str]] = set()
         for term in terms:
             if not isinstance(term, dict) or not isinstance(term.get("id"), str):
@@ -161,18 +193,48 @@ class ReaderContext:
             aliases = term.get("aliases", [])
             if not isinstance(aliases, list):
                 aliases = []
-            for form in [term.get("source"), term.get("polish"), *aliases]:
+            base_forms = [value for value in (term.get("source"), term.get("polish"))
+                          if isinstance(value, str)]
+            base_sequences = [tuple(_fold_token(match.group()) for match in _READER_WORDS.finditer(value))
+                              for value in base_forms]
+            invariant_tokens = set.intersection(*(set(words) for words in base_sequences)) if base_sequences else set()
+            entries = [(term.get("source"), "source"), (term.get("polish"), "polish")]
+            entries.extend((alias, "alias") for alias in aliases)
+            for form, kind in entries:
                 if not isinstance(form, str):
                     continue
                 form_key = normalized(form)
-                form_words = [normalized(match.group()) for match in _READER_WORDS.finditer(form)]
+                word_matches = list(_READER_WORDS.finditer(form))
+                form_words = [normalized(match.group()) for match in word_matches]
                 if not form_key or not form_words or (term_id, form_key) in seen:
                     continue
                 seen.add((term_id, form_key))
-                candidate = {"term_id": term_id, "form": form_key, "words": form_words}
+                folded_words = tuple(_fold_token(word) for word in form_words)
+                transparent = kind != "alias" or any(
+                    (len(base) <= len(folded_words)
+                     and any(folded_words[index:index + len(base)] == base
+                             for index in range(len(folded_words) - len(base) + 1)))
+                    or (len(folded_words) <= len(base)
+                        and any(base[index:index + len(folded_words)] == folded_words
+                                for index in range(len(base) - len(folded_words) + 1)))
+                    for base in base_sequences if base
+                )
+                candidate = {
+                    "term_id": term_id, "form": form_key, "text": form.strip(), "kind": kind,
+                    "transparent": transparent, "words": form_words,
+                    "folded_words": folded_words,
+                    "roots": [frozenset(_inflection_roots(word)) for word in form_words],
+                    "invariant": [folded in invariant_tokens for folded in folded_words],
+                }
+                by_id.setdefault(term_id, []).append(candidate)
                 for token_index, token in enumerate(form_words):
-                    by_token.setdefault(token, []).append({**candidate, "token_index": token_index})
+                    reference = {"form": candidate, "token_index": token_index}
+                    by_token.setdefault(token, []).append(reference)
+                    for root in candidate["roots"][token_index]:
+                        by_root.setdefault(root, []).append(reference)
         self._lexicon_forms_by_token = by_token
+        self._lexicon_forms_by_root = by_root
+        self._lexicon_forms_by_id = by_id
         self._lexicon_stamp = stamp
         return by_token
 
@@ -211,38 +273,139 @@ class ReaderContext:
         self._memory_stamp = stamp
         return self._memory_data
 
-    def _resolve_entity(self, text: str, position: int) -> tuple[dict, str] | None:
-        """Resolve the longest approved form covering one position in one P5 block."""
+    def _term_evidence_ids(self, term: dict) -> list[str]:
+        result = []
+        for item in term.get("evidence", []):
+            block_id = item.get("block_id") if isinstance(item, dict) else item
+            if isinstance(block_id, str):
+                result.append(block_id)
+        return result
+
+    def _term_supported_at(self, term: dict, block_id: str, cutoff: int) -> bool:
+        return any(evidence == block_id or (
+            evidence not in self._structural_blocks
+            and self._block_orders.get(evidence, cutoff) < cutoff
+        ) for evidence in self._term_evidence_ids(term))
+
+    def _alias_established_before(self, form: dict, term: dict, cutoff: int) -> bool:
+        """Require explicit pre-cutoff evidence before joining an unrelated alias."""
+        if form["kind"] != "alias" or form["transparent"]:
+            return True
+        wanted = form["form"]
+        for candidate in term.get("candidates", []):
+            if (isinstance(candidate, dict) and normalized(candidate.get("text", "")) == wanted
+                    and self._evidence_before(candidate.get("evidence"), cutoff)):
+                return True
+        for item in term.get("evidence", []):
+            if not isinstance(item, dict) or not isinstance(item.get("block_id"), str):
+                continue
+            evidence_id = item["block_id"]
+            if (evidence_id in self._structural_blocks
+                    or self._block_orders.get(evidence_id, cutoff) >= cutoff):
+                continue
+            excerpt = item.get("excerpt")
+            if isinstance(excerpt, str) and re.search(
+                    r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", normalized(excerpt)):
+                return True
+        return False
+
+    @staticmethod
+    def _match_form_at(words: list[re.Match], start: int, form: dict) -> tuple[int, ...] | None:
+        if start < 0 or start + len(form["words"]) > len(words):
+            return None
+        qualities = []
+        for index, expected in enumerate(form["words"]):
+            visible = normalized(words[start + index].group())
+            if visible == expected:
+                qualities.append(0)
+            elif _fold_token(visible) == form["folded_words"][index]:
+                qualities.append(1)
+            elif (not form["invariant"][index]
+                  and _inflection_roots(visible) & form["roots"][index]):
+                qualities.append(2)
+            else:
+                return None
+        changed = sum(quality > 1 for quality in qualities)
+        if changed and (len(qualities) == 1 or changed > max(1, len(qualities) // 2)):
+            return None
+        if changed and len(qualities) > 1 and not any(quality <= 1 for quality in qualities):
+            return None
+        return tuple(qualities)
+
+    def _form_allowed(self, form: dict, term: dict, cutoff: int) -> bool:
+        return form["kind"] != "alias" or form["transparent"] or self._alias_established_before(form, term, cutoff)
+
+    def _candidate_span(self, words: list[re.Match], start: int, form: dict,
+                        block_id: str, cutoff: int) -> dict | None:
+        qualities = self._match_form_at(words, start, form)
+        if qualities is None:
+            return None
+        term = self._terms_by_id.get(form["term_id"], {})
+        if not self._form_allowed(form, term, cutoff):
+            return None
+        if any(quality > 0 for quality in qualities) and not self._term_supported_at(term, block_id, cutoff):
+            return None
+        end_index = start + len(form["words"]) - 1
+        return {
+            "start": words[start].start(), "end": words[end_index].end(),
+            "term_id": form["term_id"], "form": form, "quality": qualities,
+        }
+
+    def _resolve_entity(self, text: str, position: int, block_id: str, cutoff: int) -> dict | None:
+        """Resolve one local exact/inflected approved form without scanning other prose."""
         words = list(_READER_WORDS.finditer(text))
         touched_index = next((index for index, word in enumerate(words)
                               if word.start() <= position < word.end()), None)
         if touched_index is None:
             return None
+        self._lexicon()
         touched = normalized(words[touched_index].group())
-        spans: list[dict] = []
-        seen: set[tuple[int, int, str]] = set()
-        for candidate in self._lexicon().get(touched, []):
-            start_index = touched_index - candidate["token_index"]
-            end_index = start_index + len(candidate["words"])
-            if start_index < 0 or end_index > len(words):
+        references = list(self._lexicon_forms_by_token.get(touched, []))
+        for root in _inflection_roots(touched):
+            references.extend(self._lexicon_forms_by_root.get(root, []))
+        spans = []
+        seen: set[tuple[int, int, str, str]] = set()
+        for reference in references:
+            form = reference["form"]
+            start_index = touched_index - reference["token_index"]
+            span = self._candidate_span(words, start_index, form, block_id, cutoff)
+            if span is None or not span["start"] <= position < span["end"]:
                 continue
-            start, end = words[start_index].start(), words[end_index - 1].end()
-            key = (start, end, candidate["term_id"])
-            if key in seen or normalized(text[start:end]) != candidate["form"]:
-                continue
-            seen.add(key)
-            spans.append({"start": start, "end": end, "term_id": candidate["term_id"]})
+            key = (span["start"], span["end"], span["term_id"], form["form"])
+            if key not in seen:
+                seen.add(key)
+                spans.append(span)
         if not spans:
             return None
+        longest_words = max(len(span["form"]["words"]) for span in spans)
+        spans = [span for span in spans if len(span["form"]["words"]) == longest_words]
         longest = max(span["end"] - span["start"] for span in spans)
-        candidates = [span for span in spans if span["end"] - span["start"] == longest]
+        spans = [span for span in spans if span["end"] - span["start"] == longest]
+        best_quality = min((sum(span["quality"]), max(span["quality"])) for span in spans)
+        candidates = [span for span in spans
+                      if (sum(span["quality"]), max(span["quality"])) == best_quality]
         coordinates = {(span["start"], span["end"]) for span in candidates}
-        if len(coordinates) != 1:
-            return None
         identities = {span["term_id"] for span in candidates}
-        if len(identities) != 1:
+        if len(coordinates) != 1 or len(identities) != 1:
             return None
-        return candidates[0], next(iter(identities))
+        return candidates[0]
+
+    def _term_occurrences(self, text: str, term_id: str, block_id: str, cutoff: int) -> list[dict]:
+        """Find only one resolved term's forms in one explicitly requested/evidence block."""
+        self._lexicon()
+        words = list(_READER_WORDS.finditer(text))
+        occurrences = []
+        seen: set[tuple[int, int, str]] = set()
+        for start in range(len(words)):
+            for form in self._lexicon_forms_by_id.get(term_id, []):
+                span = self._candidate_span(words, start, form, block_id, cutoff)
+                if span is None:
+                    continue
+                key = (span["start"], span["end"], form["form"])
+                if key not in seen:
+                    seen.add(key)
+                    occurrences.append(span)
+        return sorted(occurrences, key=lambda item: (item["start"], -(item["end"] - item["start"])))
 
     def _evidence_before(self, evidence: object, cutoff: int) -> bool:
         return (
@@ -271,6 +434,93 @@ class ReaderContext:
             end = boundary if boundary > match.end() else end
         return ("…" if start else "") + compact[start:end] + ("…" if end < len(compact) else "")
 
+    @staticmethod
+    def _sentence_spans(text: str) -> list[tuple[int, int]]:
+        spans = []
+        start = 0
+        for match in re.finditer(r"[.!?…]+[\"'”’»)]*(?=\s|$)", text):
+            end = match.end()
+            if text[start:end].strip():
+                spans.append((start, end))
+            whitespace = re.match(r"\s+", text[end:])
+            start = end + (whitespace.end() if whitespace else 0)
+        return spans
+
+    def _same_block_context(self, text: str, position: int, span: dict,
+                            block_id: str, cutoff: int) -> list[dict]:
+        prefix = text[:position]
+        previous = [item for item in self._term_occurrences(
+            prefix, span["term_id"], block_id, cutoff
+        ) if item["end"] <= span["start"]]
+        if not previous:
+            return []
+        occurrence = max(previous, key=lambda item: item["end"])
+        sentences = self._sentence_spans(prefix)
+        containing = next((index for index, (start, end) in enumerate(sentences)
+                           if start <= occurrence["start"] < end), None)
+        if containing is None:
+            return []
+        indexes = [index for index in (containing - 1, containing, containing + 1)
+                   if 0 <= index < len(sentences)]
+        excerpt_start, excerpt_end = sentences[indexes[0]][0], sentences[indexes[-1]][1]
+        while excerpt_end - excerpt_start > 520 and len(indexes) > 1:
+            if indexes[0] < containing:
+                indexes.pop(0)
+            else:
+                indexes.pop()
+            excerpt_start, excerpt_end = sentences[indexes[0]][0], sentences[indexes[-1]][1]
+        excerpt = re.sub(r"\s+", " ", prefix[excerpt_start:excerpt_end]).strip()
+        return [{"block_id": block_id, "text": excerpt}] if excerpt else []
+
+    @staticmethod
+    def _display_candidate(text: str, span: dict) -> str:
+        visible = text[span["start"]:span["end"]]
+        return span["form"]["text"] if any(span["quality"]) else visible
+
+    def _display_name(self, selected: str, span: dict, term: dict,
+                      occurrence_sources: list[tuple[str, list[dict]]]) -> str:
+        current_name = span["form"]["text"] if any(span["quality"]) else selected
+        candidates = [(current_name, span["form"])]
+        for text, occurrences in occurrence_sources:
+            for occurrence in occurrences:
+                form = occurrence["form"]
+                if form["kind"] == "alias" and not form["transparent"]:
+                    continue
+                candidates.append((self._display_candidate(text, occurrence), form))
+
+        is_person_name = normalized(term.get("category", "")) == "name"
+
+        def rank(item: tuple[str, dict]) -> tuple[int, int, int]:
+            value, _form = item
+            tokens = [match.group() for match in _READER_WORDS.finditer(value)]
+            honorific = bool(tokens and _fold_token(tokens[0]).rstrip(".") in _HONORIFICS)
+            return (0 if is_person_name and honorific else 1, len(tokens), len(value))
+
+        return max(candidates, key=rank)[0]
+
+    @staticmethod
+    def _gender_attribute(observation: dict) -> dict[str, str] | None:
+        statement = observation.get("statement")
+        if observation.get("confidence") != "high" or not isinstance(statement, str) or not statement.strip():
+            return None
+        folded = _fold_token(statement)
+        system = any(marker in folded for marker in (
+            "sie/hir", "gender cycle", "cycle between gender", "cykl", "omnia",
+            "non-binary", "nonbinary", "not a permanent binary", "fixed binary",
+        ))
+        if system:
+            return {"label": "Gender system", "value": statement.strip()}
+        male = re.search(r"\b(?:male|masculine|man|men|mezczy\w*|mesk\w*)\b", folded) is not None
+        female = re.search(r"\b(?:female|feminine|woman|women|kobiet\w*|zensk\w*)\b", folded) is not None
+        if male and not female:
+            return {"label": "Gender", "value": "male"}
+        if female and not male:
+            return {"label": "Gender", "value": "female"}
+        about = observation.get("about")
+        if (male and female) or not isinstance(about, list) or len(about) != 1:
+            return None
+        return {"label": "Gender", "value": statement.strip()}
+
     def context(self, chapter_id: str, block_id: str, position: int) -> dict:
         """Resolve a known term at a P5 position and return only prior knowledge."""
         self._book()
@@ -285,15 +535,16 @@ class ReaderContext:
         if not 0 <= position < len(text):
             raise PipelineError("Context position is outside the translated block.")
 
-        resolved = self._resolve_entity(text, position)
+        self._memory()
+        resolved = self._resolve_entity(text, position, block_id, cutoff)
         if resolved is None:
             return {"recognized": False}
-        span, identity = resolved
+        span, identity = resolved, resolved["term_id"]
         selected = text[span["start"]:span["end"]]
-        self._memory()
         term = self._terms_by_id.get(identity, {})
 
         statements: list[str] = []
+        attributes: list[dict[str, str]] = []
         for note in term.get("meanings", []):
             if (isinstance(note, dict) and isinstance(note.get("text"), str)
                     and note["text"].strip() and self._evidence_before(note.get("evidence"), cutoff)):
@@ -309,17 +560,23 @@ class ReaderContext:
                 continue
             statement = observation.get("statement")
             if isinstance(statement, str) and statement.strip():
-                statements.append(statement.strip())
+                if observation.get("kind") == "gender":
+                    attribute = self._gender_attribute(observation)
+                    if attribute and attribute not in attributes:
+                        attributes.append(attribute)
+                else:
+                    statements.append(statement.strip())
 
         statements = list(dict.fromkeys(statements))[:4]
         earlier_mentions = []
-        evidence_ids = []
-        for item in term.get("evidence", []):
-            block = item.get("block_id") if isinstance(item, dict) else item
-            if isinstance(block, str):
-                evidence_ids.append(block)
+        evidence_ids = self._term_evidence_ids(term)
         evidence_ids.sort(key=lambda item: self._block_orders.get(item, cutoff))
         seen_blocks: set[str] = set()
+        occurrence_sources: list[tuple[str, list[dict]]] = []
+        current_prefix = text[:span["start"]]
+        occurrence_sources.append((current_prefix, self._term_occurrences(
+            current_prefix, identity, block_id, cutoff
+        )))
         for previous_id in evidence_ids:
             order = self._block_orders.get(previous_id)
             if (order is None or order >= cutoff or previous_id in seen_blocks
@@ -329,21 +586,31 @@ class ReaderContext:
             if previous_chapter is None:
                 continue
             previous_text = self.block_text(previous_chapter, previous_id)
-            earlier_mentions.append({
-                "chapter_id": previous_chapter,
-                "chapter_title": self._chapter_titles.get(previous_chapter, previous_chapter),
-                "block_id": previous_id,
-                "text": self._short_excerpt(previous_text),
-            })
+            occurrences = self._term_occurrences(previous_text, identity, previous_id, cutoff)
+            occurrence_sources.append((previous_text, occurrences))
+            if len(earlier_mentions) < 3:
+                phrase = (previous_text[occurrences[0]["start"]:occurrences[0]["end"]]
+                          if occurrences else "")
+                earlier_mentions.append({
+                    "chapter_id": previous_chapter,
+                    "chapter_title": self._chapter_titles.get(previous_chapter, previous_chapter),
+                    "block_id": previous_id,
+                    "text": self._short_excerpt(previous_text, phrase),
+                })
             seen_blocks.add(previous_id)
-            if len(earlier_mentions) == 3:
-                break
+
+        same_block_context = self._same_block_context(text, position, span, block_id, cutoff)
+        display_name = self._display_name(selected, span, term, occurrence_sources)
 
         return {
             "recognized": True,
-            "title": selected,
+            "matched_text": selected,
+            "display_name": display_name,
+            "title": display_name,
+            "attributes": attributes[:4],
             "statements": statements,
             "earlier_mentions": earlier_mentions,
+            "same_block_context": same_block_context,
             "range": {"start": span["start"], "end": span["end"]},
         }
 

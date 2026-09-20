@@ -306,6 +306,11 @@
     return result?.recognized === true ? 'card' : 'flash';
   }
 
+  function contextHasKnowledge(result) {
+    return Boolean(result?.attributes?.length || result?.statements?.length
+      || result?.earlier_mentions?.length || result?.same_block_context?.length);
+  }
+
   function chapterEndState(chapters, progress, index) {
     const available = new Set((progress?.chapters || []).map(chapter => chapter.id));
     const nextIndex = index + 1;
@@ -321,6 +326,7 @@
     gestureSettings, assignGesture, createContextDismissalGuard,
     headerAutoHideSetting, createHeaderAutoHideController, applyHeaderVisibility,
     createTapDisambiguator, consumeTopZoneEvent, chapterEndState, contextResultState,
+    contextHasKnowledge,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
@@ -642,9 +648,21 @@
     clearMarkerControl();
     hideProgressPopup();
     closeHeaderMenus();
-    $('contextTitle').textContent = result.title;
+    $('contextTitle').textContent = result.display_name || result.title;
     const body = $('contextBody');
     body.replaceChildren();
+    if (result.attributes?.length) {
+      const attributes = document.createElement('dl');
+      attributes.className = 'context-attributes';
+      for (const attribute of result.attributes) {
+        const label = document.createElement('dt');
+        label.textContent = attribute.label;
+        const value = document.createElement('dd');
+        value.textContent = attribute.value;
+        attributes.append(label, value);
+      }
+      body.append(attributes);
+    }
     if (result.statements.length) {
       const list = document.createElement('ul');
       list.className = 'context-statements';
@@ -670,7 +688,18 @@
         body.append(item);
       }
     }
-    if (!result.statements.length && !result.earlier_mentions.length) {
+    if (result.same_block_context?.length) {
+      const heading = document.createElement('h3');
+      heading.textContent = 'Earlier in this passage';
+      body.append(heading);
+      for (const context of result.same_block_context) {
+        const quote = document.createElement('blockquote');
+        quote.className = 'context-local';
+        quote.textContent = context.text;
+        body.append(quote);
+      }
+    }
+    if (!contextHasKnowledge(result)) {
       const empty = document.createElement('p');
       empty.className = 'context-empty';
       empty.textContent = 'No earlier context available.';
