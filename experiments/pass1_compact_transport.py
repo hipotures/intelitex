@@ -724,7 +724,7 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
     summary = (
         "The compact request completed and passed both its transport schema and the unchanged production Pass-1 validator."
         if success else
-        f"The compact experiment did not produce a strictly valid canonical result; failure: {status.get('error', 'unknown')}."
+        f"The compact experiment did not produce a strictly valid canonical result; failure: {str(status.get('error', 'unknown')).rstrip('.')}."
     )
     result_lines = ""
     semantic_lines = "Strict comparison was unavailable because no validated compact result was produced."
@@ -776,6 +776,10 @@ def write_report(scratch: Path, report: Path, status: dict[str, Any]) -> None:
     harness_config = status.get("codex_harness_suppression")
     harness_audit = status.get("harness_rollout_verification")
     if harness_config:
+        if harness_audit and harness_audit.get("status") == "passed":
+            harness_verdict = "The inspected rollout retained the platform-owned read-only sandbox instruction. It contained no Codex coding-agent prompt, primary-agent collaboration block, multi-agent-mode block, environment-context block, skills/apps/plugins instruction block, or other unexpected developer message. This verifies suppression of the Codex collaboration harness for this run, but it is not a completely bare model request because the 341-character sandbox instruction remains."
+        else:
+            harness_verdict = "The scratch override and request configuration were recorded, but no completed rollout was copied for inspection. Harness suppression therefore could not be verified from rollout evidence for this failed call."
         harness_section = f"""
 ## Codex harness suppression
 
@@ -789,7 +793,7 @@ This run used a scratch-only model-catalog override for `{harness_config.get('mo
 | Unexpected developer segments | {harness_audit.get('unexpected_developer_segments', 'unavailable') if harness_audit else 'unavailable'} |
 | Forbidden Codex/collaboration/environment markers | {', '.join(harness_audit.get('forbidden_markers', [])) or 'none' if harness_audit else 'unavailable'} |
 
-The inspected rollout retained the platform-owned read-only sandbox instruction. It contained no Codex coding-agent prompt, primary-agent collaboration block, multi-agent-mode block, environment-context block, skills/apps/plugins instruction block, or other unexpected developer message. This verifies suppression of the Codex collaboration harness for this run, but it is not a completely bare model request because the 341-character sandbox instruction remains.
+{harness_verdict}
 """
     report_text = f"""# Pass-1 compact transport experiment results{variant}
 
@@ -869,7 +873,7 @@ First-output timing is reported only when a corresponding app-server event exist
 
 ## Observed schema/latency behavior
 
-The compact schema removed the two request-specific arrays of {len(canonical['SOURCE_BLOCKS']):,} canonical evidence IDs and retained only three small numeric code enums. The measured latency above includes app-server startup, skill isolation, generation, late usage collection, graceful flush, and rollout copying in both runs. No recursive or indirect schema construct was introduced.
+The compact schema removed the two request-specific arrays of {len(canonical['SOURCE_BLOCKS']):,} canonical evidence IDs and retained only three small numeric code enums. Timing, when available, begins before app-server startup and skill isolation; a failed or timed-out call can end before late usage collection, graceful flush, or rollout copying. No recursive or indirect schema construct was introduced.
 
 ## Confounders and limitations
 
@@ -1028,6 +1032,7 @@ def run_live(
         measurement = preflight_measurement(client, count)
         status["preflight"] = measurement
         print(f"Compact preflight: {count:,} UTF-8 bytes (developer instructions + minified input); not tokens", file=sys.stderr)
+        status["generation"] = "submitted"
         raw, meta = client.generate(body, attempt_dir, recorder)
         status.update({"generation": "completed", "response_meta": meta})
         if disable_codex_harness:
@@ -1060,10 +1065,8 @@ def run_live(
         recorder.mark_accepted()
     except BaseException as exc:
         status.update({"error": f"{type(exc).__name__}: {exc}"})
-        if status["generation"] == "not_submitted":
-            generation = "not_submitted"
-        else:
-            generation = status["generation"]
+        generation = "failed" if status["generation"] == "submitted" else status["generation"]
+        status["generation"] = generation
         meta = status.get("response_meta", {
             "provider": "codex",
             "requested_model": requested_model,
@@ -1198,7 +1201,7 @@ def parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--scratch", type=Path, required=True)
     run_parser.add_argument("--report", type=Path, required=True)
     run_parser.add_argument("--model")
-    run_parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh"))
+    run_parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max"))
     run_parser.add_argument("--disable-codex-harness", action="store_true")
     report_parser = sub.add_parser("report", help="regenerate the report from an existing run; never calls a model")
     report_parser.add_argument("--scratch", type=Path, required=True)

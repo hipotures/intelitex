@@ -4,7 +4,23 @@ import json
 import stat
 
 from bookpipe.util import read_json
-from experiments.pass1_compact_transport import inspect_harness_rollout, prepare_harness_suppression
+from experiments.pass1_compact_transport import inspect_harness_rollout, parser, prepare_harness_suppression
+
+
+def test_parser_accepts_max_reasoning_effort():
+    args = parser().parse_args(
+        [
+            "run",
+            "--scratch",
+            "/tmp/scratch",
+            "--report",
+            "/tmp/report.md",
+            "--effort",
+            "max",
+        ]
+    )
+
+    assert args.effort == "max"
 
 
 def test_prepare_harness_suppression_is_scratch_only(tmp_path):
