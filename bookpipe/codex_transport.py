@@ -183,6 +183,9 @@ class _RpcSession:
 
 class CodexAppServerClient:
     provider = "codex"
+    preflight_input_unit = "utf8_bytes"
+    preflight_input_quality = "conservative_upper_bound"
+    preflight_input_method = "UTF-8 byte length; no verified app-server input-token RPC"
 
     def __init__(self, profile: dict[str, Any], ui: Display):
         self.settings = profile

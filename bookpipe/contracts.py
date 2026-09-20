@@ -30,6 +30,35 @@ class SemanticRequest:
         return asdict(self)
 
 
+def preflight_measurement(provider: Any, value: int) -> dict[str, Any]:
+    """Describe a provider's pre-submission size measurement without lying about units."""
+    unit = getattr(provider, "preflight_input_unit", "tokens")
+    if unit not in {"tokens", "utf8_bytes"}:
+        raise ValueError(f"Unsupported preflight input unit: {unit!r}")
+    return {
+        "value": value,
+        "unit": unit,
+        "quality": getattr(provider, "preflight_input_quality", "provider_or_tokenizer_count"),
+        "method": getattr(provider, "preflight_input_method", "provider preflight"),
+    }
+
+
+def preflight_display(measurement: dict[str, Any]) -> str:
+    value = int(measurement["value"])
+    if measurement["unit"] == "utf8_bytes":
+        return f"input upper bound {value:,} UTF-8 bytes (not tokens)"
+    return f"input {value:,} tokens"
+
+
+def preflight_metadata(measurement: dict[str, Any]) -> dict[str, Any]:
+    result = {"input_preflight": measurement}
+    # Preserve the established field only when its name is truthful. Old Codex
+    # attempts may contain it, but new byte estimates must not masquerade as tokens.
+    if measurement["unit"] == "tokens":
+        result["input_tokens_preflight"] = measurement["value"]
+    return result
+
+
 def normalized_usage(
     *,
     input_tokens: int | None = None,

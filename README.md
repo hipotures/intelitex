@@ -99,6 +99,13 @@ removed after the child process is reaped. App-server can still add its small
 platform-owned read-only sandbox instruction and date/timezone wrapper, so this
 mode is not advertised as a completely bare model request.
 
+Codex app-server does not expose a verified no-turn input-token counter in the
+installed protocol. Before submission, Intelitex therefore reports a
+conservative `UTF-8 bytes (not tokens)` upper bound and uses it for context
+safety. Exact provider-reported token usage is shown only after a completed
+turn and retained in `usage.json`. The historical `memory_tokens` setting is
+measured with this same conservative byte counter when a Codex profile is used.
+
 Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When
 `state.sqlite3` exists, Intelitex first creates a SQLite backup under `backups/`.
 Frozen source IDs, review choices, approvals, checkpoints and old artifacts are

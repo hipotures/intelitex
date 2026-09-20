@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from .catalog import import_catalog, load_catalog, pricing_snapshot
+from .contracts import preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder
 from .engine import analyze, translate, export_text
 from .importer import import_folder
@@ -206,11 +207,12 @@ def main(argv: list[str] | None = None) -> int:
                             recorder.event("inbound", "provider_discovery", provider.discover())
                         body = provider.body(prompt, inputs, schema, args.pass_no)
                         count = provider.preflight(body, recorder)
+                        measurement_meta = preflight_metadata(preflight_measurement(provider, count))
                         answer, metadata = provider.generate(body, attempt, recorder)
                         if json.loads(answer) != {"ok": True}:
                             raise PipelineError("Smoke response did not match the requested structured value.")
                         recorder.finish(generation="completed", validation="passed",
-                                        metadata={**metadata, "input_tokens_preflight": count})
+                                        metadata={**metadata, **measurement_meta})
                         print_json({"status": "passed", "attempt": str(attempt.relative_to(root)), **metadata})
                     except BaseException as exc:
                         recorder.finish(generation="failed", validation="failed", metadata={"status": "failed"},

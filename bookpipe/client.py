@@ -23,6 +23,9 @@ class ContextFull(PipelineError):
 
 class Client:
     provider = "llamacpp"
+    preflight_input_unit = "tokens"
+    preflight_input_quality = "native_or_tokenizer_count"
+    preflight_input_method = "llama.cpp complete-request token count"
 
     def __init__(self, settings: dict[str, Any], ui: Display):
         self.settings, self.ui = settings, ui

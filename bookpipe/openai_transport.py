@@ -19,6 +19,9 @@ from .util import PipelineError, dumps
 
 class OpenAIResponsesClient:
     provider = "openai"
+    preflight_input_unit = "tokens"
+    preflight_input_quality = "provider_exact"
+    preflight_input_method = "POST /v1/responses/input_tokens"
 
     def __init__(self, profile: dict[str, Any], ui: Display):
         self.settings = profile

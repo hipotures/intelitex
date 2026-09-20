@@ -10,7 +10,7 @@ import jsonschema
 
 from .client import Client, ContextFull
 from .catalog import apply_estimate, load_catalog, pricing_snapshot
-from .contracts import SemanticRequest
+from .contracts import SemanticRequest, preflight_display, preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
 from .schemas import SCHEMAS
@@ -455,13 +455,14 @@ class Runner:
                 recorder.event("inbound", "provider_discovery", identity)
                 body = provider.body(prompt, payload, schema, pass_no)
             try:
-                input_tokens = provider.preflight(body, recorder)
+                input_count = provider.preflight(body, recorder)
             except BaseException as exc:
                 recorder.finish(generation="not_submitted", validation="not_run",
                                 metadata={"provider": semantic.provider, "status": "preflight_failed", "usage_status": "unavailable"},
                                 error={"type": type(exc).__name__, "message": str(exc)})
                 raise
-            self.ui.phase(f"P{pass_no}/5 | {key} | waiting for model; input {input_tokens:,} tokens")
+            measurement = preflight_measurement(provider, input_count)
+            self.ui.phase(f"P{pass_no}/5 | {key} | waiting for model; {preflight_display(measurement)}")
             # A failed HTTP or length-limited request is NOT blindly retried; first
             # inspect/save its partial output. Only invalid completed JSON is retried.
             try:
@@ -503,10 +504,10 @@ class Runner:
             atomic_json(path, value)
             if pass_no in (3, 5):
                 atomic_text(work / "result.txt", "\n\n".join(b["text"] for b in value["translations"]) + "\n")
-            recorder.finish(generation="completed", validation="passed", metadata={**meta,
-                            "input_tokens_preflight": input_tokens,
+            measurement_meta = preflight_metadata(measurement)
+            recorder.finish(generation="completed", validation="passed", metadata={**meta, **measurement_meta,
                             "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
-            self.store.save_job(key, fingerprint, path, {**meta, "input_tokens_preflight": input_tokens,
+            self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,
                                                         "settings": self.settings["passes"][str(pass_no)]})
             recorder.mark_accepted()
             if meta.get("usage_status") == "unavailable":

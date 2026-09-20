@@ -12,6 +12,7 @@ import pytest
 
 from bookpipe.catalog import import_catalog
 from bookpipe.codex_transport import CodexAppServerClient, _RpcSession
+from bookpipe.contracts import preflight_display, preflight_measurement, preflight_metadata
 from bookpipe.evidence import AttemptRecorder, EvidenceError
 from bookpipe.engine import response_schema
 from bookpipe.openai_transport import OpenAIResponsesClient
@@ -255,7 +256,12 @@ def test_codex_interleaving_isolation_usage_and_rollout(tmp_path, quiet_ui):
     attempt = project / "artifacts" / "attempt_001"
     recorder = AttemptRecorder(attempt, {"provider": "codex", "requested_model": "gpt-5.6-luna"})
     body = client.body("Trusted pass instructions", {"SOURCE": "payload"}, {"type": "object"}, 1)
-    assert client.preflight(body, recorder) > 0
+    count = client.preflight(body, recorder)
+    assert count > 0
+    measurement = preflight_measurement(client, count)
+    assert measurement["unit"] == "utf8_bytes"
+    assert preflight_display(measurement).endswith("UTF-8 bytes (not tokens)")
+    assert preflight_metadata(measurement) == {"input_preflight": measurement}
     answer, meta = client.generate(body, attempt, recorder)
     assert json.loads(answer) == {"ok": True}
     assert meta["thread_id"] == "thread-1" and meta["session_id"] == "session-1"
