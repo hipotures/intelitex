@@ -12,7 +12,7 @@ import bookpipe.reader as reader_module
 import bookpipe.cli as cli_module
 from bookpipe.cli import main
 from bookpipe.reader import MarkerConflict, MarkerRepository, ReaderServer
-from bookpipe.reader_context import ReaderContext
+from bookpipe.reader_context import ReaderContext, parse_inline_formatting
 from bookpipe.store import Store
 from bookpipe.util import PipelineError, atomic_json, project_lock, reader_lock, read_json
 
@@ -84,6 +84,17 @@ def test_reader_assembles_verified_p5_pieces_under_canonical_ids(tmp_path):
     assert chapter["blocks"] == [
         {"id": "B0000001", "kind": "p", "text": "Zażółć gęślą"},
         {"id": "B0000002", "kind": "p", "text": "Jaźń 😀 płynie."},
+    ]
+
+
+def test_reader_extracts_only_importer_inline_formatting_with_visible_offsets():
+    text, formatting = parse_inline_formatting(
+        "To *ważne* i **bardzo mocne** <img src=x> oraz *otwarte, 2 * 3 * 4 i ***zagnieżdżone***."
+    )
+    assert text == "To ważne i bardzo mocne <img src=x> oraz *otwarte, 2 * 3 * 4 i ***zagnieżdżone***."
+    assert formatting == [
+        {"start": 3, "end": 8, "style": "em"},
+        {"start": 11, "end": 23, "style": "strong"},
     ]
 
 

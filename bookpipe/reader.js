@@ -65,16 +65,36 @@
     };
   }
 
-  function markerTops(entries, hitHeight = 36) {
-    const byBlock = new Map();
-    return entries.map(entry => {
-      let lines = byBlock.get(entry.blockId);
-      if (!lines) { lines = new Map(); byBlock.set(entry.blockId, lines); }
-      const line = Math.round(entry.base / 4);
-      const collision = lines.get(line) || 0;
-      lines.set(line, collision + 1);
-      return entry.base + collision * hitHeight;
+  function markerLayout(entries, hitWidth = 28, hitHeight = 36) {
+    const layout = Array(entries.length);
+    const columnBottoms = [];
+    entries.map((entry, index) => ({entry, index})).sort((left, right) =>
+      left.entry.screenTop - right.entry.screenTop || left.index - right.index
+    ).forEach(({entry, index}) => {
+      let column = 0;
+      while (columnBottoms[column] !== undefined && entry.screenTop < columnBottoms[column]) column += 1;
+      columnBottoms[column] = entry.screenTop + hitHeight;
+      layout[index] = {top: entry.base, shift: column * hitWidth};
     });
+    return layout;
+  }
+
+  function inlineRuns(text, formatting = []) {
+    const characters = Array.from(text);
+    const runs = [];
+    let offset = 0;
+    for (const span of formatting) {
+      if (!span || !['em', 'strong'].includes(span.style)
+          || !Number.isInteger(span.start) || !Number.isInteger(span.end)
+          || span.start < offset || span.end <= span.start || span.end > characters.length) {
+        return [{text, style: null}];
+      }
+      if (span.start > offset) runs.push({text: characters.slice(offset, span.start).join(''), style: null});
+      runs.push({text: characters.slice(span.start, span.end).join(''), style: span.style});
+      offset = span.end;
+    }
+    if (offset < characters.length) runs.push({text: characters.slice(offset).join(''), style: null});
+    return runs.length ? runs : [{text, style: null}];
   }
 
   function markerAnchor(text, marker) {
@@ -89,7 +109,7 @@
 
   const helpers = {
     utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange,
-    createSerialQueue, createRequestGate, markerTops, markerAnchor,
+    createSerialQueue, createRequestGate, markerLayout, inlineRuns, markerAnchor,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
@@ -172,6 +192,28 @@
     return Array.from(document.querySelectorAll('.reader-block')).find(node => node.dataset.blockId === blockId) || null;
   }
 
+  function blockPlainText(block) {
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.parentElement.closest('.gutter-marker') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const chunks = [];
+    let node;
+    while ((node = walker.nextNode())) chunks.push(node.nodeValue);
+    return chunks.join('');
+  }
+
+  function renderInline(block, text, formatting) {
+    for (const run of inlineRuns(text, formatting)) {
+      const node = run.style ? document.createElement(run.style) : document.createTextNode(run.text);
+      if (run.style) {
+        node.append(document.createTextNode(run.text));
+      }
+      block.append(node);
+    }
+  }
+
   function textRange(block, start, end) {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
@@ -182,8 +224,9 @@
     let node;
     let traversed = 0;
     let startSet = false;
-    const start16 = codePointToUtf16(block.firstChild?.nodeValue || block.textContent, start);
-    const end16 = codePointToUtf16(block.firstChild?.nodeValue || block.textContent, end);
+    const text = blockPlainText(block);
+    const start16 = codePointToUtf16(text, start);
+    const end16 = codePointToUtf16(text, end);
     while ((node = walker.nextNode())) {
       const next = traversed + node.nodeValue.length;
       if (!startSet && start16 <= next) {
@@ -221,14 +264,14 @@
       const prefix = document.createRange();
       prefix.selectNodeContents(block);
       prefix.setEnd(caret.node, caret.offset);
-      const offset = utf16ToCodePoint(block.firstChild?.nodeValue || block.textContent, prefix.toString().length);
+      const offset = utf16ToCodePoint(blockPlainText(block), prefix.toString().length);
       return {block, offset};
     } catch (_) { return null; }
   }
 
   function normalizedLocation(first, second = first) {
     if (!first || !second || first.block !== second.block) return null;
-    const text = first.block.firstChild?.nodeValue || '';
+    const text = blockPlainText(first.block);
     const snapped = snapWordRange(text, first.offset, second.offset, segmenter);
     return snapped ? {block: first.block, text, ...snapped} : null;
   }
@@ -277,7 +320,7 @@
   function markerLocation(marker) {
     const block = blockElement(marker.block_id);
     if (!block) return null;
-    const text = block.firstChild?.nodeValue || '';
+    const text = blockPlainText(block);
     const {current, start, end} = markerAnchor(text, marker);
     return {block, range: end > start ? textRange(block, start, end) : null, current};
   }
@@ -292,11 +335,16 @@
       const rect = location.range && (location.range.getClientRects()[0] || location.range.getBoundingClientRect());
       const blockRect = location.block.getBoundingClientRect();
       const top = rect ? rect.top : blockRect.top;
-      entries.push({blockId: marker.block_id, base: Math.max(0, top - blockRect.top + 3)});
+      const base = Math.max(0, top - blockRect.top + 3);
+      entries.push({base, screenTop: blockRect.top + base});
       buttons.push(button);
     });
+    const hitWidth = Math.max(28, ...buttons.map(button => button.getBoundingClientRect().width));
     const hitHeight = Math.max(36, ...buttons.map(button => button.getBoundingClientRect().height));
-    markerTops(entries, hitHeight).forEach((top, index) => { buttons[index].style.top = `${top}px`; });
+    markerLayout(entries, hitWidth, hitHeight).forEach(({top, shift}, index) => {
+      buttons[index].style.top = `${top}px`;
+      buttons[index].style.transform = `translateX(-${shift}px)`;
+    });
   }
 
   function renderMarkers() {
@@ -452,7 +500,7 @@
         block.className = 'reader-block';
         block.dataset.blockId = item.id;
         block.dataset.kind = item.kind;
-        block.textContent = item.text;
+        renderInline(block, item.text, item.formatting);
         chapterNode.append(block);
       }
       if (chapter.warning) {

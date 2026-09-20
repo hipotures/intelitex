@@ -2,10 +2,37 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from .util import PipelineError, digest, inside, read_json
+
+
+_INLINE_FORMATTING = re.compile(
+    r"(?<!\*)\*\*([^\s*](?:[^*\n]*[^\s*])?)\*\*(?!\*)"
+    r"|(?<!\*)\*([^\s*](?:[^*\n]*[^\s*])?)\*(?!\*)"
+)
+
+
+def parse_inline_formatting(text: str) -> tuple[str, list[dict[str, int | str]]]:
+    """Remove importer emphasis delimiters and describe their visible-text ranges."""
+    chunks: list[str] = []
+    formatting: list[dict[str, int | str]] = []
+    source_offset = 0
+    visible_offset = 0
+    for match in _INLINE_FORMATTING.finditer(text):
+        prefix = text[source_offset:match.start()]
+        chunks.append(prefix)
+        visible_offset += len(prefix)
+        content = match.group(1) if match.group(1) is not None else match.group(2)
+        style = "strong" if match.group(1) is not None else "em"
+        chunks.append(content)
+        formatting.append({"start": visible_offset, "end": visible_offset + len(content), "style": style})
+        visible_offset += len(content)
+        source_offset = match.end()
+    chunks.append(text[source_offset:])
+    return "".join(chunks), formatting
 
 
 class ReaderContext:
@@ -161,11 +188,15 @@ class ReaderContext:
                     unavailable_at = bid
                     unavailable_reason = "A canonical block has no complete checkpoint-verified P5 translation."
                 break
-            blocks.append({
+            text, formatting = parse_inline_formatting(" ".join(text for _, text in pieces))
+            rendered_block: dict[str, object] = {
                 "id": bid,
                 "kind": block.get("kind", "paragraph"),
-                "text": " ".join(text for _, text in pieces),
-            })
+                "text": text,
+            }
+            if formatting:
+                rendered_block["formatting"] = formatting
+            blocks.append(rendered_block)
 
         complete = unavailable_at is None and not stale_units
         result = {

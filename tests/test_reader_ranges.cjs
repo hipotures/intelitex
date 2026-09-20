@@ -43,12 +43,33 @@ test('a rejected mutation does not break ordering or hide a genuine conflict', a
   assert.equal(await after, 'ran after refresh boundary');
 });
 
-test('gutter collisions are isolated per block and same-line hit areas do not overlap', () => {
-  const separate = Array.from({length: 30}, (_, index) => ({blockId: `B${index}`, base: 9}));
-  assert.deepEqual(R.markerTops(separate), Array(30).fill(9));
-  assert.deepEqual(R.markerTops([
-    {blockId: 'B1', base: 9}, {blockId: 'B1', base: 9}, {blockId: 'B1', base: 9},
-  ]), [9, 45, 81]);
+test('neighboring gutter hit areas spread horizontally instead of extending vertically', () => {
+  assert.deepEqual(R.markerLayout([
+    {base: 9, screenTop: 100},
+    {base: 9, screenTop: 100},
+    {base: 3, screenTop: 130},
+    {base: 3, screenTop: 170},
+  ]), [
+    {top: 9, shift: 0},
+    {top: 9, shift: 28},
+    {top: 3, shift: 56},
+    {top: 3, shift: 0},
+  ]);
+});
+
+test('inline runs preserve plain offsets and whitelist only emphasis tags', () => {
+  const text = 'To ważne i bardzo mocne <img src=x>.';
+  assert.deepEqual(R.inlineRuns(text, [
+    {start: 3, end: 8, style: 'em'},
+    {start: 11, end: 23, style: 'strong'},
+  ]), [
+    {text: 'To ', style: null},
+    {text: 'ważne', style: 'em'},
+    {text: ' i ', style: null},
+    {text: 'bardzo mocne', style: 'strong'},
+    {text: ' <img src=x>.', style: null},
+  ]);
+  assert.deepEqual(R.inlineRuns(text, [{start: 0, end: 2, style: 'script'}]), [{text, style: null}]);
 });
 
 test('only the newest chapter request remains current', () => {
