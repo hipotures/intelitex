@@ -59,10 +59,58 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   gap: .25rem;
   min-height: 4rem;
   padding: max(.45rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) .45rem max(.75rem, env(safe-area-inset-left));
-  border-bottom: 1px solid color-mix(in srgb, var(--rule) 82%, transparent);
   background: color-mix(in srgb, var(--paper) 91%, transparent);
   backdrop-filter: blur(14px);
 }
+
+.reading-progress {
+  position: absolute;
+  right: 0;
+  bottom: -1.5rem;
+  left: 0;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.reading-progress::before, .reading-progress span {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--rule) 82%, transparent);
+}
+.reading-progress span {
+  top: -.5px;
+  right: auto;
+  width: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--ink) 34%, var(--rule));
+  will-change: width;
+}
+.reading-progress:focus-visible { outline: 1px solid var(--muted); outline-offset: -.2rem; }
+
+.progress-popup {
+  position: absolute;
+  top: calc(100% + .65rem);
+  right: max(.75rem, env(safe-area-inset-right));
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 1.5rem));
+  padding: .65rem .75rem;
+  border: 1px solid var(--rule);
+  border-radius: .5rem;
+  background: var(--sheet);
+  box-shadow: 0 .45rem 1.5rem var(--shadow);
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.4;
+}
+.progress-popup strong, .progress-popup span { display: block; }
+.progress-popup strong { margin-bottom: .12rem; color: var(--ink); font-size: .82rem; font-weight: 650; }
+.progress-popup span + span { margin-top: .12rem; }
 
 .icon-button {
   width: 2.75rem;

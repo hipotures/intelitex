@@ -19,6 +19,32 @@ test('word snapping normalizes reverse drags', () => {
   assert.deepEqual(R.snapWordRange(text, 19, 10, null), {start: 9, end: 23});
 });
 
+test('reading progress combines prior blocks with the word at the viewport position', () => {
+  const text = 'jeden dwa trzy cztery';
+  const spans = R.wordSpans(text, null);
+  const progress = {
+    total_words: 20,
+    chapters: [{id: 'ch2', blocks: [{id: 'B4', start: 11, words: 4}]}],
+  };
+  assert.equal(R.wordPosition(spans, 0), 0);
+  assert.equal(R.wordPosition(spans, 8), 2);
+  assert.deepEqual(R.progressAtLocation(progress, 'ch2', 'B4', spans, 8), {
+    read: 13, total: 20, remaining: 7, ratio: 0.65, percent: 65,
+  });
+  assert.deepEqual(R.progressAtLocation(progress, 'ch2', 'B4', spans, text.length), {
+    read: 15, total: 20, remaining: 5, ratio: 0.75, percent: 75,
+  });
+});
+
+test('viewport midpoint resolves block interiors, gaps, and document edges', () => {
+  const rects = [{top: 100, bottom: 180}, {top: 220, bottom: 300}];
+  assert.deepEqual(R.viewportBlockPosition(rects, 50), {index: 0, edge: 'start'});
+  assert.deepEqual(R.viewportBlockPosition(rects, 140), {index: 0, edge: 'inside'});
+  assert.deepEqual(R.viewportBlockPosition(rects, 200), {index: 0, edge: 'end'});
+  assert.deepEqual(R.viewportBlockPosition(rects, 260), {index: 1, edge: 'inside'});
+  assert.deepEqual(R.viewportBlockPosition(rects, 350), {index: 1, edge: 'end'});
+});
+
 test('marker mutations execute serially and observe the latest revision', async () => {
   const enqueue = R.createSerialQueue();
   let revision = 0;

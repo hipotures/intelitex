@@ -30,6 +30,37 @@
     return spans;
   }
 
+  function wordPosition(spans, offset) {
+    let low = 0, high = spans.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (spans[middle].start < offset) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  }
+
+  function progressAtLocation(progress, chapterId, blockId, spans, offset) {
+    const total = Math.max(0, Number(progress?.total_words) || 0);
+    const chapter = progress?.chapters?.find(item => item.id === chapterId);
+    const block = chapter?.blocks?.find(item => item.id === blockId);
+    if (!block) return null;
+    const inside = Math.min(Number(block.words) || 0, wordPosition(spans, offset));
+    const read = Math.max(0, Math.min(total, (Number(block.start) || 0) + inside));
+    const ratio = total ? read / total : 0;
+    return {read, total, remaining: total - read, ratio, percent: Math.round(ratio * 100)};
+  }
+
+  function viewportBlockPosition(rects, midpoint) {
+    if (!rects.length) return null;
+    for (let index = 0; index < rects.length; index += 1) {
+      const rect = rects[index];
+      if (midpoint < rect.top) return index ? {index: index - 1, edge: 'end'} : {index: 0, edge: 'start'};
+      if (midpoint <= rect.bottom) return {index, edge: 'inside'};
+    }
+    return {index: rects.length - 1, edge: 'end'};
+  }
+
   function snapWordRange(text, first, second, segmenter) {
     const length = Array.from(text).length;
     let start = Math.max(0, Math.min(length, Math.min(first, second)));
@@ -109,6 +140,7 @@
 
   const helpers = {
     utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange,
+    wordPosition, progressAtLocation, viewportBlockPosition,
     createSerialQueue, createRequestGate, markerLayout, inlineRuns, markerAnchor,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
@@ -133,8 +165,12 @@
   let pointer = null;
   let positionTimer = null;
   let noticeTimer = null;
+  let progressFrame = null;
+  let progressPopupTimer = null;
   let renderedChapterId = null;
   let fallbackHighlights = [];
+  let progressWordSpans = new Map();
+  let readingProgress = {read: 0, total: 0, remaining: 0, ratio: 0, percent: 0};
   let settings = loadSettings();
   const enqueueMarkerMutation = createSerialQueue();
   const chapterRequests = createRequestGate();
@@ -162,7 +198,7 @@
     $('chapter').classList.toggle('gesture-drag', settings.gesture === 'drag');
     $('chapter').classList.toggle('gesture-long', settings.gesture === 'long');
     for (const key of Object.keys(DEFAULTS)) if ($(key)) $(key).value = String(settings[key]);
-    requestAnimationFrame(positionMarkers);
+    requestAnimationFrame(() => { positionMarkers(); updateReadingProgress(); });
   }
 
   function showNotice(message, duration = 1800) {
@@ -267,6 +303,84 @@
       const offset = utf16ToCodePoint(blockPlainText(block), prefix.toString().length);
       return {block, offset};
     } catch (_) { return null; }
+  }
+
+  function viewportLocation() {
+    const blocks = Array.from(document.querySelectorAll('.reader-block'));
+    const rects = blocks.map(block => block.getBoundingClientRect());
+    const midpoint = window.innerHeight / 2;
+    const target = viewportBlockPosition(rects, midpoint);
+    if (!target) return null;
+    const block = blocks[target.index];
+    const text = blockPlainText(block);
+    if (target.edge === 'start') return {block, offset: 0};
+    if (target.edge === 'end') return {block, offset: Array.from(text).length};
+    const rect = rects[target.index];
+    const candidates = [rect.left + rect.width / 2, rect.left + 4, rect.right - 4];
+    for (const candidate of candidates) {
+      const x = Math.max(1, Math.min(window.innerWidth - 1, candidate));
+      const location = locationAtPoint(x, midpoint);
+      if (location?.block === block) return location;
+    }
+    const fraction = rect.height ? Math.max(0, Math.min(1, (midpoint - rect.top) / rect.height)) : 0;
+    return {block, offset: Math.round(Array.from(text).length * fraction)};
+  }
+
+  function chapterBoundaryProgress() {
+    const progress = metadata?.progress;
+    const total = Math.max(0, Number(progress?.total_words) || 0);
+    const chapter = progress?.chapters?.find(item => item.id === renderedChapterId);
+    const lastId = progress?.last_chapter?.id;
+    const lastIndex = metadata?.chapters?.findIndex(item => item.id === lastId) ?? -1;
+    const read = chapter ? Number(chapter.start) || 0 : (chapterIndex > lastIndex ? total : 0);
+    const ratio = total ? read / total : 0;
+    return {read, total, remaining: total - read, ratio, percent: Math.round(ratio * 100)};
+  }
+
+  function renderProgressPopup() {
+    $('progressPercent').textContent = `${readingProgress.percent}% read`;
+    $('progressCounts').textContent = `${readingProgress.read.toLocaleString()} / ${readingProgress.total.toLocaleString()} words · ${readingProgress.remaining.toLocaleString()} remaining`;
+    const title = metadata?.progress?.last_chapter?.title;
+    $('progressAvailable').textContent = title ? `Available through ${title}` : 'No translated text is currently available';
+  }
+
+  function updateReadingProgress() {
+    if (!metadata?.progress) return;
+    const location = viewportLocation();
+    const spans = location && progressWordSpans.get(location.block.dataset.blockId);
+    readingProgress = location && spans
+      ? progressAtLocation(metadata.progress, renderedChapterId, location.block.dataset.blockId, spans, location.offset)
+      : null;
+    if (!readingProgress) readingProgress = chapterBoundaryProgress();
+    $('readingProgressFill').style.width = `${readingProgress.ratio * 100}%`;
+    $('readingProgress').setAttribute('aria-label', `Show reading progress, ${readingProgress.percent}% read`);
+    if (!$('progressPopup').hidden) renderProgressPopup();
+  }
+
+  function scheduleReadingProgress() {
+    if (progressFrame !== null) return;
+    progressFrame = requestAnimationFrame(() => {
+      progressFrame = null;
+      updateReadingProgress();
+    });
+  }
+
+  function hideProgressPopup() {
+    clearTimeout(progressPopupTimer);
+    $('progressPopup').hidden = true;
+    $('readingProgress').setAttribute('aria-expanded', 'false');
+  }
+
+  function showProgressPopup(event) {
+    event.stopPropagation();
+    $('tocPanel').hidden = true;
+    $('settingsPanel').hidden = true;
+    updateReadingProgress();
+    renderProgressPopup();
+    $('progressPopup').hidden = false;
+    $('readingProgress').setAttribute('aria-expanded', 'true');
+    clearTimeout(progressPopupTimer);
+    progressPopupTimer = setTimeout(hideProgressPopup, 3600);
   }
 
   function normalizedLocation(first, second = first) {
@@ -436,8 +550,10 @@
   async function reloadMarkerState() {
     const latest = await api('/api/reader');
     markerState = latest.marker_state;
+    metadata.progress = latest.progress;
     clearMarkerControl();
     renderMarkers();
+    scheduleReadingProgress();
   }
 
   function renderToc() {
@@ -491,6 +607,7 @@
       const chapter = await api(`/api/chapters/${encodeURIComponent(target.id)}`);
       if (!chapterRequests.isCurrent(request)) return;
       chapterNode.replaceChildren();
+      progressWordSpans = new Map();
       const title = document.createElement('h1');
       title.className = 'chapter-display-title';
       title.textContent = chapter.title;
@@ -501,6 +618,7 @@
         block.dataset.blockId = item.id;
         block.dataset.kind = item.kind;
         renderInline(block, item.text, item.formatting);
+        progressWordSpans.set(item.id, wordSpans(item.text, null));
         chapterNode.append(block);
       }
       if (chapter.warning) {
@@ -519,11 +637,15 @@
       renderToc();
       renderMarkers();
       requestAnimationFrame(() => {
-        if (chapterRequests.isCurrent(request)) restorePosition(restore);
+        if (chapterRequests.isCurrent(request)) {
+          restorePosition(restore);
+          scheduleReadingProgress();
+        }
       });
     } catch (error) {
       if (!chapterRequests.isCurrent(request)) return;
       renderedChapterId = null;
+      progressWordSpans = new Map();
       chapterNode.replaceChildren();
       const message = document.createElement('div');
       message.className = 'reader-error';
@@ -581,6 +703,7 @@
     $('tocButton').onclick = event => { event.stopPropagation(); $('settingsPanel').hidden = true; $('tocPanel').hidden = !$('tocPanel').hidden; };
     $('settingsButton').onclick = event => { event.stopPropagation(); $('tocPanel').hidden = true; $('settingsPanel').hidden = !$('settingsPanel').hidden; };
     $('fullscreenButton').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    $('readingProgress').onclick = showProgressPopup;
     $('deleteMarker').onclick = deleteActiveMarker;
     for (const key of Object.keys(DEFAULTS)) {
       const control = $(key);
@@ -602,14 +725,18 @@
         $('tocPanel').hidden = true; $('settingsPanel').hidden = true;
       }
       if (!event.target.closest('.gutter-marker') && !event.target.closest('#markerControl')) clearMarkerControl();
+      if (!event.target.closest('#readingProgress') && !event.target.closest('#progressPopup')) hideProgressPopup();
     });
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') { $('tocPanel').hidden = true; $('settingsPanel').hidden = true; clearMarkerControl(); }
+      if (event.key === 'Escape') {
+        $('tocPanel').hidden = true; $('settingsPanel').hidden = true; clearMarkerControl(); hideProgressPopup();
+      }
     });
-    window.addEventListener('resize', positionMarkers);
+    window.addEventListener('resize', () => { positionMarkers(); scheduleReadingProgress(); });
     window.addEventListener('scroll', () => {
       clearTimeout(positionTimer);
       positionTimer = setTimeout(savePosition, 180);
+      scheduleReadingProgress();
       if (!$('markerControl').hidden) clearMarkerControl();
     }, {passive: true});
     window.addEventListener('beforeunload', savePosition);

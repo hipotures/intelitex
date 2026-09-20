@@ -152,6 +152,12 @@ HTML = """<!doctype html>
     <button id="nextButton" class="icon-button" type="button" aria-label="Next chapter">›</button>
     <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings">Aa</button>
     <button id="fullscreenButton" class="icon-button" type="button" aria-label="Toggle fullscreen">⛶</button>
+    <button id="readingProgress" class="reading-progress" type="button" aria-label="Show reading progress" aria-controls="progressPopup" aria-expanded="false"><span id="readingProgressFill"></span></button>
+    <div id="progressPopup" class="progress-popup" role="status" hidden>
+      <strong id="progressPercent"></strong>
+      <span id="progressCounts"></span>
+      <span id="progressAvailable"></span>
+    </div>
   </header>
   <aside id="tocPanel" class="panel toc-panel" hidden aria-label="Table of contents">
     <h2>Contents</h2><nav id="toc"></nav>
@@ -245,7 +251,11 @@ class ReaderHandler(BaseHTTPRequestHandler):
                 kind = "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8"
                 self._send(raw, kind)
             elif path == "/api/reader":
-                self._json({**self.server.context.metadata(), "marker_state": self.server.repository.load()})
+                self._json({
+                    **self.server.context.metadata(),
+                    "progress": self.server.context.progress(),
+                    "marker_state": self.server.repository.load(),
+                })
             elif path.startswith("/api/chapters/"):
                 chapter_id = unquote(path[len("/api/chapters/"):])
                 if not chapter_id or "/" in chapter_id or chapter_id in {".", ".."}:

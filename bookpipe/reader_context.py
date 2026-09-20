@@ -13,6 +13,7 @@ _INLINE_FORMATTING = re.compile(
     r"(?<!\*)\*\*([^\s*](?:[^*\n]*[^\s*])?)\*\*(?!\*)"
     r"|(?<!\*)\*([^\s*](?:[^*\n]*[^\s*])?)\*(?!\*)"
 )
+_READER_WORDS = re.compile(r"\w+(?:[’'-]\w+)*", re.UNICODE)
 
 
 def parse_inline_formatting(text: str) -> tuple[str, list[dict[str, int | str]]]:
@@ -33,6 +34,11 @@ def parse_inline_formatting(text: str) -> tuple[str, list[dict[str, int | str]]]
         source_offset = match.end()
     chunks.append(text[source_offset:])
     return "".join(chunks), formatting
+
+
+def reader_word_count(text: str) -> int:
+    """Count the word units used by the Reader progress model."""
+    return sum(1 for _ in _READER_WORDS.finditer(text))
 
 
 class ReaderContext:
@@ -80,6 +86,32 @@ class ReaderContext:
                 for index, chapter in enumerate(book["chapters"], 1)
             ],
         }
+
+    def progress(self) -> dict:
+        """Describe the word offsets in the currently available translated prefix."""
+        book = self._book()
+        chapters = []
+        total_words = 0
+        last_chapter = None
+        for source_chapter in book["chapters"]:
+            chapter = self.chapter(source_chapter["id"])
+            chapter_start = total_words
+            blocks = []
+            for block in chapter["blocks"]:
+                words = reader_word_count(block["text"])
+                blocks.append({"id": block["id"], "start": total_words, "words": words})
+                total_words += words
+            if blocks:
+                chapters.append({
+                    "id": chapter["id"],
+                    "start": chapter_start,
+                    "words": total_words - chapter_start,
+                    "blocks": blocks,
+                })
+                last_chapter = {"id": chapter["id"], "title": chapter["title"]}
+            if "unavailable" in chapter:
+                break
+        return {"total_words": total_words, "last_chapter": last_chapter, "chapters": chapters}
 
     @staticmethod
     def _translation_map(raw: bytes, expected_ids: list[str]) -> dict[str, str]:

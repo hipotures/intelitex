@@ -106,6 +106,19 @@ def test_reader_exposes_only_verified_prefix_when_translation_is_incomplete(tmp_
     assert "unavailable" in chapter
 
 
+def test_reader_progress_counts_only_the_contiguous_available_prefix(tmp_path):
+    root, _ = make_reader_project(tmp_path, translated=1)
+    progress = ReaderContext(root).progress()
+    assert progress == {
+        "total_words": 3,
+        "last_chapter": {"id": "ch0001", "title": "Rozdział Łódź"},
+        "chapters": [{
+            "id": "ch0001", "start": 0, "words": 3,
+            "blocks": [{"id": "B0000001", "start": 0, "words": 3}],
+        }],
+    }
+
+
 def test_reader_labels_checkpointed_stale_translation(tmp_path):
     root, _ = make_reader_project(tmp_path)
     store = Store(root)
@@ -334,6 +347,8 @@ def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
             assert client.get("/assets/reader.js").status_code == 200
             assert client.get("/assets/reader.css").status_code == 200
             metadata = client.get("/api/reader").json()
+            assert metadata["progress"]["total_words"] == 6
+            assert metadata["progress"]["last_chapter"]["id"] == "ch0001"
             chapter = client.get("/api/chapters/ch0001")
             assert chapter.status_code == 200
             assert chapter.json()["blocks"][0]["id"] == "B0000001"
