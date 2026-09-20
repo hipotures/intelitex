@@ -269,6 +269,36 @@ uv run translate.py review --project "$PROJECT" --review-port 0 --no-browser
 The review server has no authentication and binds to `127.0.0.1` by default. Do not
 expose it on an untrusted network.
 
+### Translation Reader and prose markers
+
+After P5 translation units have completed, open the local Reader to read the
+checkpoint-verified Polish text chapter by chapter and quickly mark a suspicious
+word or span without interrupting the reading flow:
+
+```bash
+uv run translate.py reader --project "$PROJECT"
+```
+
+The Reader defaults to `http://127.0.0.1:8766/`, opens the browser, and holds the
+normal project lock while it runs. Use `--reader-port 0` to select a free port or
+`--no-browser` to suppress browser launch. For a phone on a trusted LAN, bind
+explicitly beyond loopback, for example:
+
+```bash
+uv run translate.py reader --project "$PROJECT" --bind 0.0.0.0
+```
+
+This is an unauthenticated local editing service. A non-loopback bind makes it
+reachable to hosts allowed by the machine and network firewall; do not expose it
+on an untrusted network.
+
+Reader markers are written atomically to `translation.review.json`. Format 1
+records the source-book fingerprint and a minimal list of marker IDs, canonical
+chapter/block IDs, Unicode code-point offsets, and the exact captured Polish
+substring. Reader appearance, gesture choice, and reading position remain in the
+browser's `localStorage`. Marker classification, prose review, and correction are
+future work; the Reader does not call a model or modify P5 artifacts.
+
 ### Pass 1 lexical-grounding recovery / v1.5
 
 Pass 1 validation now repairs only mechanically provable lexical-grounding failures instead of paying for another full model decode. Unattested aliases are removed; a missing citation may be supplemented only with an exact-match source block from the same analysis unit; a term with no attested source form anywhere in the unit is dropped as an unsupported delta. Existing memory is never erased by these repairs. Completed failed attempts, including attempts in the current fingerprint directory, are reconsidered on restart before any new model call. All repairs are logged in `recovery.json` or `validation_repairs.json`.
@@ -655,6 +685,9 @@ splitting, stop-before-approval, repeated analysis, candidate selection, increme
 continuation, interrupted P4 resumption without repeating P2/P3, bounded invalid-JSON
 retries, source-ID coverage, candidate preservation, stale chunks after a custom
 choice, no default cross-story continuity, artifact checksums and manifest integrity.
+Reader tests additionally cover checkpointed chapter assembly, canonical/piece IDs,
+incomplete and stale content, marker validation/conflicts/deletion, HTTP safety, and
+Unicode word-range logic without a model call.
 
 No full-book run or generation against the user's actual Gemma/CUDA installation
 has been performed in the authoring environment. Structural validation detects
@@ -663,7 +696,8 @@ model audit, not a guarantee of fidelity. Keep the first run small and inspect i
 source, draft, correction ledger and final output before running the entire book.
 
 There is no final EPUB reconstruction in this version; outputs are UTF-8 TXT and
-structured artifacts. This is a translation/review harness, not yet an ebook reader.
+structured artifacts. The browser Reader is a local checkpoint-backed reading view,
+not an EPUB-producing ebook application.
 
 ## Reference documents
 

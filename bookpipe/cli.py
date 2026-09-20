@@ -13,6 +13,7 @@ from .contracts import preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder
 from .engine import analyze, translate, export_text
 from .importer import import_folder
+from .reader import run_reader_server
 from .review import run_review_server
 from .operations import attempt_report, doctor_report, print_json, profile_report, usage_report
 from .profiles import migrate_settings_file, validate_profiles
@@ -31,6 +32,7 @@ def parser() -> argparse.ArgumentParser:
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
         ("review", "Open the local terminology review application backed by terms.review.json."),
+        ("reader", "Read checkpointed Polish P5 text and capture lightweight prose markers."),
         ("approve", "Commit human choices. No model call. Required before translation."),
         ("translate", "Run P2-P5 for the next N unfinished chunks; resume checkpoints automatically."),
         ("status", "Show local progress without contacting the server."),
@@ -64,6 +66,10 @@ def parser() -> argparse.ArgumentParser:
             s.add_argument("--bind", default="127.0.0.1", help="Review web server bind address. Default: 127.0.0.1.")
             s.add_argument("--review-port", type=int, default=8765, help="Review web server port; 0 chooses a free port. Default: 8765.")
             s.add_argument("--no-browser", action="store_true", help="Do not open the review UI in the default browser.")
+        if name == "reader":
+            s.add_argument("--bind", default="127.0.0.1", help="Reader web server bind address. Default: 127.0.0.1.")
+            s.add_argument("--reader-port", type=int, default=8766, help="Reader web server port; 0 chooses a free port. Default: 8766.")
+            s.add_argument("--no-browser", action="store_true", help="Do not open the Reader in the default browser.")
         if name == "translate":
             s.add_argument("--continue", dest="chunk_limit", type=int, default=5, metavar="N", help="Next N unfinished chunks; 0 means all. Default: 5.")
         if name == "approve":
@@ -287,6 +293,9 @@ def main(argv: list[str] | None = None) -> int:
                 path = store.write_review(book["source_fingerprint"])
                 ui.stop_progress()
                 run_review_server(path, args.bind, args.review_port, not args.no_browser, ui)
+            elif args.command == "reader":
+                ui.stop_progress()
+                run_reader_server(root, args.bind, args.reader_port, not args.no_browser, ui)
             elif args.command == "approve":
                 if not store.get("analysis_done"):
                     raise PipelineError("Finish analysis before approving terminology.")
