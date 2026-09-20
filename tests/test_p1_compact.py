@@ -9,14 +9,15 @@ import pytest
 
 from bookpipe.codex_transport import CodexAppServerClient
 from bookpipe.contracts import SemanticRequest
-from bookpipe.engine import Runner, response_schema, translate
-from bookpipe.evidence import AttemptRecorder
+from bookpipe.engine import Runner, _semantic_execution_signature, response_schema, translate
+from bookpipe.evidence import AttemptRecorder, EvidenceError
 from bookpipe.p1_compact import (
     CATEGORIES,
     COMPACT_SCHEMA,
     CONFIDENCES,
     OBSERVATION_KINDS,
     build_transport,
+    compact_instructions,
     decode_output,
     encode_input,
 )
@@ -231,6 +232,26 @@ def test_build_transport_retains_decoder_map_outside_model_payload(canonical_inp
     assert "scene_ids" not in transport.input_payload
 
 
+def test_compact_prompt_preserves_custom_rule_after_canonical_contract():
+    rule = "For ship names, preserve the English spelling in every candidate."
+    customized = P1_PROMPT.replace(
+        "\n\nReturn only this JSON object.",
+        f"\n\n{rule}\n\nReturn only this JSON object.",
+    )
+    transformed = compact_instructions(customized)
+    assert rule in transformed
+    assert "Compact JSON contract:" in transformed
+
+
+def test_compact_prompt_fails_closed_for_modified_output_contract():
+    customized = P1_PROMPT.replace(
+        '"meaning":"brief evidence-based meaning or uncertainty"',
+        '"meaning":"custom project meaning rule"',
+    )
+    with pytest.raises(PipelineError, match="cannot safely transform"):
+        compact_instructions(customized)
+
+
 def test_unknown_wire_format_fails_closed(tmp_path, canonical_inputs):
     client = _codex_client(tmp_path, {"p1_wire_format": "future-v9"})
     with pytest.raises(PipelineError, match="Unknown Codex Pass-1 wire format"):
@@ -356,17 +377,26 @@ def test_existing_canonical_p1_checkpoint_returns_before_provider_call(tmp_path)
         store.close()
 
 
-def _write_completed_attempt(root, directory, provider, inputs, value, wire_format):
+def _write_completed_attempt(root, directory, provider, inputs, value, wire_format, *, retry=False):
     schema = response_schema(1, inputs)
     fingerprint = digest({"prompt": P1_PROMPT, "inputs": inputs, "schema": schema})
+    semantic_inputs = copy.deepcopy(inputs)
+    retry_additions = {}
+    if retry:
+        retry_additions = {
+            "VALIDATION_ERROR": "first answer failed",
+            "RETRY_INSTRUCTION": "return corrected JSON",
+            "ALLOWED_EVIDENCE_IDS": [block["id"] for block in inputs["SOURCE_BLOCKS"]],
+        }
+        semantic_inputs.update(retry_additions)
     old_profile = copy.deepcopy(provider.resolved_profile)
     old_profile["options"].pop("p1_wire_format", None)
     semantic = SemanticRequest(
-        task_key="pass1/unit", task_fingerprint=fingerprint, pass_no=1, attempt_no=1,
-        trusted_instructions=P1_PROMPT, input_payload=inputs, output_schema=schema, schema_version=1,
+        task_key="pass1/unit", task_fingerprint=fingerprint, pass_no=1, attempt_no=2 if retry else 1,
+        trusted_instructions=P1_PROMPT, input_payload=semantic_inputs, output_schema=schema, schema_version=1,
         profile="old-codex", provider="codex", requested_model=provider.model,
         reasoning_effort="low", planning_output_reserve=100, enforced_output_cap=None,
-        timeout_seconds=5.0, resolved_profile=old_profile,
+        timeout_seconds=5.0, resolved_profile=old_profile, retry_additions=retry_additions,
     )
     recorder = AttemptRecorder(directory, {"provider": "codex"})
     recorder.semantic(semantic.as_dict(), schema)
@@ -394,6 +424,61 @@ def test_old_verbose_completed_attempt_recovers_without_model_call(tmp_path):
         assert store.job("pass1/unit", fingerprint) is not None
     finally:
         store.close()
+
+
+@pytest.mark.parametrize(
+    "wire_format,answer",
+    [("canonical", _canonical_answer()), ("compact-v1", _compact_answer())],
+)
+def test_completed_retry_attempt_recovers_without_another_model_call(tmp_path, wire_format, answer):
+    root, store, settings = _runner_project(tmp_path)
+    inputs = _small_inputs()
+    provider = FakeCompactCodex(root)
+    fingerprint = digest({"prompt": P1_PROMPT, "inputs": inputs, "schema": response_schema(1, inputs)})
+    completed_retry = root / "artifacts" / "pass1" / "unit" / fingerprint[:20] / "attempt_002"
+    _write_completed_attempt(root, completed_retry, provider, inputs, answer, wire_format, retry=True)
+    try:
+        value, relative, got = Runner(store, provider, settings, Display(True)).run(1, "pass1/unit", inputs)
+        assert value == _canonical_answer() and got == fingerprint
+        assert provider.calls == 0
+        assert read_json(root / relative) == _canonical_answer()
+        recovery = next((root / "artifacts" / "pass1" / "unit").rglob("recovery.json"))
+        assert "attempt_002" in read_json(recovery)["source_attempt"]
+    finally:
+        store.close()
+
+
+def test_retry_recovery_normalization_remains_narrow():
+    base = {
+        "input_payload": _small_inputs(),
+        "requested_model": "model-a",
+        "reasoning_effort": "high",
+        "resolved_profile": {"options": {"p1_wire_format": "compact-v1", "late_usage_wait": 0.5}},
+    }
+    retry = copy.deepcopy(base)
+    retry["input_payload"].update({
+        "VALIDATION_ERROR": "bad output",
+        "RETRY_INSTRUCTION": "correct it",
+        "ALLOWED_EVIDENCE_IDS": ["B1"],
+    })
+    retry["retry_additions"] = {
+        key: retry["input_payload"][key] for key in (
+            "VALIDATION_ERROR", "RETRY_INSTRUCTION", "ALLOWED_EVIDENCE_IDS"
+        )
+    }
+    assert _semantic_execution_signature(retry) == _semantic_execution_signature(base)
+
+    changed_source = copy.deepcopy(retry)
+    changed_source["input_payload"]["SOURCE_BLOCKS"][0]["text"] = "Different source."
+    assert _semantic_execution_signature(changed_source) != _semantic_execution_signature(base)
+
+    changed_model = copy.deepcopy(retry)
+    changed_model["requested_model"] = "model-b"
+    assert _semantic_execution_signature(changed_model) != _semantic_execution_signature(base)
+
+    changed_setting = copy.deepcopy(retry)
+    changed_setting["resolved_profile"]["options"]["late_usage_wait"] = 1.0
+    assert _semantic_execution_signature(changed_setting) != _semantic_execution_signature(base)
 
 
 def test_mixed_verbose_and_compact_attempts_recover_latest_compact(tmp_path):
@@ -436,47 +521,140 @@ def test_codec_failure_records_attempt_and_does_not_checkpoint(tmp_path):
         store.close()
 
 
-def test_12_of_34_translation_units_resume_at_first_unfinished(tmp_path, monkeypatch):
+def test_decoded_artifact_write_failure_never_retries_model(tmp_path, monkeypatch):
+    root, store, settings = _runner_project(tmp_path)
+    settings["json_retries"] = 2
+    provider = FakeCompactCodex(root, _compact_answer())
+    original = AttemptRecorder._write_json
+    failed = False
+
+    def fail_once(recorder, name, value):
+        nonlocal failed
+        if name == "decoded.canonical.json" and not failed:
+            failed = True
+            raise EvidenceError("synthetic decoded artifact write failure")
+        return original(recorder, name, value)
+
+    monkeypatch.setattr(AttemptRecorder, "_write_json", fail_once)
+    try:
+        with pytest.raises(EvidenceError, match="synthetic decoded artifact write failure"):
+            Runner(store, provider, settings, Display(True)).run(1, "pass1/unit", _small_inputs())
+        assert provider.calls == 1
+        attempts = list((root / "artifacts" / "pass1" / "unit").rglob("attempt_*"))
+        assert len(attempts) == 1
+        assert read_json(attempts[0] / "response_meta.json")["status"] == "evidence_failed"
+        assert store.db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+    finally:
+        store.close()
+
+
+class FakeCanonicalTranslationProvider:
+    provider = "test"
+    profile_name = "synthetic"
+    model = "synthetic-model"
+    timeout = 5.0
+    preflight_input_unit = "tokens"
+    resolved_profile = {
+        "provider": "test", "model": "synthetic-model", "planning_output_reserve": 100,
+        "max_output_tokens": 100, "options": {},
+    }
+
+    def __init__(self):
+        self.calls = []
+
+    @staticmethod
+    def count(text):
+        return max(1, len(text) // 4)
+
+    def body(self, prompt, inputs, schema, pass_no):
+        return {"prompt": prompt, "inputs": inputs, "schema": schema, "pass_no": pass_no}
+
+    def preflight(self, body, recorder=None):
+        return self.count(dumps(body))
+
+    def generate(self, body, directory, recorder):
+        pass_no = body["pass_no"]
+        inputs = body["inputs"]
+        self.calls.append((pass_no, inputs["CHUNK_ID"]))
+        if pass_no == 2:
+            value = {
+                "checks": [{"sid": row["id"], "risk": "low"} for row in inputs["SOURCE_SENTENCES"]],
+                "issues": [],
+            }
+        elif pass_no == 3:
+            value = {"translations": [{"id": row["id"], "text": "Polish: " + row["text"]}
+                                      for row in inputs["SOURCE_BLOCKS"]]}
+        elif pass_no == 4:
+            value = {
+                "checks": [{"sid": row["id"], "status": "ok"} for row in inputs["SOURCE_SENTENCES"]],
+                "corrections": [],
+            }
+        elif pass_no == 5:
+            value = inputs["POLISH_DRAFT"]
+        else:
+            raise AssertionError(f"unexpected pass {pass_no}")
+        recorder.transport_request(body, body["schema"])
+        raw = dumps(value)
+        recorder.write_answer(raw)
+        return raw, {"provider": "test", "finish_reason": "stop", "usage_status": "reported"}
+
+
+def test_12_of_34_translation_units_resume_at_first_unfinished(tmp_path):
     root = tmp_path / "resume-project"
-    root.mkdir()
+    (root / "prompts").mkdir(parents=True)
+    for pass_no in range(2, 6):
+        source = ROOT / "prompts" / f"pass{pass_no}.txt"
+        (root / "prompts" / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     store = Store(root)
     chunks = []
     for index in range(34):
         cid = f"ch0001_c{index + 1:04d}"
         chunks.append({
-            "id": cid, "chapter_id": "ch0001", "index_in_chapter": index + 1,
-            "blocks": [{"id": f"B{index + 1}", "kind": "paragraph", "text": "Source", "parent_id": f"B{index + 1}"}],
-            "sentences": [{"id": f"S{index + 1}", "text": "Source"}],
+            "id": cid, "number": index + 1, "chapter_id": "ch0001", "index_in_chapter": index + 1,
+            "blocks": [{
+                "id": f"B{index + 1:07d}", "kind": "paragraph", "text": f"Source unit {index + 1}.",
+                "parent_id": f"B{index + 1:07d}", "order": index + 1,
+            }],
+            "sentences": [{"id": f"S{index + 1:07d}", "text": f"Source unit {index + 1}."}],
         })
     book = {"chunks": chunks, "chapters": [{"id": "ch0001", "number": 1, "chunk_ids": [c["id"] for c in chunks]}]}
     store.register_chunks(book)
     with store.db:
         store.set("analysis_done", True)
         store.set("approved", True)
-        for chunk in chunks[:12]:
-            store.db.execute("UPDATE chunks SET status='done' WHERE id=?", (chunk["id"],))
-
-    called = []
-    def fake_run(_runner, pass_no, key, inputs):
-        called.append((pass_no, key))
-        if pass_no in (3, 5):
-            value = {"translations": [{"id": inputs["SOURCE_BLOCKS"][0]["id"], "text": "Polish"}]}
-        elif pass_no == 2:
-            value = {"checks": [], "issues": []}
-        else:
-            value = {"checks": [], "corrections": []}
-        return value, "synthetic/result.json", f"fp-{pass_no}"
-
-    monkeypatch.setattr(Runner, "run", fake_run)
-    monkeypatch.setattr("bookpipe.engine.previous_context", lambda *_: {"english": "", "polish": ""})
-    monkeypatch.setattr(store, "translation_memory", lambda *_: ({"APPROVED_LEXICON": [], "OBSERVATIONS": []}, []))
-    monkeypatch.setattr("bookpipe.engine.export_text", lambda *_: None)
-    settings = {"continuity_tokens": 10, "memory_tokens": 10, "passes": {str(i): {"max_tokens": 10} for i in range(1, 6)}}
+    settings = {
+        "json_retries": 0, "continuity_tokens": 100, "memory_tokens": 1000,
+        "passes": {str(i): {"max_tokens": 100, "temperature": 0} for i in range(1, 6)},
+    }
+    initial_provider = FakeCanonicalTranslationProvider()
     try:
-        client = type("CountClient", (), {"count": staticmethod(lambda text: len(text))})()
-        translate(store, book, client, settings, Display(True), 1)
-        assert called == [(stage, f"pass{stage}/ch0001_c0013") for stage in range(2, 6)]
-        assert sum(store.chunk(chunk["id"])["status"] == "done" for chunk in chunks) == 13
-        assert all(store.chunk(chunk["id"])["status"] == "done" for chunk in chunks[:12])
+        translate(store, book, initial_provider, settings, Display(True), 12)
+        assert len(initial_provider.calls) == 48
+        before = {
+            row["key"]: (row["fingerprint"], row["result_path"], row["result_hash"])
+            for row in store.db.execute("SELECT key,fingerprint,result_path,result_hash FROM jobs ORDER BY key")
+        }
+        assert len(before) == 48
+        for chunk in chunks[:12]:
+            state = store.chunk(chunk["id"])
+            assert state["status"] == "done"
+            assert store.checked_result(state["final_path"])["translations"][0]["id"] == chunk["blocks"][0]["id"]
     finally:
         store.close()
+
+    # Simulate a process restart after pulling the compact-P1 implementation.
+    reopened = Store(root)
+    resumed_provider = FakeCanonicalTranslationProvider()
+    try:
+        translate(reopened, book, resumed_provider, settings, Display(True), 1)
+        assert resumed_provider.calls == [(stage, "ch0001_c0013") for stage in range(2, 6)]
+        after = {
+            row["key"]: (row["fingerprint"], row["result_path"], row["result_hash"])
+            for row in reopened.db.execute("SELECT key,fingerprint,result_path,result_hash FROM jobs ORDER BY key")
+            if not row["key"].endswith("ch0001_c0013")
+        }
+        assert after == before
+        assert sum(reopened.chunk(chunk["id"])["status"] == "done" for chunk in chunks) == 13
+        assert all(reopened.chunk(chunk["id"])["status"] == "done" for chunk in chunks[:12])
+    finally:
+        reopened.close()

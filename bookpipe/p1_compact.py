@@ -154,13 +154,19 @@ def compact_instructions(canonical_prompt: str) -> str:
         "Cite local integer block indices from SOURCE_BLOCKS; never invent references.",
         1,
     )
-    marker = "JSON contract:\n"
-    suffix = "\n\nReturn only this JSON object."
-    start = value.find(marker)
-    end = value.find(suffix, start)
-    if start < 0 or end < 0:
-        raise PipelineError("Compact-v1 cannot transform this Pass-1 prompt: JSON contract was not found.")
-    contract = (
+    canonical_contract = (
+        "JSON contract:\n"
+        '{"terms":[{"source":"English lexical form","aliases":[],"category":"name|organization|people|place|ship|status|technology|science|jargon|other",'
+        '"meaning":"brief evidence-based meaning or uncertainty","confidence":"high|medium|low","candidates":[{"text":"Polish candidate",'
+        '"reason":"brief tradeoff"}],"evidence":["source block ID"]}],"observations":[{"about":["English source form"],'
+        '"kind":"reference|gender|register|technical|continuity","statement":"short observation, not a global plot conclusion",'
+        '"confidence":"high|medium|low","evidence":["source block ID"]}]}'
+    )
+    if value.count(canonical_contract) != 1:
+        raise PipelineError(
+            "Compact-v1 cannot safely transform this Pass-1 prompt: the exact canonical JSON contract was not found once."
+        )
+    compact_contract = (
         "Compact JSON contract:\n"
         "Root: t=terms, o=observations. Term fields: s=source, a=aliases, c=category code, m=meaning, q=confidence code, "
         "p=candidates, e=local evidence indices. Candidate fields: t=text, r=reason. Observation fields: a=about, k=kind code, "
@@ -169,7 +175,7 @@ def compact_instructions(canonical_prompt: str) -> str:
         "Observation kind codes: 1 reference, 2 gender, 3 register, 4 technical, 5 continuity. Evidence values are local integer "
         "indices i from this request's SOURCE_BLOCKS, never canonical block-ID strings."
     )
-    return value[:start] + contract + value[end:]
+    return value.replace(canonical_contract, compact_contract, 1)
 
 
 def encode_input(canonical: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...], tuple[str | None, ...]]:

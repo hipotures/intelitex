@@ -120,12 +120,22 @@ canonical response schema. Consequently old accepted checkpoints and compatible
 completed verbose Codex attempts remain reusable, including after an interrupted
 translation resumes at P4 when P2/P3 are already accepted. Mixed verbose and
 compact attempt artifacts require no conversion or project migration.
+Validation-only retry fields are excluded narrowly from recovery identity, so a
+completed second attempt can be checkpointed after restart without another model
+turn. Source, prompt, model, effort, and other execution-significant settings
+remain part of compatibility checks.
 
 Each compact attempt retains both layers: canonical `request.semantic.json` and
 `schema.canonical.json`, actual compact `request.transport.json` and
 `schema.transport.json`, raw compact `answer.txt`, decoded
 `decoded.canonical.json`, and the canonical accepted `result.json`. Response
 metadata records `wire_format: compact-v1`.
+
+Project-specific instructions placed around the canonical output contract are
+preserved by the wire transformation. If that contract itself is customized in
+a way `compact-v1` cannot recognize exactly, the request fails before submission
+instead of silently dropping text. Likewise, a local evidence-write failure is
+not classified as invalid model output and never triggers another model turn.
 
 For rollback or debugging, set the Codex profile option below. It changes only
 transport and does not change semantic task identity:

@@ -301,6 +301,13 @@ def _semantic_execution_signature(value: dict) -> dict:
     value = copy.deepcopy(value)
     for key in ("attempt_no", "retry_additions", "profile"):
         value.pop(key, None)
+    payload = value.get("input_payload")
+    if isinstance(payload, dict):
+        # These fields describe a physical validation retry, not a different
+        # semantic source task. Keep this allowlist deliberately identical to
+        # the one used for legacy request-body recovery normalization.
+        for key in _RECOVERY_TRANSIENT_INPUT_KEYS:
+            payload.pop(key, None)
     resolved = value.get("resolved_profile")
     if isinstance(resolved, dict):
         resolved.pop("selection_provenance", None)
@@ -521,6 +528,20 @@ class Runner:
                 if repairs:
                     atomic_json(attempt / "validation_repairs.json", repairs)
                 validate_result(pass_no, value, inputs)
+            except EvidenceError as exc:
+                # Evidence durability failures are not model-output failures.
+                # Never spend another model turn because a local artifact could
+                # not be written. Finalization is best-effort because the same
+                # storage failure may also prevent response_meta.json updates.
+                try:
+                    recorder.finish(generation="completed", validation="not_run", metadata={**meta,
+                                    "status": "evidence_failed",
+                                    "usage_status": meta.get("usage_status", "unknown")},
+                                    error={"type": type(exc).__name__, "message": str(exc)},
+                                    evidence_complete=False)
+                except EvidenceError:
+                    pass
+                raise
             except (json.JSONDecodeError, jsonschema.ValidationError, PipelineError) as exc:
                 last_error = str(exc)
                 atomic_text(attempt / "validation_error.txt", last_error + "\n")
