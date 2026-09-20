@@ -319,6 +319,7 @@ body.header-hidden .progress-popup { top: 2.35rem; }
 .context-statements { margin: 0; padding-left: 1.2rem; }
 .context-statements li { padding-left: .25rem; line-height: 1.55; }
 .context-statements li + li { margin-top: .65rem; }
+.context-empty { margin: 0; color: var(--muted); font-style: italic; }
 .context-mention { margin: 0; padding: .8rem 0 0; border-top: 1px solid var(--rule); }
 .context-mention + .context-mention { margin-top: .8rem; }
 .context-mention blockquote { margin: 0; color: var(--ink); font-size: .94em; line-height: 1.55; }

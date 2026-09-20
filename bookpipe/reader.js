@@ -302,6 +302,10 @@
     event.stopImmediatePropagation();
   }
 
+  function contextResultState(result) {
+    return result?.recognized === true ? 'card' : 'flash';
+  }
+
   function chapterEndState(chapters, progress, index) {
     const available = new Set((progress?.chapters || []).map(chapter => chapter.id));
     const nextIndex = index + 1;
@@ -316,7 +320,7 @@
     createSerialQueue, createRequestGate, markerLayout, inlineRuns, markerAnchor,
     gestureSettings, assignGesture, createContextDismissalGuard,
     headerAutoHideSetting, createHeaderAutoHideController, applyHeaderVisibility,
-    createTapDisambiguator, consumeTopZoneEvent, chapterEndState,
+    createTapDisambiguator, consumeTopZoneEvent, chapterEndState, contextResultState,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
@@ -666,6 +670,12 @@
         body.append(item);
       }
     }
+    if (!result.statements.length && !result.earlier_mentions.length) {
+      const empty = document.createElement('p');
+      empty.className = 'context-empty';
+      empty.textContent = 'No earlier context available.';
+      body.append(empty);
+    }
     contextDismissal.open(openingPointer);
     $('contextOverlay').hidden = false;
     $('contextClose').focus({preventScroll: true});
@@ -686,7 +696,7 @@
       const result = await api('/api/context', {method: 'POST', body: JSON.stringify(payload)});
       if (!contextRequests.isCurrent(request) || renderedChapterId !== payload.chapter_id) return;
       if (pendingContextInteraction === interaction) pendingContextInteraction = null;
-      if (!result.available) {
+      if (contextResultState(result) === 'flash') {
         if (range && location.block.isConnected) flashRange(range, 'empty-context');
         return;
       }

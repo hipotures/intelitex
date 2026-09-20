@@ -49,15 +49,16 @@ class ReaderContext:
         self._book_data: dict | None = None
         self._canonical_blocks: set[tuple[str, str]] = set()
         self._block_orders: dict[str, int] = {}
+        self._block_chapters: dict[str, str] = {}
+        self._structural_blocks: set[str] = set()
         self._chapter_titles: dict[str, str] = {}
         self._verified_blocks: dict[str, dict[str, str]] = {}
+        self._lexicon_stamp: tuple[int, int] | None = None
+        self._lexicon_forms_by_token: dict[str, list[dict]] = {}
         self._memory_stamp: tuple[int, int] | None = None
         self._memory_data: dict = {"terms": [], "observations": []}
-        self._terms_by_form: dict[str, list[tuple[str, dict]]] = {}
+        self._terms_by_id: dict[str, dict] = {}
         self._observations_by_about: dict[str, list[dict]] = {}
-        self._entity_spans: dict[str, tuple[str, list[dict]]] = {}
-        self._term_mentions: dict[str, list[dict]] = {}
-        self._verified_prefix_loaded = False
 
     def _book(self) -> dict:
         if self._book_data is not None:
@@ -79,18 +80,53 @@ class ReaderContext:
             for block in chapter.get("blocks", []) if isinstance(block, dict)
             if isinstance(chapter.get("id"), str) and isinstance(block.get("id"), str)
         }
+        metadata = book.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        toc = metadata.get("toc", [])
+        if not isinstance(toc, list):
+            toc = []
+        navigation_files = {
+            item.get("file")
+            for item in toc
+            if isinstance(item, dict)
+            and normalized(item.get("label", "")) in {"contents", "table of contents", "navigation"}
+            and isinstance(item.get("file"), str)
+        }
+        navigation_files.update(
+            block.get("file")
+            for chapter in book["chapters"] if isinstance(chapter, dict)
+            for block in chapter.get("blocks", []) if isinstance(block, dict)
+            if isinstance(block.get("file"), str)
+            and any(isinstance(value, str) and value.casefold().startswith("toc_")
+                    for value in (block.get("classes") if isinstance(block.get("classes"), list) else []))
+        )
         serial = 0
         for chapter in book["chapters"]:
             chapter_id = chapter.get("id")
             if not isinstance(chapter_id, str):
                 continue
             self._chapter_titles[chapter_id] = chapter.get("title") or chapter_id
+            chapter_structural = (
+                normalized(chapter.get("title", "")) in {"contents", "table of contents", "navigation"}
+                or chapter.get("source_file") in navigation_files
+                or normalized(chapter.get("role", "")) in {"contents", "toc", "navigation"}
+            )
             for block in chapter.get("blocks", []):
                 if not isinstance(block, dict) or not isinstance(block.get("id"), str):
                     continue
                 serial += 1
+                block_id = block["id"]
                 order = block.get("order")
-                self._block_orders[block["id"]] = order if type(order) is int else serial
+                self._block_orders[block_id] = order if type(order) is int else serial
+                self._block_chapters[block_id] = chapter_id
+                classes = block.get("classes", [])
+                if not isinstance(classes, list):
+                    classes = []
+                if (chapter_structural or block.get("file") in navigation_files
+                        or any(isinstance(value, str) and value.casefold().startswith("toc_")
+                               for value in classes)):
+                    self._structural_blocks.add(block_id)
         for chunk in book["chunks"]:
             chapter_id = chunk.get("chapter_id")
             for piece in chunk.get("blocks", []):
@@ -101,16 +137,53 @@ class ReaderContext:
                     self._block_orders[piece["id"]] = self._block_orders[parent]
         return book
 
+    def _lexicon(self) -> dict[str, list[dict]]:
+        """Cache approved recognition forms without inspecting translated prose."""
+        path = self.root / "lexicon.approved.json"
+        if not path.is_file():
+            self._lexicon_stamp = None
+            self._lexicon_forms_by_token = {}
+            return self._lexicon_forms_by_token
+        stat = path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        if stamp == self._lexicon_stamp:
+            return self._lexicon_forms_by_token
+        data = read_json(path)
+        terms = data.get("terms") if isinstance(data, dict) else None
+        if not isinstance(terms, list):
+            raise PipelineError("lexicon.approved.json has no valid terms array.")
+        by_token: dict[str, list[dict]] = {}
+        seen: set[tuple[str, str]] = set()
+        for term in terms:
+            if not isinstance(term, dict) or not isinstance(term.get("id"), str):
+                continue
+            term_id = term["id"]
+            aliases = term.get("aliases", [])
+            if not isinstance(aliases, list):
+                aliases = []
+            for form in [term.get("source"), term.get("polish"), *aliases]:
+                if not isinstance(form, str):
+                    continue
+                form_key = normalized(form)
+                form_words = [normalized(match.group()) for match in _READER_WORDS.finditer(form)]
+                if not form_key or not form_words or (term_id, form_key) in seen:
+                    continue
+                seen.add((term_id, form_key))
+                candidate = {"term_id": term_id, "form": form_key, "words": form_words}
+                for token_index, token in enumerate(form_words):
+                    by_token.setdefault(token, []).append({**candidate, "token_index": token_index})
+        self._lexicon_forms_by_token = by_token
+        self._lexicon_stamp = stamp
+        return by_token
+
     def _memory(self) -> dict:
         """Cache the local P1 memory, refreshing only when its file changes."""
         path = self.root / "book_memory.json"
         if not path.is_file():
             self._memory_stamp = None
             self._memory_data = {"terms": [], "observations": []}
-            self._terms_by_form = {}
+            self._terms_by_id = {}
             self._observations_by_about = {}
-            self._entity_spans = {}
-            self._term_mentions = {}
             return {"terms": [], "observations": []}
         stat = path.stat()
         stamp = (stat.st_mtime_ns, stat.st_size)
@@ -123,17 +196,10 @@ class ReaderContext:
         if not isinstance(terms, list) or not isinstance(observations, list):
             raise PipelineError("book_memory.json has invalid terms or observations.")
         self._memory_data = {"terms": terms, "observations": observations}
-        self._terms_by_form = {}
-        for index, term in enumerate(terms):
-            if not isinstance(term, dict):
-                continue
-            identity = term.get("id") if isinstance(term.get("id"), str) else f"anonymous:{index}"
-            forms = [term.get("source")]
-            if term.get("approved") is True:
-                forms.append(term.get("choice"))
-            form_keys = {normalized(form) for form in forms if isinstance(form, str) and normalized(form)}
-            for form_key in form_keys:
-                self._terms_by_form.setdefault(form_key, []).append((identity, term))
+        self._terms_by_id = {
+            term["id"]: term for term in terms
+            if isinstance(term, dict) and isinstance(term.get("id"), str)
+        }
         self._observations_by_about = {}
         for observation in observations:
             if not isinstance(observation, dict) or not isinstance(observation.get("about"), list):
@@ -142,77 +208,57 @@ class ReaderContext:
                           if isinstance(value, str) and normalized(value)}
             for about_key in about_keys:
                 self._observations_by_about.setdefault(about_key, []).append(observation)
-        self._entity_spans = {}
-        self._term_mentions = {}
         self._memory_stamp = stamp
         return self._memory_data
 
-    def _index_verified_block(self, block_id: str, text: str) -> None:
-        """Index exact safe term forms in one already checkpoint-verified P5 block."""
+    def _resolve_entity(self, text: str, position: int) -> tuple[dict, str] | None:
+        """Resolve the longest approved form covering one position in one P5 block."""
         words = list(_READER_WORDS.finditer(text))
-        spans: list[dict] = []
-        for form_key, records in self._terms_by_form.items():
-            form_words = list(_READER_WORDS.finditer(form_key))
-            width = len(form_words)
-            if not width:
-                continue
-            first = normalized(form_words[0].group())
-            for index in range(len(words) - width + 1):
-                if normalized(words[index].group()) != first:
-                    continue
-                start, end = words[index].start(), words[index + width - 1].end()
-                if normalized(text[start:end]) != form_key:
-                    continue
-                span = {"start": start, "end": end, "records": records}
-                spans.append(span)
-                identities = {identity for identity, _term in records}
-                for identity in (identities if len(identities) == 1 else ()):
-                    self._term_mentions.setdefault(identity, []).append({
-                        "block_id": block_id, "start": start, "end": end,
-                    })
-        spans.sort(key=lambda span: (span["start"], -(span["end"] - span["start"])))
-        self._entity_spans[block_id] = (text, spans)
-
-    def _ensure_entity_index(self) -> None:
-        """Keep term spans synchronized with cached verified prose and memory."""
-        if any(self._entity_spans.get(block_id, (None,))[0] != item["text"]
-               for block_id, item in self._verified_blocks.items()
-               if block_id in self._entity_spans):
-            self._entity_spans = {}
-            self._term_mentions = {}
-        for block_id, item in self._verified_blocks.items():
-            if block_id not in self._entity_spans:
-                self._index_verified_block(block_id, item["text"])
-
-    def _entity_at(self, block_id: str, position: int) -> tuple[dict, str, dict] | None:
-        text, spans = self._entity_spans.get(block_id, ("", []))
-        covering = [span for span in spans if span["start"] <= position < span["end"]]
-        if not covering:
+        touched_index = next((index for index, word in enumerate(words)
+                              if word.start() <= position < word.end()), None)
+        if touched_index is None:
             return None
-        longest = max(span["end"] - span["start"] for span in covering)
-        candidates = [span for span in covering if span["end"] - span["start"] == longest]
+        touched = normalized(words[touched_index].group())
+        spans: list[dict] = []
+        seen: set[tuple[int, int, str]] = set()
+        for candidate in self._lexicon().get(touched, []):
+            start_index = touched_index - candidate["token_index"]
+            end_index = start_index + len(candidate["words"])
+            if start_index < 0 or end_index > len(words):
+                continue
+            start, end = words[start_index].start(), words[end_index - 1].end()
+            key = (start, end, candidate["term_id"])
+            if key in seen or normalized(text[start:end]) != candidate["form"]:
+                continue
+            seen.add(key)
+            spans.append({"start": start, "end": end, "term_id": candidate["term_id"]})
+        if not spans:
+            return None
+        longest = max(span["end"] - span["start"] for span in spans)
+        candidates = [span for span in spans if span["end"] - span["start"] == longest]
         coordinates = {(span["start"], span["end"]) for span in candidates}
         if len(coordinates) != 1:
             return None
-        span = candidates[0]
-        records = {identity: term for identity, term in span["records"]}
-        if len(records) != 1:
+        identities = {span["term_id"] for span in candidates}
+        if len(identities) != 1:
             return None
-        identity, term = next(iter(records.items()))
-        return span, identity, term
+        return candidates[0], next(iter(identities))
 
     def _evidence_before(self, evidence: object, cutoff: int) -> bool:
         return (
             isinstance(evidence, list)
             and bool(evidence)
-            and all(isinstance(block_id, str) and self._block_orders.get(block_id, cutoff) < cutoff
+            and all(isinstance(block_id, str)
+                    and block_id not in self._structural_blocks
+                    and self._block_orders.get(block_id, cutoff) < cutoff
                     for block_id in evidence)
         )
 
     @staticmethod
-    def _short_excerpt(text: str, phrase: str, limit: int = 180) -> str:
+    def _short_excerpt(text: str, phrase: str = "", limit: int = 180) -> str:
         compact = re.sub(r"\s+", " ", text).strip()
-        match = re.search(r"(?<!\w)" + re.escape(phrase.strip()) + r"(?!\w)", compact, re.IGNORECASE)
+        match = (re.search(r"(?<!\w)" + re.escape(phrase.strip()) + r"(?!\w)", compact, re.IGNORECASE)
+                 if phrase.strip() else None)
         if not match or len(compact) <= limit:
             return compact[:limit]
         half = max(24, (limit - len(match.group(0))) // 2)
@@ -235,19 +281,17 @@ class ReaderContext:
         cutoff = self._block_orders.get(block_id)
         if cutoff is None or (chapter_id, block_id) not in self._canonical_blocks:
             raise PipelineError(f"Unknown canonical block {block_id} in chapter {chapter_id}.")
-        if not self._verified_prefix_loaded:
-            self.progress()
         text = self.block_text(chapter_id, block_id)
         if not 0 <= position < len(text):
             raise PipelineError("Context position is outside the translated block.")
 
-        self._memory()
-        self._ensure_entity_index()
-        resolved = self._entity_at(block_id, position)
+        resolved = self._resolve_entity(text, position)
         if resolved is None:
-            return {"available": False}
-        span, identity, term = resolved
+            return {"recognized": False}
+        span, identity = resolved
         selected = text[span["start"]:span["end"]]
+        self._memory()
+        term = self._terms_by_id.get(identity, {})
 
         statements: list[str] = []
         for note in term.get("meanings", []):
@@ -269,32 +313,34 @@ class ReaderContext:
 
         statements = list(dict.fromkeys(statements))[:4]
         earlier_mentions = []
-        mentions = sorted(self._term_mentions.get(identity, []), key=lambda item: (
-            self._block_orders.get(item["block_id"], cutoff), item["start"], item["end"]
-        ))
+        evidence_ids = []
+        for item in term.get("evidence", []):
+            block = item.get("block_id") if isinstance(item, dict) else item
+            if isinstance(block, str):
+                evidence_ids.append(block)
+        evidence_ids.sort(key=lambda item: self._block_orders.get(item, cutoff))
         seen_blocks: set[str] = set()
-        for mention in mentions:
-            previous_id = mention["block_id"]
+        for previous_id in evidence_ids:
             order = self._block_orders.get(previous_id)
-            if order is None or order >= cutoff or previous_id in seen_blocks:
+            if (order is None or order >= cutoff or previous_id in seen_blocks
+                    or previous_id in self._structural_blocks):
                 continue
-            item = self._verified_blocks[previous_id]
-            previous_text = item["text"]
-            phrase = previous_text[mention["start"]:mention["end"]]
+            previous_chapter = self._block_chapters.get(previous_id)
+            if previous_chapter is None:
+                continue
+            previous_text = self.block_text(previous_chapter, previous_id)
             earlier_mentions.append({
-                "chapter_id": item["chapter_id"],
-                "chapter_title": self._chapter_titles.get(item["chapter_id"], item["chapter_id"]),
+                "chapter_id": previous_chapter,
+                "chapter_title": self._chapter_titles.get(previous_chapter, previous_chapter),
                 "block_id": previous_id,
-                "text": self._short_excerpt(previous_text, phrase),
+                "text": self._short_excerpt(previous_text),
             })
             seen_blocks.add(previous_id)
             if len(earlier_mentions) == 3:
                 break
 
-        if not statements and not earlier_mentions:
-            return {"available": False}
         return {
-            "available": True,
+            "recognized": True,
             "title": selected,
             "statements": statements,
             "earlier_mentions": earlier_mentions,
@@ -341,7 +387,6 @@ class ReaderContext:
                 last_chapter = {"id": chapter["id"], "title": chapter["title"]}
             if "unavailable" in chapter:
                 break
-        self._verified_prefix_loaded = True
         return {"total_words": total_words, "last_chapter": last_chapter, "chapters": chapters}
 
     @staticmethod
@@ -475,11 +520,12 @@ class ReaderContext:
             result["warning"] = "This chapter includes checkpoint-verified P5 text from stale translation units."
         for block in blocks:
             self._verified_blocks[block["id"]] = {"chapter_id": chapter_id, "text": block["text"]}
-        self._memory()
-        self._ensure_entity_index()
         return result
 
     def block_text(self, chapter_id: str, block_id: str) -> str:
+        cached = self._verified_blocks.get(block_id)
+        if cached is not None and cached["chapter_id"] == chapter_id:
+            return cached["text"]
         chapter = self.chapter(chapter_id)
         block = next((item for item in chapter["blocks"] if item["id"] == block_id), None)
         if block is None:

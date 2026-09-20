@@ -123,39 +123,66 @@ def make_context_project(tmp_path):
     root, paths = make_reader_project(tmp_path)
     atomic_json(paths[0], {"translations": [{
         "id": "B0000001",
-        "text": "Drugi pojawił się wcześniej. Dział Bezpieczeństwa Pozasłonecznego Connexion działał wcześniej. Statek wrócił.",
+        "text": "Yuri pojawił się wcześniej. Działu Bezpieczeństwa Pozasłonecznego Connexion używano wcześniej. Statek wrócił.",
     }]})
     atomic_json(paths[1], {"translations": [{
         "id": "B0000002",
-        "text": "Drugi polski akapit. Dział Bezpieczeństwa Pozasłonecznego Connexion odpowiedział. Statek wrócił. Wspólna Nazwa milczała.",
+        "text": "Yuri Alster, Callum Hepburn i Alik Monday. Dział Bezpieczeństwa Pozasłonecznego Connexion odpowiedział. Olyix przybył. Statek wrócił. Wspólna Nazwa milczała.",
     }]})
     book = read_json(root / "book.json")
+    toc = {
+        "id": "B0000000", "kind": "paragraph", "text": "Yuri — Contents.", "order": 0,
+        "classes": ["toc_chap"], "file": "OEBPS/book_toc.xhtml",
+    }
+    toc_chunk = {
+        "id": "ch0001_c0000", "chapter_id": "ch0001", "number": 0,
+        "blocks": [{**toc, "parent_id": toc["id"]}],
+    }
     future = {"id": "B0000003", "kind": "p", "text": "English future.", "order": 3}
     future_chunk = {
         "id": "ch0001_c0003", "chapter_id": "ch0001", "number": 3,
         "blocks": [{**future, "parent_id": future["id"]}],
     }
+    book["chapters"][0]["blocks"].insert(0, toc)
     book["chapters"][0]["blocks"].append(future)
+    book["chapters"][0]["chunk_ids"].insert(0, toc_chunk["id"])
     book["chapters"][0]["chunk_ids"].append(future_chunk["id"])
+    book["chunks"].insert(0, toc_chunk)
     book["chunks"].append(future_chunk)
     atomic_json(root / "book.json", book)
     store = Store(root)
+    toc_path = root / "artifacts" / "pass5" / toc_chunk["id"] / "result.json"
+    atomic_json(toc_path, {"translations": [{"id": toc["id"], "text": "Yuri — Contents."}]})
+    store.register_chunks(book)
+    store.save_job("pass5/ch0001_c0000", "fingerprint-0", toc_path, {})
+    store.finish_chunk(toc_chunk["id"], str(toc_path.relative_to(root)), [], "lexical")
     store.save_job("pass5/ch0001_c0001", "fingerprint-1", paths[0], {})
     store.save_job("pass5/ch0001_c0002", "fingerprint-2", paths[1], {})
-    store.register_chunks(book)
     store.close()
+    atomic_json(root / "lexicon.approved.json", {"terms": [
+        {"id": "T000005", "source": "Yuri", "aliases": ["Yuri Alster", "Mr. Alster"], "polish": "Yuri"},
+        {"id": "T000030", "source": "Connexion Exosolar Security Division",
+         "aliases": ["Exosolar Security"], "polish": "Dział Bezpieczeństwa Pozasłonecznego Connexion"},
+        {"id": "T000031", "source": "Extrasolar Security", "aliases": [],
+         "polish": "Bezpieczeństwa Pozasłonecznego"},
+        {"id": "T000049", "source": "Olyix", "aliases": [], "polish": "Olyix"},
+        {"id": "T000040", "source": "Shared One", "aliases": [], "polish": "Wspólna Nazwa"},
+        {"id": "T000041", "source": "Shared Two", "aliases": [], "polish": "Wspólna Nazwa"},
+    ]})
     atomic_json(root / "book_memory.json", {
         "format_version": 1,
         "terms": [
             {
-                "id": "T000001", "source": "Second", "aliases": ["Later identity"],
-                "category": "other", "choice": "Drugi", "approved": True,
+                "id": "T000005", "source": "Yuri", "aliases": ["Yuri Alster"],
+                "category": "name", "choice": "Yuri", "approved": True,
                 "evidence": [
+                    {"block_id": "B0000000", "chapter_id": "ch0001", "order": 0},
                     {"block_id": "B0000001", "chapter_id": "ch0001", "order": 1},
                     {"block_id": "B0000002", "chapter_id": "ch0001", "order": 2},
                     {"block_id": "B0000003", "chapter_id": "ch0001", "order": 3},
                 ],
                 "meanings": [
+                    {"text": "Contents-only garbage.", "confidence": "high", "evidence": ["B0000000"]},
                     {"text": "Known before the selection.", "confidence": "high", "evidence": ["B0000001"]},
                     {"text": "Learned in the current block.", "confidence": "high", "evidence": ["B0000002"]},
                     {"text": "Learned in the future.", "confidence": "high", "evidence": ["B0000003"]},
@@ -164,36 +191,47 @@ def make_context_project(tmp_path):
                 "candidates": [],
             },
             {
-                "id": "T000002", "source": "Connexion Extrasolar Security Department", "aliases": [],
+                "id": "T000030", "source": "Connexion Exosolar Security Division", "aliases": ["Exosolar Security"],
                 "category": "organization", "choice": "Dział Bezpieczeństwa Pozasłonecznego Connexion",
-                "approved": True, "evidence": [], "candidates": [],
+                "approved": True,
+                "evidence": [{"block_id": "B0000001", "chapter_id": "ch0001", "order": 1}],
+                "candidates": [],
                 "meanings": [{"text": "Known organization.", "confidence": "high", "evidence": ["B0000001"]}],
             },
             {
-                "id": "T000003", "source": "Extrasolar Security", "aliases": [],
+                "id": "T000031", "source": "Extrasolar Security", "aliases": [],
                 "category": "organization", "choice": "Bezpieczeństwa Pozasłonecznego",
                 "approved": True, "evidence": [], "candidates": [],
                 "meanings": [{"text": "Short overlapping record.", "confidence": "high", "evidence": ["B0000001"]}],
             },
             {
-                "id": "T000004", "source": "Shared One", "aliases": [], "category": "name",
+                "id": "T000049", "source": "Olyix", "aliases": [], "category": "people",
+                "choice": "Olyix", "approved": True,
+                "evidence": [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}],
+                "candidates": [],
+                "meanings": [{"text": "Current Olyix knowledge.", "confidence": "high", "evidence": ["B0000002"]}],
+            },
+            {
+                "id": "T000040", "source": "Shared One", "aliases": [], "category": "name",
                 "choice": "Wspólna Nazwa", "approved": True, "evidence": [], "candidates": [], "meanings": [],
             },
             {
-                "id": "T000005", "source": "Shared Two", "aliases": [], "category": "name",
+                "id": "T000041", "source": "Shared Two", "aliases": [], "category": "name",
                 "choice": "Wspólna Nazwa", "approved": True, "evidence": [], "candidates": [], "meanings": [],
             },
         ],
         "observations": [
-            {"about": ["Second"], "kind": "continuity", "statement": "Earlier observation.",
+            {"about": ["Yuri"], "kind": "reference", "statement": "Contents observation.",
+             "confidence": "high", "evidence": ["B0000000"], "available_from_order": 0},
+            {"about": ["Yuri"], "kind": "continuity", "statement": "Earlier observation.",
              "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
-            {"about": ["Second"], "kind": "continuity", "statement": "Current observation.",
+            {"about": ["Yuri"], "kind": "continuity", "statement": "Current observation.",
              "confidence": "high", "evidence": ["B0000002"], "available_from_order": 2},
-            {"about": ["Second"], "kind": "continuity", "statement": "Future observation.",
+            {"about": ["Yuri"], "kind": "continuity", "statement": "Future observation.",
              "confidence": "high", "evidence": ["B0000003"], "available_from_order": 3},
-            {"about": ["Second"], "kind": "continuity", "statement": "Mislabelled future observation.",
+            {"about": ["Yuri"], "kind": "continuity", "statement": "Mislabelled future observation.",
              "confidence": "high", "evidence": ["B0000003"], "available_from_order": 1},
-            {"about": ["Later identity"], "kind": "reference", "statement": "Future alias relationship.",
+            {"about": ["Yuri Alster"], "kind": "reference", "statement": "Future alias relationship.",
              "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
         ],
     })
@@ -203,35 +241,44 @@ def make_context_project(tmp_path):
 def test_context_helper_returns_only_complete_pre_cutoff_evidence(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
-    context.progress()
-    result = context.context("ch0001", "B0000002", 2)
+    text = context.block_text("ch0001", "B0000002")
+    result = context.context("ch0001", "B0000002", text.index("Alster") + 2)
     assert result == {
-        "available": True,
-        "title": "Drugi",
+        "recognized": True,
+        "title": "Yuri Alster",
         "statements": ["Known before the selection.", "Earlier observation."],
         "earlier_mentions": [{
             "chapter_id": "ch0001", "chapter_title": "Rozdział Łódź",
             "block_id": "B0000001",
-            "text": "Drugi pojawił się wcześniej. Dział Bezpieczeństwa Pozasłonecznego Connexion działał wcześniej. Statek wrócił.",
+            "text": "Yuri pojawił się wcześniej. Działu Bezpieczeństwa Pozasłonecznego Connexion używano wcześniej. Statek wrócił.",
         }],
-        "range": {"start": 0, "end": 5},
+        "range": {"start": 0, "end": 11},
     }
-    assert not any("current" in statement.lower() or "future" in statement.lower()
+    assert not any("contents" in statement.lower() or "current" in statement.lower() or "future" in statement.lower()
                    for statement in result["statements"])
 
 
-def test_context_helper_rejects_arbitrary_common_word_despite_earlier_occurrence(tmp_path):
+def test_context_helper_resolves_both_words_of_visible_alias_but_not_future_long_name(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
-    context.progress()
     text = context.block_text("ch0001", "B0000002")
-    assert context.context("ch0001", "B0000002", text.index("Statek") + 2) == {"available": False}
+    for word in ("Yuri", "Alster"):
+        result = context.context("ch0001", "B0000002", text.index(word) + 1)
+        assert result["recognized"] is True
+        assert result["title"] == "Yuri Alster"
+        assert result["range"] == {"start": 0, "end": 11}
+
+    earlier = context.block_text("ch0001", "B0000001")
+    result = context.context("ch0001", "B0000001", earlier.index("Yuri") + 1)
+    assert result == {
+        "recognized": True, "title": "Yuri", "statements": [], "earlier_mentions": [],
+        "range": {"start": 0, "end": 4},
+    }
 
 
 def test_context_helper_resolves_every_word_of_a_multiword_entity_and_prefers_longest(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
-    context.progress()
     text = context.block_text("ch0001", "B0000002")
     phrase = "Dział Bezpieczeństwa Pozasłonecznego Connexion"
     expected_range = {"start": text.index(phrase), "end": text.index(phrase) + len(phrase)}
@@ -243,21 +290,43 @@ def test_context_helper_resolves_every_word_of_a_multiword_entity_and_prefers_lo
         assert "Short overlapping record." not in result["statements"]
 
 
+def test_context_helper_recognizes_known_entities_without_prior_context(tmp_path):
+    root = make_context_project(tmp_path)
+    memory = read_json(root / "book_memory.json")
+    organization = next(term for term in memory["terms"] if term["id"] == "T000030")
+    organization["evidence"] = [{"block_id": "B0000002", "chapter_id": "ch0001", "order": 2}]
+    organization["meanings"][0]["evidence"] = ["B0000002"]
+    atomic_json(root / "book_memory.json", memory)
+    context = ReaderContext(root)
+    text = context.block_text("ch0001", "B0000002")
+    for term in ("Dział", "Olyix"):
+        result = context.context("ch0001", "B0000002", text.index(term) + 1)
+        assert result["recognized"] is True
+        assert result["statements"] == []
+        assert result["earlier_mentions"] == []
+
+
+def test_context_helper_rejects_arbitrary_common_word_despite_earlier_occurrence(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    text = context.block_text("ch0001", "B0000002")
+    assert context.context("ch0001", "B0000002", text.index("Statek") + 2) == {"recognized": False}
+
+
 def test_context_helper_rejects_ambiguous_identical_entity_span(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
     text = context.block_text("ch0001", "B0000002")
-    assert context.context("ch0001", "B0000002", text.index("Wspólna") + 1) == {"available": False}
+    assert context.context("ch0001", "B0000002", text.index("Wspólna") + 1) == {"recognized": False}
 
 
-def test_context_helper_returns_mentions_only_after_entity_resolution(tmp_path):
+def test_context_helper_uses_evidence_mentions_despite_polish_inflection(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
-    context.progress()
     text = context.block_text("ch0001", "B0000002")
     known = context.context("ch0001", "B0000002", text.index("Connexion"))
     assert [mention["block_id"] for mention in known["earlier_mentions"]] == ["B0000001"]
-    assert context.context("ch0001", "B0000002", text.index("Statek")) == {"available": False}
+    assert "Działu Bezpieczeństwa" in known["earlier_mentions"][0]["text"]
 
 
 def test_context_helper_rejects_invalid_position_and_never_calls_a_model(tmp_path, monkeypatch):
@@ -266,9 +335,20 @@ def test_context_helper_rejects_invalid_position_and_never_calls_a_model(tmp_pat
     root = make_context_project(tmp_path)
     monkeypatch.setattr(Client, "generate", lambda *args, **kwargs: pytest.fail("Context Helper called a model"))
     context = ReaderContext(root)
-    assert context.context("ch0001", "B0000002", 2)["available"] is True
+    assert context.context("ch0001", "B0000002", 2)["recognized"] is True
     with pytest.raises(PipelineError, match="outside"):
         context.context("ch0001", "B0000002", 999)
+
+
+def test_reader_startup_and_chapter_loading_do_not_match_entities(tmp_path, monkeypatch):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    monkeypatch.setattr(context, "_lexicon", lambda: pytest.fail("entity catalog loaded at startup"))
+    context.metadata()
+    context.progress()
+    context.chapter("ch0001")
+    assert context._lexicon_stamp is None
+    assert context._memory_stamp is None
 
 
 def test_reader_labels_checkpointed_stale_translation(tmp_path):
@@ -507,7 +587,7 @@ def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
             context = client.post("/api/context", json={
                 "chapter_id": "ch0001", "block_id": "B0000001", "position": 2,
             })
-            assert context.status_code == 200 and context.json() == {"available": False}
+            assert context.status_code == 200 and context.json() == {"recognized": False}
             invalid_context = client.post("/api/context", json={
                 "chapter_id": "ch0001", "block_id": "B0000001", "position": 999,
             })

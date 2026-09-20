@@ -312,17 +312,21 @@ while a double tap within 300 ms reveals the header without first opening progre
 The end of each readable chapter links to the next chapter in the currently
 available translated prefix, or reports the end of the available translation.
 
-The read-only Context Helper uses `book_memory.json`, canonical block order, P1
-evidence, and previously checksum-verified P5 text. A gesture supplies a position;
-the backend resolves the longest exact normalized span belonging to a known source
-form or approved Polish choice. Ordinary prose never creates context merely because
-it occurred earlier, and ambiguous records return no context. Earlier mentions are
-looked up only after a concrete term record is resolved. At canonical block order
-`N`, a meaning or observation is eligible only when every cited evidence block has
-order `< N` (and an observation's `available_from_order` is also `< N`). Current-block
-and later evidence, aliases, and ambiguous identity links are excluded. The helper
-does not call a model, change marker data, or modify translation artifacts or pipeline
-state. Marker classification, prose review, and correction remain future work.
+The read-only Context Helper recognizes entities from `lexicon.approved.json` and
+then joins the resolved term ID to contextual knowledge in `book_memory.json`. A
+gesture supplies a position in one checkpoint-verified P5 block; only that block is
+checked for the longest exact normalized approved source, Polish, or visibly present
+alias form. Ordinary prose and ambiguous records are not recognized. A recognized
+entity still opens the card when no earlier context exists. Earlier mentions come
+only from that term's evidence block IDs, so Polish inflection does not require a
+whole-book prose search. At canonical block order `N`, meanings and observations are
+eligible only when every cited non-structural evidence block has order `< N` (and an
+observation's `available_from_order` is also `< N`). Contents/navigation blocks,
+current-block evidence, later evidence, and future identity inference are excluded.
+Normal Reader startup and chapter loading do not build entity occurrence indexes.
+The helper does not call a model, change marker data, or modify translation artifacts
+or pipeline state. Marker classification, prose review, and correction remain future
+work.
 
 ### Pass 1 lexical-grounding recovery / v1.5
 
