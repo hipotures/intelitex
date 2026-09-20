@@ -121,7 +121,14 @@ def test_reader_progress_counts_only_the_contiguous_available_prefix(tmp_path):
 
 def make_context_project(tmp_path):
     root, paths = make_reader_project(tmp_path)
-    atomic_json(paths[0], {"translations": [{"id": "B0000001", "text": "Drugi pojawił się wcześniej."}]})
+    atomic_json(paths[0], {"translations": [{
+        "id": "B0000001",
+        "text": "Drugi pojawił się wcześniej. Dział Bezpieczeństwa Pozasłonecznego Connexion działał wcześniej. Statek wrócił.",
+    }]})
+    atomic_json(paths[1], {"translations": [{
+        "id": "B0000002",
+        "text": "Drugi polski akapit. Dział Bezpieczeństwa Pozasłonecznego Connexion odpowiedział. Statek wrócił. Wspólna Nazwa milczała.",
+    }]})
     book = read_json(root / "book.json")
     future = {"id": "B0000003", "kind": "p", "text": "English future.", "order": 3}
     future_chunk = {
@@ -134,26 +141,49 @@ def make_context_project(tmp_path):
     atomic_json(root / "book.json", book)
     store = Store(root)
     store.save_job("pass5/ch0001_c0001", "fingerprint-1", paths[0], {})
+    store.save_job("pass5/ch0001_c0002", "fingerprint-2", paths[1], {})
     store.register_chunks(book)
     store.close()
     atomic_json(root / "book_memory.json", {
         "format_version": 1,
-        "terms": [{
-            "id": "T000001", "source": "Second", "aliases": ["Later identity"],
-            "category": "other", "choice": "Drugi", "approved": True,
-            "evidence": [
-                {"block_id": "B0000001", "chapter_id": "ch0001", "order": 1},
-                {"block_id": "B0000002", "chapter_id": "ch0001", "order": 2},
-                {"block_id": "B0000003", "chapter_id": "ch0001", "order": 3},
-            ],
-            "meanings": [
-                {"text": "Known before the selection.", "confidence": "high", "evidence": ["B0000001"]},
-                {"text": "Learned in the current block.", "confidence": "high", "evidence": ["B0000002"]},
-                {"text": "Learned in the future.", "confidence": "high", "evidence": ["B0000003"]},
-                {"text": "Needs early and future evidence.", "confidence": "high", "evidence": ["B0000001", "B0000003"]},
-            ],
-            "candidates": [],
-        }],
+        "terms": [
+            {
+                "id": "T000001", "source": "Second", "aliases": ["Later identity"],
+                "category": "other", "choice": "Drugi", "approved": True,
+                "evidence": [
+                    {"block_id": "B0000001", "chapter_id": "ch0001", "order": 1},
+                    {"block_id": "B0000002", "chapter_id": "ch0001", "order": 2},
+                    {"block_id": "B0000003", "chapter_id": "ch0001", "order": 3},
+                ],
+                "meanings": [
+                    {"text": "Known before the selection.", "confidence": "high", "evidence": ["B0000001"]},
+                    {"text": "Learned in the current block.", "confidence": "high", "evidence": ["B0000002"]},
+                    {"text": "Learned in the future.", "confidence": "high", "evidence": ["B0000003"]},
+                    {"text": "Needs early and future evidence.", "confidence": "high", "evidence": ["B0000001", "B0000003"]},
+                ],
+                "candidates": [],
+            },
+            {
+                "id": "T000002", "source": "Connexion Extrasolar Security Department", "aliases": [],
+                "category": "organization", "choice": "Dział Bezpieczeństwa Pozasłonecznego Connexion",
+                "approved": True, "evidence": [], "candidates": [],
+                "meanings": [{"text": "Known organization.", "confidence": "high", "evidence": ["B0000001"]}],
+            },
+            {
+                "id": "T000003", "source": "Extrasolar Security", "aliases": [],
+                "category": "organization", "choice": "Bezpieczeństwa Pozasłonecznego",
+                "approved": True, "evidence": [], "candidates": [],
+                "meanings": [{"text": "Short overlapping record.", "confidence": "high", "evidence": ["B0000001"]}],
+            },
+            {
+                "id": "T000004", "source": "Shared One", "aliases": [], "category": "name",
+                "choice": "Wspólna Nazwa", "approved": True, "evidence": [], "candidates": [], "meanings": [],
+            },
+            {
+                "id": "T000005", "source": "Shared Two", "aliases": [], "category": "name",
+                "choice": "Wspólna Nazwa", "approved": True, "evidence": [], "candidates": [], "meanings": [],
+            },
+        ],
         "observations": [
             {"about": ["Second"], "kind": "continuity", "statement": "Earlier observation.",
              "confidence": "high", "evidence": ["B0000001"], "available_from_order": 1},
@@ -174,36 +204,71 @@ def test_context_helper_returns_only_complete_pre_cutoff_evidence(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
     context.progress()
-    result = context.context("ch0001", "B0000002", 0, 5, "Drugi")
+    result = context.context("ch0001", "B0000002", 2)
     assert result == {
         "available": True,
         "title": "Drugi",
         "statements": ["Known before the selection.", "Earlier observation."],
         "earlier_mentions": [{
             "chapter_id": "ch0001", "chapter_title": "Rozdział Łódź",
-            "block_id": "B0000001", "text": "Drugi pojawił się wcześniej.",
+            "block_id": "B0000001",
+            "text": "Drugi pojawił się wcześniej. Dział Bezpieczeństwa Pozasłonecznego Connexion działał wcześniej. Statek wrócił.",
         }],
+        "range": {"start": 0, "end": 5},
     }
     assert not any("current" in statement.lower() or "future" in statement.lower()
                    for statement in result["statements"])
 
 
-def test_context_helper_returns_unavailable_without_earlier_safe_knowledge(tmp_path):
+def test_context_helper_rejects_arbitrary_common_word_despite_earlier_occurrence(tmp_path):
     root = make_context_project(tmp_path)
     context = ReaderContext(root)
     context.progress()
-    assert context.context("ch0001", "B0000002", 6, 12, "polski") == {"available": False}
+    text = context.block_text("ch0001", "B0000002")
+    assert context.context("ch0001", "B0000002", text.index("Statek") + 2) == {"available": False}
 
 
-def test_context_helper_rejects_stale_selection_and_never_calls_a_model(tmp_path, monkeypatch):
+def test_context_helper_resolves_every_word_of_a_multiword_entity_and_prefers_longest(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    context.progress()
+    text = context.block_text("ch0001", "B0000002")
+    phrase = "Dział Bezpieczeństwa Pozasłonecznego Connexion"
+    expected_range = {"start": text.index(phrase), "end": text.index(phrase) + len(phrase)}
+    for word in phrase.split():
+        result = context.context("ch0001", "B0000002", text.index(word, expected_range["start"]) + 1)
+        assert result["title"] == phrase
+        assert result["range"] == expected_range
+        assert result["statements"] == ["Known organization."]
+        assert "Short overlapping record." not in result["statements"]
+
+
+def test_context_helper_rejects_ambiguous_identical_entity_span(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    text = context.block_text("ch0001", "B0000002")
+    assert context.context("ch0001", "B0000002", text.index("Wspólna") + 1) == {"available": False}
+
+
+def test_context_helper_returns_mentions_only_after_entity_resolution(tmp_path):
+    root = make_context_project(tmp_path)
+    context = ReaderContext(root)
+    context.progress()
+    text = context.block_text("ch0001", "B0000002")
+    known = context.context("ch0001", "B0000002", text.index("Connexion"))
+    assert [mention["block_id"] for mention in known["earlier_mentions"]] == ["B0000001"]
+    assert context.context("ch0001", "B0000002", text.index("Statek")) == {"available": False}
+
+
+def test_context_helper_rejects_invalid_position_and_never_calls_a_model(tmp_path, monkeypatch):
     from bookpipe.client import Client
 
     root = make_context_project(tmp_path)
     monkeypatch.setattr(Client, "generate", lambda *args, **kwargs: pytest.fail("Context Helper called a model"))
     context = ReaderContext(root)
-    assert context.context("ch0001", "B0000002", 0, 5, "Drugi")["available"] is True
-    with pytest.raises(PipelineError, match="no longer matches"):
-        context.context("ch0001", "B0000002", 0, 5, "Inny")
+    assert context.context("ch0001", "B0000002", 2)["available"] is True
+    with pytest.raises(PipelineError, match="outside"):
+        context.context("ch0001", "B0000002", 999)
 
 
 def test_reader_labels_checkpointed_stale_translation(tmp_path):
@@ -440,13 +505,13 @@ def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
             assert chapter.status_code == 200
             assert chapter.json()["blocks"][0]["id"] == "B0000001"
             context = client.post("/api/context", json={
-                "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6, "text": "Zażółć",
+                "chapter_id": "ch0001", "block_id": "B0000001", "position": 2,
             })
             assert context.status_code == 200 and context.json() == {"available": False}
-            stale_context = client.post("/api/context", json={
-                "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6, "text": "Changed",
+            invalid_context = client.post("/api/context", json={
+                "chapter_id": "ch0001", "block_id": "B0000001", "position": 999,
             })
-            assert stale_context.status_code == 400 and "no longer matches" in stale_context.json()["error"]
+            assert invalid_context.status_code == 400 and "outside" in invalid_context.json()["error"]
             payload = {
                 "chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6,
                 "text": "Zażółć", "revision": metadata["marker_state"]["_revision"],

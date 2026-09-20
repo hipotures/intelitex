@@ -313,13 +313,16 @@ The end of each readable chapter links to the next chapter in the currently
 available translated prefix, or reports the end of the available translation.
 
 The read-only Context Helper uses `book_memory.json`, canonical block order, P1
-evidence, and previously checksum-verified P5 text. It matches only exact normalized
-source forms or approved Polish choices. At canonical block order `N`, a meaning or
-observation is eligible only when every cited evidence block has order `< N` (and an
-observation's `available_from_order` is also `< N`). Current-block and later evidence,
-aliases, and ambiguous identity links are excluded. The helper does not call a model,
-change marker data, or modify translation artifacts or pipeline state. Marker
-classification, prose review, and correction remain future work.
+evidence, and previously checksum-verified P5 text. A gesture supplies a position;
+the backend resolves the longest exact normalized span belonging to a known source
+form or approved Polish choice. Ordinary prose never creates context merely because
+it occurred earlier, and ambiguous records return no context. Earlier mentions are
+looked up only after a concrete term record is resolved. At canonical block order
+`N`, a meaning or observation is eligible only when every cited evidence block has
+order `< N` (and an observation's `available_from_order` is also `< N`). Current-block
+and later evidence, aliases, and ambiguous identity links are excluded. The helper
+does not call a model, change marker data, or modify translation artifacts or pipeline
+state. Marker classification, prose review, and correction remain future work.
 
 ### Pass 1 lexical-grounding recovery / v1.5
 

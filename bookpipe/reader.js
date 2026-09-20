@@ -607,7 +607,8 @@
     if (!first || !second || first.block !== second.block) return null;
     const text = blockPlainText(first.block);
     const snapped = snapWordRange(text, first.offset, second.offset, segmenter);
-    return snapped ? {block: first.block, text, ...snapped} : null;
+    const position = snapped ? Math.max(snapped.start, Math.min(snapped.end - 1, first.offset)) : null;
+    return snapped ? {block: first.block, text, position, ...snapped} : null;
   }
 
   function flashRange(range, kind = 'marker') {
@@ -679,9 +680,7 @@
     const payload = {
       chapter_id: renderedChapterId,
       block_id: location.block.dataset.blockId,
-      start: location.start,
-      end: location.end,
-      text: Array.from(location.text).slice(location.start, location.end).join(''),
+      position: location.position,
     };
     try {
       const result = await api('/api/context', {method: 'POST', body: JSON.stringify(payload)});

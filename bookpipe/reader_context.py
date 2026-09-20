@@ -6,7 +6,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .util import PipelineError, digest, inside, normalized, occurs, read_json
+from .util import PipelineError, digest, inside, normalized, read_json
 
 
 _INLINE_FORMATTING = re.compile(
@@ -51,11 +51,13 @@ class ReaderContext:
         self._block_orders: dict[str, int] = {}
         self._chapter_titles: dict[str, str] = {}
         self._verified_blocks: dict[str, dict[str, str]] = {}
-        self._mention_blocks: dict[str, set[str]] = {}
         self._memory_stamp: tuple[int, int] | None = None
         self._memory_data: dict = {"terms": [], "observations": []}
-        self._terms_by_form: dict[str, list[dict]] = {}
+        self._terms_by_form: dict[str, list[tuple[str, dict]]] = {}
         self._observations_by_about: dict[str, list[dict]] = {}
+        self._entity_spans: dict[str, tuple[str, list[dict]]] = {}
+        self._term_mentions: dict[str, list[dict]] = {}
+        self._verified_prefix_loaded = False
 
     def _book(self) -> dict:
         if self._book_data is not None:
@@ -107,6 +109,8 @@ class ReaderContext:
             self._memory_data = {"terms": [], "observations": []}
             self._terms_by_form = {}
             self._observations_by_about = {}
+            self._entity_spans = {}
+            self._term_mentions = {}
             return {"terms": [], "observations": []}
         stat = path.stat()
         stamp = (stat.st_mtime_ns, stat.st_size)
@@ -120,15 +124,16 @@ class ReaderContext:
             raise PipelineError("book_memory.json has invalid terms or observations.")
         self._memory_data = {"terms": terms, "observations": observations}
         self._terms_by_form = {}
-        for term in terms:
+        for index, term in enumerate(terms):
             if not isinstance(term, dict):
                 continue
+            identity = term.get("id") if isinstance(term.get("id"), str) else f"anonymous:{index}"
             forms = [term.get("source")]
             if term.get("approved") is True:
                 forms.append(term.get("choice"))
             form_keys = {normalized(form) for form in forms if isinstance(form, str) and normalized(form)}
             for form_key in form_keys:
-                self._terms_by_form.setdefault(form_key, []).append(term)
+                self._terms_by_form.setdefault(form_key, []).append((identity, term))
         self._observations_by_about = {}
         for observation in observations:
             if not isinstance(observation, dict) or not isinstance(observation.get("about"), list):
@@ -137,8 +142,64 @@ class ReaderContext:
                           if isinstance(value, str) and normalized(value)}
             for about_key in about_keys:
                 self._observations_by_about.setdefault(about_key, []).append(observation)
+        self._entity_spans = {}
+        self._term_mentions = {}
         self._memory_stamp = stamp
         return self._memory_data
+
+    def _index_verified_block(self, block_id: str, text: str) -> None:
+        """Index exact safe term forms in one already checkpoint-verified P5 block."""
+        words = list(_READER_WORDS.finditer(text))
+        spans: list[dict] = []
+        for form_key, records in self._terms_by_form.items():
+            form_words = list(_READER_WORDS.finditer(form_key))
+            width = len(form_words)
+            if not width:
+                continue
+            first = normalized(form_words[0].group())
+            for index in range(len(words) - width + 1):
+                if normalized(words[index].group()) != first:
+                    continue
+                start, end = words[index].start(), words[index + width - 1].end()
+                if normalized(text[start:end]) != form_key:
+                    continue
+                span = {"start": start, "end": end, "records": records}
+                spans.append(span)
+                identities = {identity for identity, _term in records}
+                for identity in (identities if len(identities) == 1 else ()):
+                    self._term_mentions.setdefault(identity, []).append({
+                        "block_id": block_id, "start": start, "end": end,
+                    })
+        spans.sort(key=lambda span: (span["start"], -(span["end"] - span["start"])))
+        self._entity_spans[block_id] = (text, spans)
+
+    def _ensure_entity_index(self) -> None:
+        """Keep term spans synchronized with cached verified prose and memory."""
+        if any(self._entity_spans.get(block_id, (None,))[0] != item["text"]
+               for block_id, item in self._verified_blocks.items()
+               if block_id in self._entity_spans):
+            self._entity_spans = {}
+            self._term_mentions = {}
+        for block_id, item in self._verified_blocks.items():
+            if block_id not in self._entity_spans:
+                self._index_verified_block(block_id, item["text"])
+
+    def _entity_at(self, block_id: str, position: int) -> tuple[dict, str, dict] | None:
+        text, spans = self._entity_spans.get(block_id, ("", []))
+        covering = [span for span in spans if span["start"] <= position < span["end"]]
+        if not covering:
+            return None
+        longest = max(span["end"] - span["start"] for span in covering)
+        candidates = [span for span in covering if span["end"] - span["start"] == longest]
+        coordinates = {(span["start"], span["end"]) for span in candidates}
+        if len(coordinates) != 1:
+            return None
+        span = candidates[0]
+        records = {identity: term for identity, term in span["records"]}
+        if len(records) != 1:
+            return None
+        identity, term = next(iter(records.items()))
+        return span, identity, term
 
     def _evidence_before(self, evidence: object, cutoff: int) -> bool:
         return (
@@ -164,69 +225,69 @@ class ReaderContext:
             end = boundary if boundary > match.end() else end
         return ("…" if start else "") + compact[start:end] + ("…" if end < len(compact) else "")
 
-    def context(self, chapter_id: str, block_id: str, start: int, end: int, submitted: str) -> dict:
-        """Return only knowledge fully evidenced before the selected canonical block."""
+    def context(self, chapter_id: str, block_id: str, position: int) -> dict:
+        """Resolve a known term at a P5 position and return only prior knowledge."""
         self._book()
         if not isinstance(chapter_id, str) or not isinstance(block_id, str):
             raise PipelineError("chapter_id and block_id must be strings.")
-        if type(start) is not int or type(end) is not int:
-            raise PipelineError("Context offsets must be integer Unicode code-point offsets.")
-        if not isinstance(submitted, str):
-            raise PipelineError("Context text must be a string.")
+        if type(position) is not int:
+            raise PipelineError("Context position must be an integer Unicode code-point offset.")
         cutoff = self._block_orders.get(block_id)
         if cutoff is None or (chapter_id, block_id) not in self._canonical_blocks:
             raise PipelineError(f"Unknown canonical block {block_id} in chapter {chapter_id}.")
+        if not self._verified_prefix_loaded:
+            self.progress()
         text = self.block_text(chapter_id, block_id)
-        if not 0 <= start < end <= len(text):
-            raise PipelineError("Context offsets are outside the translated block.")
-        if text[start:end] != submitted:
-            raise PipelineError("Selected text no longer matches the checkpoint-verified translated block.")
-        selected = submitted.strip()
-        selected_key = normalized(selected)
-        if not selected_key:
-            raise PipelineError("Context text must contain a visible word.")
+        if not 0 <= position < len(text):
+            raise PipelineError("Context position is outside the translated block.")
 
         self._memory()
-        matches = self._terms_by_form.get(selected_key, [])
+        self._ensure_entity_index()
+        resolved = self._entity_at(block_id, position)
+        if resolved is None:
+            return {"available": False}
+        span, identity, term = resolved
+        selected = text[span["start"]:span["end"]]
 
         statements: list[str] = []
-        # More than one exact term match is ambiguous; earlier prose can still be
-        # returned, but semantic records are not merged across identities.
-        if len(matches) == 1:
-            term = matches[0]
-            for note in term.get("meanings", []):
-                if (isinstance(note, dict) and isinstance(note.get("text"), str)
-                        and note["text"].strip() and self._evidence_before(note.get("evidence"), cutoff)):
-                    statements.append(note["text"].strip())
-            source_key = normalized(term.get("source", ""))
-            for observation in self._observations_by_about.get(source_key, []):
-                available = observation.get("available_from_order")
-                about = observation.get("about")
-                if (type(available) is not int or available >= cutoff
-                        or not self._evidence_before(observation.get("evidence"), cutoff)
-                        or not isinstance(about, list)
-                        or source_key not in {normalized(value) for value in about if isinstance(value, str)}):
-                    continue
-                statement = observation.get("statement")
-                if isinstance(statement, str) and statement.strip():
-                    statements.append(statement.strip())
+        for note in term.get("meanings", []):
+            if (isinstance(note, dict) and isinstance(note.get("text"), str)
+                    and note["text"].strip() and self._evidence_before(note.get("evidence"), cutoff)):
+                statements.append(note["text"].strip())
+        source_key = normalized(term.get("source", ""))
+        for observation in self._observations_by_about.get(source_key, []):
+            available = observation.get("available_from_order")
+            about = observation.get("about")
+            if (type(available) is not int or available >= cutoff
+                    or not self._evidence_before(observation.get("evidence"), cutoff)
+                    or not isinstance(about, list)
+                    or source_key not in {normalized(value) for value in about if isinstance(value, str)}):
+                continue
+            statement = observation.get("statement")
+            if isinstance(statement, str) and statement.strip():
+                statements.append(statement.strip())
 
         statements = list(dict.fromkeys(statements))[:4]
         earlier_mentions = []
-        first_word = _READER_WORDS.search(selected)
-        candidate_ids = self._mention_blocks.get(normalized(first_word.group()), set()) if first_word else set()
-        for previous_id in sorted(candidate_ids, key=lambda value: self._block_orders.get(value, cutoff)):
-            item = self._verified_blocks[previous_id]
+        mentions = sorted(self._term_mentions.get(identity, []), key=lambda item: (
+            self._block_orders.get(item["block_id"], cutoff), item["start"], item["end"]
+        ))
+        seen_blocks: set[str] = set()
+        for mention in mentions:
+            previous_id = mention["block_id"]
             order = self._block_orders.get(previous_id)
-            previous_text = item.get("text", "")
-            if order is None or order >= cutoff or not occurs(previous_text, selected):
+            if order is None or order >= cutoff or previous_id in seen_blocks:
                 continue
+            item = self._verified_blocks[previous_id]
+            previous_text = item["text"]
+            phrase = previous_text[mention["start"]:mention["end"]]
             earlier_mentions.append({
                 "chapter_id": item["chapter_id"],
                 "chapter_title": self._chapter_titles.get(item["chapter_id"], item["chapter_id"]),
                 "block_id": previous_id,
-                "text": self._short_excerpt(previous_text, selected),
+                "text": self._short_excerpt(previous_text, phrase),
             })
+            seen_blocks.add(previous_id)
             if len(earlier_mentions) == 3:
                 break
 
@@ -237,6 +298,7 @@ class ReaderContext:
             "title": selected,
             "statements": statements,
             "earlier_mentions": earlier_mentions,
+            "range": {"start": span["start"], "end": span["end"]},
         }
 
     def has_canonical_block(self, chapter_id: str, block_id: str) -> bool:
@@ -279,6 +341,7 @@ class ReaderContext:
                 last_chapter = {"id": chapter["id"], "title": chapter["title"]}
             if "unavailable" in chapter:
                 break
+        self._verified_prefix_loaded = True
         return {"total_words": total_words, "last_chapter": last_chapter, "chapters": chapters}
 
     @staticmethod
@@ -412,8 +475,8 @@ class ReaderContext:
             result["warning"] = "This chapter includes checkpoint-verified P5 text from stale translation units."
         for block in blocks:
             self._verified_blocks[block["id"]] = {"chapter_id": chapter_id, "text": block["text"]}
-            for match in _READER_WORDS.finditer(block["text"]):
-                self._mention_blocks.setdefault(normalized(match.group()), set()).add(block["id"])
+        self._memory()
+        self._ensure_entity_index()
         return result
 
     def block_text(self, chapter_id: str, block_id: str) -> str:

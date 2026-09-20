@@ -281,11 +281,11 @@ class ReaderHandler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/api/context":
                 body = self._body()
-                expected = {"chapter_id", "block_id", "start", "end", "text"}
+                expected = {"chapter_id", "block_id", "position"}
                 if set(body) != expected:
-                    raise PipelineError("Context request must contain only chapter_id, block_id, start, end, and text.")
+                    raise PipelineError("Context request must contain only chapter_id, block_id, and position.")
                 self._json(self.server.context.context(
-                    body["chapter_id"], body["block_id"], body["start"], body["end"], body["text"]
+                    body["chapter_id"], body["block_id"], body["position"]
                 ))
                 return
             if path != "/api/markers":
