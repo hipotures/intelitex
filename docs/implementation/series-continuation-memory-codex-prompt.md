@@ -177,7 +177,7 @@ Update README narrowly with:
 - continuation import syntax;
 - automatic volume numbering;
 - legacy volume-1 retrofit;
-- no-LL deterministic compaction;
+- no-LLM deterministic compaction;
 - requirement for predecessor approved terminology;
 - predecessor translation completion is not required;
 - inherited review behavior;
@@ -206,4 +206,3 @@ In the final report to the owner, write in Polish and include:
 - tests and counts;
 - final commit SHA(s);
 - deferred follow-ups.
-
