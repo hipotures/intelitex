@@ -101,7 +101,7 @@ mode is not advertised as a completely bare model request.
 
 Codex app-server does not expose a verified no-turn input-token counter in the
 installed protocol. Before submission, Intelitex therefore reports a
-conservative `UTF-8 bytes (not tokens)` upper bound and uses it for context
+conservative upper bound measured in UTF-8 bytes and uses it for context
 safety. Exact provider-reported token usage is shown only after a completed
 turn and retained in `usage.json`. The historical `memory_tokens` setting is
 measured with this same conservative byte counter when a Codex profile is used.

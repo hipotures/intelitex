@@ -46,7 +46,7 @@ def preflight_measurement(provider: Any, value: int) -> dict[str, Any]:
 def preflight_display(measurement: dict[str, Any]) -> str:
     value = int(measurement["value"])
     if measurement["unit"] == "utf8_bytes":
-        return f"input upper bound {value:,} UTF-8 bytes (not tokens)"
+        return f"input upper bound {value:,} UTF-8 bytes"
     return f"input {value:,} tokens"
 
 

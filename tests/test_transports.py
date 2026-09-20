@@ -261,7 +261,7 @@ def test_codex_interleaving_isolation_usage_and_rollout(tmp_path, quiet_ui):
     assert count > 0
     measurement = preflight_measurement(client, count)
     assert measurement["unit"] == "utf8_bytes"
-    assert preflight_display(measurement).endswith("UTF-8 bytes (not tokens)")
+    assert preflight_display(measurement).endswith("UTF-8 bytes")
     assert preflight_metadata(measurement) == {"input_preflight": measurement}
     answer, meta = client.generate(body, attempt, recorder)
     assert json.loads(answer) == {"ok": True}
