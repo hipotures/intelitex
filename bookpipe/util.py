@@ -85,19 +85,31 @@ def inside(root: Path, path: Path) -> Path:
 
 
 @contextmanager
-def project_lock(root: Path) -> Iterator[None]:
-    """Kernel-released lock: a crash cannot leave a permanently stale lock."""
+def file_lock(root: Path, name: str, conflict_message: str) -> Iterator[None]:
+    """Exclusive named lock released by the kernel after crashes."""
     import fcntl
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".lock").open("a+") as handle:
+    with (root / name).open("a+") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise PipelineError("Another process is using this project.") from exc
+            raise PipelineError(conflict_message) from exc
         try:
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+@contextmanager
+def project_lock(root: Path) -> Iterator[None]:
+    with file_lock(root, ".lock", "Another process is using this project."):
+        yield
+
+
+@contextmanager
+def reader_lock(root: Path) -> Iterator[None]:
+    with file_lock(root, ".reader.lock", "Another Reader process is using this project's marker file."):
+        yield
 
 
 def plan_fingerprint(book: dict) -> str:

@@ -279,8 +279,11 @@ word or span without interrupting the reading flow:
 uv run translate.py reader --project "$PROJECT"
 ```
 
-The Reader defaults to `http://127.0.0.1:8766/`, opens the browser, and holds the
-normal project lock while it runs. Use `--reader-port 0` to select a free port or
+The Reader defaults to `http://127.0.0.1:8766/` and opens the browser. It may run
+while `translate` continues: project manifests, SQLite checkpoints, and P5 artifacts
+are read-only in the Reader, while marker writes are isolated in
+`translation.review.json` under a separate Reader lock. A second Reader process for
+the same project is rejected. Use `--reader-port 0` to select a free port or
 `--no-browser` to suppress browser launch. For a phone on a trusted LAN, bind
 explicitly beyond loopback, for example:
 
@@ -556,9 +559,11 @@ request itself restarts; this program does not restore an in-flight CUDA decodin
 state. This is the only work that may need repeating.
 
 SQLite transactions, atomic file replacement, filesystem sync, checksums and a
-project lock protect normal checkpoint operations. Do not run two processes on the
-same project. Keep the project on a local filesystem with reliable locking, and
-back it up. Hardware/filesystem failure still requires backups.
+project lock protect normal checkpoint operations. Do not run two pipeline-changing
+processes on the same project. The Reader is the narrow exception: it may run beside
+`translate` because it only reads pipeline state and writes the separately locked
+`translation.review.json`. Keep the project on a local filesystem with reliable
+locking, and back it up. Hardware/filesystem failure still requires backups.
 
 Changing model parameters affects future calls, not already accepted results. Exact
 request parameters are saved with each attempt. Prompt/input changes create a new

@@ -20,7 +20,7 @@ from .profiles import migrate_settings_file, validate_profiles
 from .provider_registry import ProviderPool
 from .store import Store
 from .ui import Display
-from .util import PipelineError, atomic_json, atomic_text, digest, project_lock, read_json, plan_fingerprint
+from .util import PipelineError, atomic_json, atomic_text, digest, project_lock, reader_lock, read_json, plan_fingerprint
 
 BUNDLE = Path(__file__).resolve().parent.parent
 
@@ -174,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command != "import" and not (root / "book.json").exists():
             raise PipelineError("Project not imported. Run import first.")
-        with project_lock(root), Display(args.quiet) as ui:
+        command_lock = reader_lock(root) if args.command == "reader" else project_lock(root)
+        with command_lock, Display(args.quiet) as ui:
             if args.command in {"profiles", "doctor", "attempts", "usage", "catalog-import", "discover", "smoke"}:
                 settings = effective_settings(root, args)
                 if args.command == "profiles":
@@ -266,10 +267,14 @@ def main(argv: list[str] | None = None) -> int:
                     ui.message("NOTE: " + warning)
                 return 0
 
-            store = Store(root)
             book = read_json(root / "book.json")
             if book.get("content_fingerprint") != plan_fingerprint(book):
                 raise PipelineError("The frozen source/chunk manifest was modified. Restore book.json or import into a new project. Only titles and thread_id may be edited in place.")
+            if args.command == "reader":
+                ui.stop_progress()
+                run_reader_server(root, args.bind, args.reader_port, not args.no_browser, ui)
+                return 0
+            store = Store(root)
             if args.command in {"analyze", "translate"}:
                 settings = effective_settings(root, args)
                 client = ProviderPool(settings, ui, root, command_profile=args.profile,
@@ -293,9 +298,6 @@ def main(argv: list[str] | None = None) -> int:
                 path = store.write_review(book["source_fingerprint"])
                 ui.stop_progress()
                 run_review_server(path, args.bind, args.review_port, not args.no_browser, ui)
-            elif args.command == "reader":
-                ui.stop_progress()
-                run_reader_server(root, args.bind, args.reader_port, not args.no_browser, ui)
             elif args.command == "approve":
                 if not store.get("analysis_done"):
                     raise PipelineError("Finish analysis before approving terminology.")

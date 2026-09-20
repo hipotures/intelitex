@@ -14,7 +14,7 @@ from bookpipe.cli import main
 from bookpipe.reader import MarkerConflict, MarkerRepository, ReaderServer
 from bookpipe.reader_context import ReaderContext
 from bookpipe.store import Store
-from bookpipe.util import PipelineError, atomic_json, read_json
+from bookpipe.util import PipelineError, atomic_json, project_lock, reader_lock, read_json
 
 
 def make_reader_project(tmp_path, *, pieces=False, translated=2):
@@ -294,6 +294,20 @@ def test_reader_context_reuses_frozen_book_manifest(tmp_path, monkeypatch):
     assert calls == [root / "book.json"]
 
 
+def test_reader_can_read_checkpoint_while_pipeline_sqlite_writer_is_active(tmp_path):
+    root, _ = make_reader_project(tmp_path)
+    writer = Store(root)
+    try:
+        writer.db.execute("BEGIN IMMEDIATE")
+        writer.db.execute("UPDATE chunks SET status='stale' WHERE id='ch0001_c0001'")
+        chapter = ReaderContext(root).chapter("ch0001")
+        assert chapter["blocks"][0]["text"] == "Zażółć 😀 gęślą jaźń."
+        assert chapter["stale"] is False  # The Reader sees the last committed WAL snapshot.
+        writer.db.rollback()
+    finally:
+        writer.close()
+
+
 def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
     root, _ = make_reader_project(tmp_path)
     server = ReaderServer(("127.0.0.1", 0), MarkerRepository(root))
@@ -357,7 +371,19 @@ def test_reader_cli_dispatches_with_reader_options(tmp_path, monkeypatch):
         called.update(project=project, bind=bind, port=port, open_browser=open_browser)
 
     monkeypatch.setattr(cli_module, "run_reader_server", fake_server)
-    assert main([
-        "reader", "--project", str(root), "--bind", "0.0.0.0", "--reader-port", "0", "--no-browser", "--quiet",
-    ]) == 0
+    monkeypatch.setattr(cli_module, "Store", lambda project: pytest.fail("Reader must not open the read-write Store"))
+    # Simulate an already-running translate process holding the normal project lock.
+    with project_lock(root):
+        assert main([
+            "reader", "--project", str(root), "--bind", "0.0.0.0", "--reader-port", "0", "--no-browser", "--quiet",
+        ]) == 0
     assert called == {"project": root.resolve(), "bind": "0.0.0.0", "port": 0, "open_browser": False}
+
+
+def test_reader_lock_allows_pipeline_lock_but_rejects_second_reader(tmp_path):
+    root = tmp_path / "project"
+    with project_lock(root):
+        with reader_lock(root):
+            with pytest.raises(PipelineError, match="Another Reader"):
+                with reader_lock(root):
+                    pass
