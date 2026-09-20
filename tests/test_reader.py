@@ -191,6 +191,109 @@ def test_marker_fingerprint_revision_and_targeted_deletion(tmp_path):
         repository.load()
 
 
+def test_outdated_marker_does_not_block_reader_and_can_be_deleted(tmp_path):
+    root, _ = make_reader_project(tmp_path)
+    repository = MarkerRepository(root)
+    state = repository.load()
+    current = repository.create(
+        {"chapter_id": "ch0001", "block_id": "B0000001", "start": 0, "end": 6, "text": "Zażółć"},
+        state["_revision"],
+    )
+    other = repository.create(
+        {"chapter_id": "ch0001", "block_id": "B0000002", "start": 0, "end": 5, "text": "Drugi"},
+        current["revision"],
+    )
+
+    store = Store(root)
+    chunk = read_json(root / "book.json")["chunks"][0]
+    replacement = root / "artifacts" / "pass5" / chunk["id"] / "replacement" / "result.json"
+    atomic_json(replacement, {"translations": [{"id": "B0000001", "text": "Poprawiony polski akapit."}]})
+    store.save_job("pass5/replacement", "replacement-fingerprint", replacement, {})
+    store.finish_chunk(chunk["id"], str(replacement.relative_to(root)), [], "new-lexical")
+    store.close()
+
+    assert ReaderContext(root).chapter("ch0001")["blocks"][0]["text"].startswith("Poprawiony")
+    loaded = repository.load()
+    assert [marker["id"] for marker in loaded["markers"]] == [current["marker"]["id"], other["marker"]["id"]]
+    server = ReaderServer(("127.0.0.1", 0), repository)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with httpx.Client(base_url=f"http://127.0.0.1:{server.server_port}", timeout=5) as client:
+            assert client.get("/api/reader").status_code == 200
+            assert client.get("/api/chapters/ch0001").json()["blocks"][0]["text"].startswith("Poprawiony")
+            deleted = client.request(
+                "DELETE", f"/api/markers/{current['marker']['id']}", json={"revision": loaded["_revision"]},
+            )
+            assert deleted.status_code == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    assert [marker["id"] for marker in repository.load()["markers"]] == [other["marker"]["id"]]
+
+
+def test_marker_mutation_does_not_resolve_every_historical_anchor(tmp_path):
+    root, _ = make_reader_project(tmp_path)
+
+    class CountingContext:
+        def __init__(self):
+            self.metadata_calls = 0
+            self.block_text_calls = 0
+            self.structure_calls = 0
+
+        def metadata(self):
+            self.metadata_calls += 1
+            return {"book_fingerprint": "source-fingerprint"}
+
+        def has_canonical_block(self, chapter_id, block_id):
+            self.structure_calls += 1
+            return chapter_id == "ch0001" and block_id == "B0000001"
+
+        def block_text(self, chapter_id, block_id):
+            self.block_text_calls += 1
+            return "Zażółć 😀 gęślą jaźń."
+
+    atomic_json(root / "translation.review.json", {
+        "format_version": 1,
+        "book_fingerprint": "source-fingerprint",
+        "markers": [
+            {"id": f"M{index:06d}", "chapter_id": "ch0001", "block_id": "B0000001",
+             "start": 0, "end": 6, "text": "historical text may be outdated"}
+            for index in range(1, 101)
+        ],
+    })
+    context = CountingContext()
+    repository = MarkerRepository(root, context=context)
+    revision = repository.load()["_revision"]
+    context.metadata_calls = context.block_text_calls = context.structure_calls = 0
+    repository.create(
+        {"chapter_id": "ch0001", "block_id": "B0000001", "start": 7, "end": 8, "text": "😀"},
+        revision,
+    )
+    assert context.metadata_calls == 1
+    assert context.block_text_calls == 1
+    assert context.structure_calls == 100
+
+
+def test_reader_context_reuses_frozen_book_manifest(tmp_path, monkeypatch):
+    root, _ = make_reader_project(tmp_path)
+    import bookpipe.reader_context as context_module
+    real_read_json = context_module.read_json
+    calls = []
+
+    def recording_read_json(path):
+        calls.append(path)
+        return real_read_json(path)
+
+    monkeypatch.setattr(context_module, "read_json", recording_read_json)
+    context = ReaderContext(root)
+    context.metadata()
+    context.metadata()
+    context.chapter("ch0001")
+    assert calls == [root / "book.json"]
+
+
 def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
     root, _ = make_reader_project(tmp_path)
     server = ReaderServer(("127.0.0.1", 0), MarkerRepository(root))

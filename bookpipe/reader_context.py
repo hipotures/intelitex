@@ -13,8 +13,12 @@ class ReaderContext:
 
     def __init__(self, root: Path):
         self.root = root.resolve()
+        self._book_data: dict | None = None
+        self._canonical_blocks: set[tuple[str, str]] = set()
 
     def _book(self) -> dict:
+        if self._book_data is not None:
+            return self._book_data
         path = self.root / "book.json"
         if not path.is_file():
             raise PipelineError("Reader project has no book.json.")
@@ -23,7 +27,20 @@ class ReaderContext:
             raise PipelineError("book.json has no valid chapter/chunk manifest.")
         if not isinstance(book.get("source_fingerprint"), str) or not book["source_fingerprint"]:
             raise PipelineError("book.json has no source fingerprint.")
+        # The CLI project lock makes book.json immutable for the Reader lifetime.
+        # Reuse the parsed manifest across metadata and chapter requests.
+        self._book_data = book
+        self._canonical_blocks = {
+            (chapter.get("id"), block.get("id"))
+            for chapter in book["chapters"] if isinstance(chapter, dict)
+            for block in chapter.get("blocks", []) if isinstance(block, dict)
+            if isinstance(chapter.get("id"), str) and isinstance(block.get("id"), str)
+        }
         return book
+
+    def has_canonical_block(self, chapter_id: str, block_id: str) -> bool:
+        self._book()
+        return (chapter_id, block_id) in self._canonical_blocks
 
     def metadata(self) -> dict:
         book = self._book()

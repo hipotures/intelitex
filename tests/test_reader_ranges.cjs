@@ -18,3 +18,52 @@ test('word snapping normalizes reverse drags', () => {
   const text = 'pierwsze drugie trzecie';
   assert.deepEqual(R.snapWordRange(text, 19, 10, null), {start: 9, end: 23});
 });
+
+test('marker mutations execute serially and observe the latest revision', async () => {
+  const enqueue = R.createSerialQueue();
+  let revision = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const observed = [];
+  const first = enqueue(async () => { observed.push(['create', revision]); await gate; revision += 1; });
+  const second = enqueue(async () => { observed.push(['create', revision]); revision += 1; });
+  const third = enqueue(async () => { observed.push(['delete', revision]); revision += 1; });
+  await Promise.resolve();
+  assert.deepEqual(observed, [['create', 0]]);
+  release();
+  await Promise.all([first, second, third]);
+  assert.deepEqual(observed, [['create', 0], ['create', 1], ['delete', 2]]);
+});
+
+test('a rejected mutation does not break ordering or hide a genuine conflict', async () => {
+  const enqueue = R.createSerialQueue();
+  const conflict = enqueue(async () => { throw new Error('stale revision'); });
+  const after = enqueue(async () => 'ran after refresh boundary');
+  await assert.rejects(conflict, /stale revision/);
+  assert.equal(await after, 'ran after refresh boundary');
+});
+
+test('gutter collisions are isolated per block and same-line hit areas do not overlap', () => {
+  const separate = Array.from({length: 30}, (_, index) => ({blockId: `B${index}`, base: 9}));
+  assert.deepEqual(R.markerTops(separate), Array(30).fill(9));
+  assert.deepEqual(R.markerTops([
+    {blockId: 'B1', base: 9}, {blockId: 'B1', base: 9}, {blockId: 'B1', base: 9},
+  ]), [9, 45, 81]);
+});
+
+test('only the newest chapter request remains current', () => {
+  const gate = R.createRequestGate();
+  const chapterTwo = gate.next();
+  const chapterThree = gate.next();
+  assert.equal(gate.isCurrent(chapterTwo), false);
+  assert.equal(gate.isCurrent(chapterThree), true);
+});
+
+test('an outdated marker remains anchored locally without claiming an exact match', () => {
+  const marker = {start: 7, end: 12, text: 'stare'};
+  assert.deepEqual(R.markerAnchor('Nowy tekst akapitu', marker), {current: false, start: 7, end: 8});
+  assert.deepEqual(R.markerAnchor('krótki', {...marker, start: 50, end: 55}),
+    {current: false, start: 5, end: 6});
+  assert.deepEqual(R.markerAnchor('Nowy tekst akapitu', {start: 5, end: 10, text: 'tekst'}),
+    {current: true, start: 5, end: 10});
+});

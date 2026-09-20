@@ -123,6 +123,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .gesture-drag .reader-block, .gesture-long .reader-block { user-select: none; }
 .reader-block[data-kind^="h"] { margin-top: 2.2em; font-size: 1.2em; font-weight: 650; }
 .reader-block::selection, .reader-block *::selection { background: var(--accent-soft); color: var(--ink); }
+::highlight(reader-marker-preview) { background: var(--accent-soft); color: var(--ink); }
 
 .gutter-marker {
   position: absolute;
@@ -148,6 +149,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   box-shadow: 0 0 0 3px transparent;
 }
 .gutter-marker:hover::after, .gutter-marker:focus-visible::after, .gutter-marker.active::after { opacity: 1; box-shadow: 0 0 0 3px var(--accent-soft); }
+.gutter-marker.stale::after { border: 2px solid var(--accent); background: transparent; opacity: .8; }
 
 .unavailable, .chapter-warning, .reader-error {
   margin: 2.8rem 0;
@@ -197,6 +199,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   background: var(--accent-soft);
   pointer-events: none;
   animation: marker-flash 1s ease-out forwards;
+}
+.marker-preview-fallback {
+  position: fixed;
+  z-index: 9;
+  border-radius: .18rem;
+  background: var(--accent-soft);
+  opacity: .72;
+  pointer-events: none;
 }
 @keyframes marker-flash { 0% { opacity: .95; } 100% { opacity: 0; } }
 

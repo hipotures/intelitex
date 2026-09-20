@@ -48,7 +48,49 @@
     return {start: selected[0].start, end: selected[selected.length - 1].end};
   }
 
-  const helpers = {utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange};
+  function createSerialQueue() {
+    let tail = Promise.resolve();
+    return task => {
+      const result = tail.then(task, task);
+      tail = result.catch(() => {});
+      return result;
+    };
+  }
+
+  function createRequestGate() {
+    let generation = 0;
+    return {
+      next() { generation += 1; return generation; },
+      isCurrent(value) { return value === generation; },
+    };
+  }
+
+  function markerTops(entries, hitHeight = 36) {
+    const byBlock = new Map();
+    return entries.map(entry => {
+      let lines = byBlock.get(entry.blockId);
+      if (!lines) { lines = new Map(); byBlock.set(entry.blockId, lines); }
+      const line = Math.round(entry.base / 4);
+      const collision = lines.get(line) || 0;
+      lines.set(line, collision + 1);
+      return entry.base + collision * hitHeight;
+    });
+  }
+
+  function markerAnchor(text, marker) {
+    const characters = Array.from(text);
+    const current = marker.end <= characters.length
+      && characters.slice(marker.start, marker.end).join('') === marker.text;
+    const start = current
+      ? marker.start : Math.max(0, Math.min(marker.start, Math.max(0, characters.length - 1)));
+    const end = current ? marker.end : Math.min(characters.length, start + 1);
+    return {current, start, end};
+  }
+
+  const helpers = {
+    utf16ToCodePoint, codePointToUtf16, wordSpans, snapWordRange,
+    createSerialQueue, createRequestGate, markerTops, markerAnchor,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   root.ReaderRanges = helpers;
   if (typeof document === 'undefined') return;
@@ -72,7 +114,10 @@
   let positionTimer = null;
   let noticeTimer = null;
   let renderedChapterId = null;
+  let fallbackHighlights = [];
   let settings = loadSettings();
+  const enqueueMarkerMutation = createSerialQueue();
+  const chapterRequests = createRequestGate();
   const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
     ? new Intl.Segmenter('pl', {granularity: 'word'}) : null;
 
@@ -199,60 +244,74 @@
     }
   }
 
-  async function createMarker(location) {
+  function createMarker(location) {
     if (!location) return;
     const range = textRange(location.block, location.start, location.end);
     const payload = {
-      chapter_id: currentChapter().id,
+      chapter_id: renderedChapterId,
       block_id: location.block.dataset.blockId,
       start: location.start,
       end: location.end,
       text: Array.from(location.text).slice(location.start, location.end).join(''),
-      revision: markerState._revision,
     };
-    try {
-      const result = await api('/api/markers', {method: 'POST', body: JSON.stringify(payload)});
-      markerState._revision = result.revision;
-      if (!markerState.markers.some(marker => marker.id === result.marker.id)) markerState.markers.push(result.marker);
-      if (range) flashRange(range);
-      renderMarkers();
-    } catch (error) {
-      showNotice(error.message, 3500);
-      if (error.status === 409) await reloadMarkerState();
-    }
+    if (!payload.chapter_id) return;
+    return enqueueMarkerMutation(async () => {
+      try {
+        const body = {...payload, revision: markerState._revision};
+        const result = await api('/api/markers', {method: 'POST', body: JSON.stringify(body)});
+        markerState._revision = result.revision;
+        if (!markerState.markers.some(marker => marker.id === result.marker.id)) markerState.markers.push(result.marker);
+        if (range && location.block.isConnected && renderedChapterId === payload.chapter_id) flashRange(range);
+        renderMarkers();
+      } catch (error) {
+        showNotice(error.message, 3500);
+        if (error.status === 409) await reloadMarkerState();
+      }
+    });
   }
 
   function markerForButton(button) {
     return markerState.markers.find(marker => marker.id === button.dataset.markerId);
   }
 
+  function markerLocation(marker) {
+    const block = blockElement(marker.block_id);
+    if (!block) return null;
+    const text = block.firstChild?.nodeValue || '';
+    const {current, start, end} = markerAnchor(text, marker);
+    return {block, range: end > start ? textRange(block, start, end) : null, current};
+  }
+
   function positionMarkers() {
-    const offsets = new Map();
+    const entries = [];
+    const buttons = [];
     document.querySelectorAll('.gutter-marker').forEach(button => {
       const marker = markerForButton(button);
-      const block = marker && blockElement(marker.block_id);
-      const range = block && textRange(block, marker.start, marker.end);
-      if (!range) return;
-      const rect = range.getClientRects()[0] || range.getBoundingClientRect();
-      const blockRect = block.getBoundingClientRect();
-      const base = Math.max(0, rect.top - blockRect.top + 3);
-      const key = Math.round(base / 4);
-      const n = offsets.get(key) || 0;
-      offsets.set(key, n + 1);
-      button.style.top = `${base + n * 5}px`;
+      const location = marker && markerLocation(marker);
+      if (!location) return;
+      const rect = location.range && (location.range.getClientRects()[0] || location.range.getBoundingClientRect());
+      const blockRect = location.block.getBoundingClientRect();
+      const top = rect ? rect.top : blockRect.top;
+      entries.push({blockId: marker.block_id, base: Math.max(0, top - blockRect.top + 3)});
+      buttons.push(button);
     });
+    const hitHeight = Math.max(36, ...buttons.map(button => button.getBoundingClientRect().height));
+    markerTops(entries, hitHeight).forEach((top, index) => { buttons[index].style.top = `${top}px`; });
   }
 
   function renderMarkers() {
     document.querySelectorAll('.gutter-marker').forEach(node => node.remove());
-    for (const marker of markerState.markers.filter(item => item.chapter_id === currentChapter().id)) {
+    if (!renderedChapterId) return;
+    for (const marker of markerState.markers.filter(item => item.chapter_id === renderedChapterId)) {
       const block = blockElement(marker.block_id);
       if (!block) continue;
+      const location = markerLocation(marker);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'gutter-marker';
+      button.className = `gutter-marker${location?.current ? '' : ' stale'}`;
       button.dataset.markerId = marker.id;
-      button.setAttribute('aria-label', 'Open marker');
+      button.setAttribute('aria-label', location?.current ? 'Open marker' : 'Open outdated marker');
+      if (!location?.current) button.title = 'The saved text has changed; open this marker to delete it.';
       button.addEventListener('click', event => {
         event.stopPropagation();
         openMarker(marker, button);
@@ -266,45 +325,64 @@
     activeMarker = null;
     $('markerControl').hidden = true;
     document.querySelectorAll('.gutter-marker.active').forEach(node => node.classList.remove('active'));
-    const selection = window.getSelection();
-    if (selection) selection.removeAllRanges();
+    if (root.CSS?.highlights) root.CSS.highlights.delete('reader-marker-preview');
+    fallbackHighlights.forEach(node => node.remove());
+    fallbackHighlights = [];
+  }
+
+  function showMarkerHighlight(range) {
+    if (root.CSS?.highlights && root.Highlight) {
+      root.CSS.highlights.set('reader-marker-preview', new root.Highlight(range));
+      return;
+    }
+    for (const rect of range.getClientRects()) {
+      if (!rect.width || !rect.height) continue;
+      const highlight = document.createElement('span');
+      highlight.className = 'marker-preview-fallback';
+      Object.assign(highlight.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`});
+      document.body.append(highlight);
+      fallbackHighlights.push(highlight);
+    }
   }
 
   function openMarker(marker, button) {
     clearMarkerControl();
-    const block = blockElement(marker.block_id);
-    const range = block && textRange(block, marker.start, marker.end);
-    if (!range) return showNotice('Stored marker no longer maps to this chapter.', 3000);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
+    const location = markerLocation(marker);
+    if (!location) return showNotice('Stored marker no longer maps to this chapter.', 3000);
+    if (location.current && location.range) showMarkerHighlight(location.range);
+    else showNotice('The saved text has changed. You can delete this marker.', 3000);
     activeMarker = marker;
     button.classList.add('active');
-    const rect = button.getBoundingClientRect();
+    const rect = location.range?.getBoundingClientRect() || button.getBoundingClientRect();
     const control = $('markerControl');
     control.hidden = false;
-    const left = Math.min(window.innerWidth - 150, Math.max(8, rect.right + 8));
-    const top = Math.min(window.innerHeight - 60, Math.max(8, rect.top - 8));
+    const controlRect = control.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - controlRect.width - 8, Math.max(8, rect.left));
+    const below = rect.bottom + 8;
+    const top = below + controlRect.height <= window.innerHeight - 8
+      ? below : Math.max(8, rect.top - controlRect.height - 8);
     Object.assign(control.style, {left: `${left}px`, top: `${top}px`});
     $('deleteMarker').focus({preventScroll: true});
   }
 
-  async function deleteActiveMarker() {
+  function deleteActiveMarker() {
     if (!activeMarker) return;
     const id = activeMarker.id;
-    try {
-      const result = await api(`/api/markers/${encodeURIComponent(id)}`, {
-        method: 'DELETE', body: JSON.stringify({revision: markerState._revision}),
-      });
-      markerState.markers = markerState.markers.filter(marker => marker.id !== id);
-      markerState._revision = result.revision;
-      clearMarkerControl();
-      renderMarkers();
-      showNotice('Marker deleted', 1000);
-    } catch (error) {
-      showNotice(error.message, 3500);
-      if (error.status === 409) await reloadMarkerState();
-    }
+    return enqueueMarkerMutation(async () => {
+      try {
+        const result = await api(`/api/markers/${encodeURIComponent(id)}`, {
+          method: 'DELETE', body: JSON.stringify({revision: markerState._revision}),
+        });
+        markerState.markers = markerState.markers.filter(marker => marker.id !== id);
+        markerState._revision = result.revision;
+        clearMarkerControl();
+        renderMarkers();
+        showNotice('Marker deleted', 1000);
+      } catch (error) {
+        showNotice(error.message, 3500);
+        if (error.status === 409) await reloadMarkerState();
+      }
+    });
   }
 
   async function reloadMarkerState() {
@@ -354,12 +432,16 @@
 
   async function loadChapter(index, restore = null) {
     if (metadata && currentChapter()) savePosition();
-    chapterIndex = Math.max(0, Math.min(metadata.chapters.length - 1, index));
+    const targetIndex = Math.max(0, Math.min(metadata.chapters.length - 1, index));
+    const target = metadata.chapters[targetIndex];
+    const request = chapterRequests.next();
+    chapterIndex = targetIndex;
     clearMarkerControl();
     document.body.classList.add('loading');
     const chapterNode = $('chapter');
     try {
-      const chapter = await api(`/api/chapters/${encodeURIComponent(currentChapter().id)}`);
+      const chapter = await api(`/api/chapters/${encodeURIComponent(target.id)}`);
+      if (!chapterRequests.isCurrent(request)) return;
       chapterNode.replaceChildren();
       const title = document.createElement('h1');
       title.className = 'chapter-display-title';
@@ -388,15 +470,20 @@
       $('nextButton').disabled = chapterIndex === metadata.chapters.length - 1;
       renderToc();
       renderMarkers();
-      requestAnimationFrame(() => restorePosition(restore));
+      requestAnimationFrame(() => {
+        if (chapterRequests.isCurrent(request)) restorePosition(restore);
+      });
     } catch (error) {
+      if (!chapterRequests.isCurrent(request)) return;
       renderedChapterId = null;
       chapterNode.replaceChildren();
       const message = document.createElement('div');
       message.className = 'reader-error';
       message.textContent = error.message;
       chapterNode.append(message);
-    } finally { document.body.classList.remove('loading'); }
+    } finally {
+      if (chapterRequests.isCurrent(request)) document.body.classList.remove('loading');
+    }
   }
 
   function cancelLongPress() {

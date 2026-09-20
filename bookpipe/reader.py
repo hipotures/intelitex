@@ -46,18 +46,29 @@ class MarkerRepository:
             raise PipelineError("translation.review.json has no valid markers array.")
         seen: set[str] = set()
         for marker in markers:
-            self._validate_marker(marker)
+            self._validate_marker_structure(marker)
             if marker["id"] in seen:
                 raise PipelineError(f"Duplicate marker ID: {marker['id']}.")
             seen.add(marker["id"])
         return state
 
-    def _validate_marker(self, marker: dict) -> None:
+    def _validate_marker_structure(self, marker: dict) -> None:
+        """Validate persisted syntax without requiring its old quote to remain current."""
         if not isinstance(marker, dict):
             raise PipelineError("Marker must be a JSON object.")
         if not isinstance(marker.get("id"), str) or not re.fullmatch(r"M\d{6,}", marker["id"]):
             raise PipelineError("Marker has an invalid ID.")
-        self._validate_location(marker)
+        if not isinstance(marker.get("chapter_id"), str) or not isinstance(marker.get("block_id"), str):
+            raise PipelineError("Marker chapter_id and block_id must be strings.")
+        if not self.context.has_canonical_block(marker["chapter_id"], marker["block_id"]):
+            raise PipelineError(
+                f"Marker references unknown block {marker['block_id']} in chapter {marker['chapter_id']}."
+            )
+        start, end = marker.get("start"), marker.get("end")
+        if type(start) is not int or type(end) is not int or not 0 <= start < end:
+            raise PipelineError("Marker start and end must be ordered non-negative integer offsets.")
+        if not isinstance(marker.get("text"), str):
+            raise PipelineError("Marker text must be a string.")
 
     def _validate_location(self, marker: dict) -> str:
         chapter_id, block_id = marker.get("chapter_id"), marker.get("block_id")
@@ -95,8 +106,7 @@ class MarkerRepository:
         with self.lock:
             state = self._read()
             self._check_revision(state, expected_revision)
-            candidate = {"id": "M000000", **payload}
-            self._validate_location(candidate)
+            self._validate_location(payload)
             duplicate = next(
                 (marker for marker in state["markers"]
                  if all(marker[key] == payload[key] for key in ("chapter_id", "block_id", "start", "end"))),
