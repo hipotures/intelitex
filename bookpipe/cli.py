@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 import sqlite3
@@ -18,6 +19,7 @@ from .review import run_review_server
 from .operations import attempt_report, doctor_report, print_json, profile_report, usage_report
 from .profiles import migrate_settings_file, validate_profiles
 from .provider_registry import ProviderPool
+from .project_config import materialize_configuration
 from .series import continuation_metadata, prepare_handoff, validate_series_metadata
 from .store import Store
 from .ui import Display
@@ -63,8 +65,8 @@ def parser() -> argparse.ArgumentParser:
             s.add_argument("--chapter-selector", help="Optional CSS selector for nonstandard chapter headings, e.g. p.chapter.")
             s.add_argument("--include", dest="include_glob", help="Optional path glob, e.g. '*split_*.html'.")
             s.add_argument("--sidecar-txt", action="store_true", help="Also write UTF-8 .txt beside input HTML; never overwrite different text.")
-            s.add_argument("--whole-section-limit", type=int, default=10000,
-                           help="Keep a section intact at or below this visible-text character count; larger sections split only at natural scene boundaries. Default: 10000.")
+            s.add_argument("--whole-section-limit", type=int, default=None,
+                           help="Keep a section intact at or below this visible-text character count; larger sections split only at natural scene boundaries. Default: inherited for continuations, otherwise 10000.")
         if name == "review":
             s.add_argument("--bind", default="127.0.0.1", help="Review web server bind address. Default: 127.0.0.1.")
             s.add_argument("--review-port", type=int, default=8765, help="Review web server port; 0 chooses a free port. Default: 8765.")
@@ -118,25 +120,39 @@ def parse_pass_profiles(values: list[str]) -> dict[int, str]:
     return result
 
 
-def effective_settings(root: Path, args) -> dict:
+def effective_settings(root: Path, args, *, base: dict | None = None) -> dict:
     installed = (root / "settings.json").exists()
-    settings = read_json(root / "settings.json") if installed else read_json(BUNDLE / "settings.default.json")
-    if installed:
-        settings, _ = migrate_settings_file(root, settings)
+    if base is not None:
+        settings = copy.deepcopy(base)
+    else:
+        settings = read_json(root / "settings.json") if installed else read_json(BUNDLE / "settings.default.json")
+        if installed:
+            settings, _ = migrate_settings_file(root, settings)
+    override_profile = settings.get("profiles", {}).get(settings.get("default_profile"))
+    if base is not None:
+        # A continuation may inherit a non-default P1 assignment. Apply explicit
+        # import overrides to the profile actually selected for this import.
+        assignments = parse_pass_profiles(args.pass_profile)
+        selected = (assignments.get(1) or args.profile or settings.get("pass_profiles", {}).get("1")
+                    or settings["default_profile"])
+        override_profile = settings["profiles"].get(selected)
+        if override_profile is None:
+            raise PipelineError(f"Unknown profile {selected!r}.")
     for key in ("host", "port", "model", "context_size", "thinking"):
         value = getattr(args, key, None)
         if value is not None:
             settings[key] = value
-            default = settings.get("profiles", {}).get(settings.get("default_profile"))
-            if default and default.get("provider") == "llamacpp":
+            if base is not None and key in {"model", "context_size"}:
+                override_profile[key] = value
+            elif override_profile and override_profile.get("provider") == "llamacpp":
                 if key == "host":
-                    default["endpoint"] = value
+                    override_profile["endpoint"] = value
                 elif key == "port":
-                    default.setdefault("options", {})["port"] = value
+                    override_profile.setdefault("options", {})["port"] = value
                 elif key == "thinking":
-                    default.setdefault("options", {})["thinking"] = value
+                    override_profile.setdefault("options", {})["thinking"] = value
                 elif key in {"model", "context_size"}:
-                    default[key] = value
+                    override_profile[key] = value
     for field in ("whole_section_char_limit", "memory_tokens", "request_timeout"):
         if settings[field] <= 0:
             raise PipelineError(f"{field} must be positive.")
@@ -242,11 +258,18 @@ def main(argv: list[str] | None = None) -> int:
                     raise PipelineError("Incomplete or unrelated project database found. Use a new project directory.")
                 if root.is_relative_to(args.folder.resolve()):
                     raise PipelineError("Keep the project outside the input folder to avoid importing generated files.")
-                handoff = prepare_handoff(args.previous_volume, root) if args.previous_volume else None
-                settings = effective_settings(root, args)
-                settings["whole_section_char_limit"] = args.whole_section_limit
-                if args.whole_section_limit <= 0:
+                handoff = (prepare_handoff(args.previous_volume, root, new_source=args.folder.resolve())
+                           if args.previous_volume else None)
+                configuration = handoff["configuration"] if handoff else None
+                settings = effective_settings(root, args, base=configuration["settings"] if configuration else None)
+                if args.whole_section_limit is not None:
+                    settings["whole_section_char_limit"] = args.whole_section_limit
+                elif not handoff:
+                    settings["whole_section_char_limit"] = 10000  # Preserve standalone import behavior.
+                if settings["whole_section_char_limit"] <= 0:
                     raise PipelineError("--whole-section-limit must be positive.")
+                if configuration:
+                    materialize_configuration(root, configuration, settings)
                 client = ProviderPool(settings, ui, root, command_profile=args.profile,
                                       command_pass_profiles=parse_pass_profiles(args.pass_profile))
                 client.discover(1)
@@ -260,11 +283,12 @@ def main(argv: list[str] | None = None) -> int:
                     chapter["source_tokens_tokenizer"] = client.tokenizer_identity
                 book["content_fingerprint"] = plan_fingerprint(book)
                 book["planning_settings"] = {"whole_section_char_limit": settings["whole_section_char_limit"]}
-                atomic_json(root / "settings.json", settings)
-                prompts = root / "prompts"
-                prompts.mkdir(exist_ok=True)
-                for prompt in (BUNDLE / "prompts").glob("*.txt"):
-                    shutil.copy2(prompt, prompts / prompt.name)
+                if not configuration:
+                    atomic_json(root / "settings.json", settings)
+                    prompts = root / "prompts"
+                    prompts.mkdir(exist_ok=True)
+                    for prompt in (BUNDLE / "prompts").glob("*.txt"):
+                        shutil.copy2(prompt, prompts / prompt.name)
                 store = Store(root)
                 store.register_chunks(book)
                 if handoff:
@@ -280,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
                            f"Excluded {matter} front/back-matter section(s) from analysis/translation.\n"
                            f"Extracted UTF-8 text: {root / 'extracted'}\nNext: analyze --project {root}")
                 if handoff:
+                    ui.message("Inherited predecessor settings, project prompts and optional project model catalog.")
                     ui.message(f"Series continuation: {handoff['series_id']} volume {handoff['previous_volume'] + 1}; "
                                f"inherited {len(handoff['seed']['terms'])} term(s) and "
                                f"{len(handoff['seed']['observations'])} observation(s).")

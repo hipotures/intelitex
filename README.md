@@ -446,6 +446,35 @@ changes its category; new terms follow the ordinary review flow. The new book st
 requires its own `analyze -> review -> approve -> translate` cycle. Imports without
 `--previous-volume` remain standalone and create no series artifacts.
 
+Continuation imports also inherit the predecessor's `settings.json`, optional
+project-local `catalog/models.json`, and all `prompts/*.txt` (including the five
+required pass prompts). Configuration is validated and saved before provider
+discovery, so tuned models, reasoning efforts, pass assignments, budgets and
+prompt text carry forward automatically. Missing or invalid inherited settings,
+catalogs or required prompts stop the import.
+
+Precedence is bundled defaults, then predecessor settings, then explicit CLI
+overrides. As before, `--profile` and `--pass-profile` select profiles for this
+command only. Explicit model/context overrides update the selected import profile;
+host/port/thinking overrides apply to that profile when it uses llama.cpp.
+An omitted `--whole-section-limit` keeps the predecessor's value;
+standalone imports still default to 10000. A continuation destination that already
+contains `settings.json`, `catalog/models.json`, or a `prompts/` directory is
+rejected without overwriting those files. Use a fresh project directory, CLI
+overrides, or edit the new project's configuration after import. After an
+interrupted import that has materialized configuration, use a fresh destination.
+
+Only known Codex path fields are remapped: `runtime_root`, `executable`, and
+`options.auth_source`. Project/source-local runtime paths move to the corresponding
+new project/source tree; local executables require an already provisioned executable
+at the mapped destination. No runtime directory or executable is copied. Shared
+external paths stay unchanged, and a bare executable name such as `codex` keeps
+its `PATH` lookup. Other relative paths are rejected because the original working
+directory is unknown; configure absolute paths before continuation. Environment
+credential references are inherited, but literal credentials are rejected and
+project/source-local `auth_source` files are never copied: configure a shared
+external authentication path in the predecessor first.
+
 ## Exactly what the stages mean
 
 | Stage | Scope | Output / behavior |

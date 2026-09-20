@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .project_config import prepare_configuration
 from .util import PipelineError, atomic_json, digest, file_lock, normalized, plan_fingerprint
 
 
@@ -344,7 +345,7 @@ def build_seed(*, book: dict, memory: dict, approved_lexicon: dict, series_id: s
     }
 
 
-def prepare_handoff(previous_root: Path, new_root: Path) -> dict:
+def prepare_handoff(previous_root: Path, new_root: Path, *, new_source: Path | None = None) -> dict:
     previous_root = previous_root.resolve()
     new_root = new_root.resolve()
     if previous_root == new_root:
@@ -388,6 +389,9 @@ def prepare_handoff(previous_root: Path, new_root: Path) -> dict:
             memory_sha256=digest(memory_raw),
             lexicon_sha256=digest(lexicon_raw),
         )
+        configuration = None
+        if new_source is not None:
+            configuration = prepare_configuration(previous_root, new_root, book.get("source_root"), new_source)
         if not series_path.exists():
             # This is the sole permitted mutation of a legacy predecessor.
             atomic_json(series_path, predecessor_series)
@@ -396,6 +400,7 @@ def prepare_handoff(previous_root: Path, new_root: Path) -> dict:
             "previous_volume": predecessor_series["volume"],
             "previous_source_fingerprint": source_fingerprint,
             "seed": seed,
+            "configuration": configuration,
         }
 
 
