@@ -169,6 +169,27 @@ mock and disposable source/project directories. It executes analysis, bulk revie
 confirmation, committed approval, one P2-P5 unit, export, status, and reader
 queries without CLI parsing, Rich construction, HTTP serving, or a browser.
 
+An explicitly authorized live-local verification was subsequently run against
+`llamacpp` at `192.168.100.207:8080`, using
+`unsloth/gemma-4-31B-it-GGUF:UD-Q6_K_XL`, with thinking disabled. Every inference
+command explicitly selected the `local` profile; attempt evidence confirms only
+the `llamacpp` provider was used. Sources and projects were disposable copies
+under `/tmp/intelitex-local-smoke.VofTgh`; no real translation workspace was
+opened for writing.
+
+| Live-local fixture | Actual result |
+| --- | --- |
+| `andersen-mini.epub` | passed end to end: P1-P5 checkpointed for all 3 units (15 accepted attempts), 3/3 units done, export produced a 14,271-byte UTF-8 `translation.txt` |
+| `andersen-smoke.epub` | P1 and P2 checkpointed; P3 failed closed in four attempts, each returning only `B0000001`-`B0000007` and omitting `B0000008`-`B0000011`; no P4/P5 checkpoint or export was accepted |
+
+The failed fixture was resumed from its P2 checkpoint in a separate invocation.
+It reproduced the identical P3 ID-coverage error rather than silently accepting
+partial model output. The preserved `attempt_001` through `attempt_004` evidence
+records `generation=completed`, `validation=failed`, and
+`acceptance=not_accepted`. The successful fixture records exactly three passed,
+checkpointed attempts for each of P1-P5. A concurrent status read during the live
+run was also rejected by the project writer lock as expected.
+
 Compatibility evidence includes:
 
 - Exact canonical P1 and P2-P5 fingerprint fixtures remain unchanged in
@@ -214,13 +235,14 @@ Checks intentionally not run:
 - `tests/browser_review_smoke.py`: Playwright is not installed in the project
   environment (`ModuleNotFoundError: No module named 'playwright'`), so no browser
   binary was assumed or downloaded.
-- Live `smoke`, provider discovery, and a real full-book translation: the request
-  did not supply or explicitly authorize a local live endpoint/profile/model.
-  No cloud provider, built-in Codex authentication, automatic profile
-  substitution, or billable turn was used.
-- Acceptance against a user's real translation workspace: no such workspace was
-  authorized for mutation or consistent copying. Compatibility was exercised only
-  with disposable full-project fixtures and persisted-state regression fixtures.
+- A real full-book translation: the later authorization covered the two public
+  smoke fixtures on the configured local model, not a user's book or a broader
+  production run. No cloud provider, built-in Codex authentication, automatic
+  profile substitution, or billable turn was used.
+- Acceptance against a user's real translation workspace: the active workspace
+  configuration was inspected read-only to identify the authorized local
+  endpoint, but no real project was opened for writing. Compatibility and live
+  inference used disposable copies and persisted-state regression fixtures only.
 
 No private book, credentials, runtime evidence, generated translation project, or
 browser artifact was added to Git. The CLI/web feature division and all existing
