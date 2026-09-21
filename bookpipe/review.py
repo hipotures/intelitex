@@ -10,6 +10,12 @@ from urllib.parse import urlparse
 
 from .util import PipelineError, atomic_json, digest, normalized, read_json
 from .review_context import EvidenceReader
+from .application.review import (
+    ReviewConflict as ApplicationReviewConflict,
+    ReviewRepository as ApplicationReviewRepository,
+    ensure_review_state as application_ensure_review_state,
+    review_summary as application_review_summary,
+)
 
 
 CATEGORY_LABELS = {
@@ -268,6 +274,14 @@ class ReviewRepository:
             review["confirmed"] = bool(confirmed)
             atomic_json(self.path, review)
             return {"summary": review_summary(review), "revision": digest(review)}
+
+
+# Compatibility names now point at the application implementation.  Existing
+# imports keep working while HTTP handlers and direct callers share one policy.
+ReviewConflict = ApplicationReviewConflict
+ReviewRepository = ApplicationReviewRepository
+ensure_review_state = application_ensure_review_state
+review_summary = application_review_summary
 
 
 HTML = r'''<!doctype html>
@@ -602,12 +616,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._error(exc)
 
 
-def run_review_server(path: Path, bind: str, port: int, open_browser: bool, ui) -> None:
+def run_review_server(path: Path | object, bind: str, port: int, open_browser: bool, ui) -> None:
+    repository = path if hasattr(path, "load") and hasattr(path, "path") else ReviewRepository(path)
+    path = repository.path
     if not path.is_file():
         raise PipelineError(f"Review file does not exist: {path}")
     if not 0 <= port <= 65535:
         raise PipelineError("Review port must be between 0 and 65535.")
-    repository = ReviewRepository(path)
     repository.load()  # validate/migrate before binding a socket
     try:
         server = ReviewServer((bind, port), repository)

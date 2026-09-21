@@ -10,9 +10,9 @@ import time
 from pathlib import Path
 
 from .application import (
-    AnalyzeCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand, DoctorCommand, ExportCommand,
-    ImportBookCommand, ProfilesCommand, SmokeCommand, StatusCommand, UsageCommand,
-    TranslateCommand,
+    AnalyzeCommand, ApproveCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand,
+    DoctorCommand, ExportCommand, ImportBookCommand, ProfilesCommand, ReviewSessionCommand,
+    SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
 )
 from .bootstrap import create_application
 
@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.project.resolve()
     store = client = None
     try:
-        extracted = {"import", "analyze", "translate", "status", "export", "profiles", "doctor", "attempts", "usage",
+        extracted = {"import", "analyze", "review", "approve", "translate", "status", "export", "profiles", "doctor", "attempts", "usage",
                      "catalog-import", "discover", "smoke"}
         if args.command in extracted:
             with Display(args.quiet) as ui:
@@ -252,6 +252,17 @@ def main(argv: list[str] | None = None) -> int:
                         app.pipeline.analyze(AnalyzeCommand(**common))
                     else:
                         app.pipeline.translate(TranslateCommand(**common, chunk_limit=args.chunk_limit))
+                elif args.command == "review":
+                    with app.review.open_session(ReviewSessionCommand(root)) as session:
+                        ui.stop_progress()
+                        run_review_server(session, args.bind, args.review_port, not args.no_browser, ui)
+                elif args.command == "approve":
+                    result = app.review.approve(ApproveCommand(root, args.accept_defaults))
+                    ui.message(
+                        f"Approved {result.approved_terms} terms. {result.stale_chunks} previously completed "
+                        f"chunk(s) marked stale. Existing output was preserved.\n"
+                        f"Next: translate --project {root} --continue 5"
+                    )
                 elif args.command == "status":
                     result = app.projects.status(StatusCommand(root))
                     statuses = [chunk.status for chunk in result.chunks]

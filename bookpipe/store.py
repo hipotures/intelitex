@@ -307,6 +307,37 @@ class Store:
         atomic_text(self.root / "terms.review.html", document)
 
     def approve(self, fingerprint: str, accept_defaults: bool) -> tuple[int, int]:
+        """Compatibility entry point; approval orchestration is application-owned."""
+        from .application.review import execute_approval
+        result = execute_approval(self, fingerprint, accept_defaults)
+        return result.approved_terms, result.stale_chunks
+
+    def backup_approval(self, review: dict) -> Path:
+        target = self.root / "history" / f"before_approval_{digest(review)[:16]}.sqlite3"
+        target.parent.mkdir(exist_ok=True)
+        backup = sqlite3.connect(target)
+        try:
+            self.db.backup(backup)
+        finally:
+            backup.close()
+        return target
+
+    def commit_approval(self, decisions: list[tuple[dict, str]], changed: set[str]) -> int:
+        stale = 0
+        with self.db:
+            for old, chosen in decisions:
+                self.db.execute("UPDATE terms SET choice=?,approved=1 WHERE id=?", (chosen, int(old["id"][1:])))
+                if old["choice"] != chosen or not old["approved"]:
+                    self.note("human_choice", {"id": old["id"], "old": old["choice"], "new": chosen})
+            for row in self.db.execute("SELECT id,deps FROM chunks WHERE status='done'").fetchall():
+                if changed & set(json.loads(row["deps"])):
+                    self.db.execute("UPDATE chunks SET status='stale' WHERE id=?", (row["id"],))
+                    stale += 1
+            self.set("approved", True)
+        return stale
+
+    def _legacy_approve(self, fingerprint: str, accept_defaults: bool) -> tuple[int, int]:
+        """Retained temporarily as a line-for-line reference for persisted behavior."""
         path = self.root / "terms.review.json"
         if not path.exists():
             raise PipelineError("Run analyze first; no terms.review.json exists.")
