@@ -9,6 +9,7 @@ from urllib.parse import unquote, urldefrag, urlsplit
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag, UnicodeDammit
 from defusedxml import ElementTree as ET
 
+from .progress import ProgressEvent
 from .util import PipelineError, atomic_text, digest, inside, natural_key
 
 HTML_SUFFIXES = {".html", ".htm", ".xhtml"}
@@ -409,8 +410,8 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
     block_serial = 0
     discovered: list[dict] = []
     for file_i, path in enumerate(paths, 1):
-        ui.overall("Import | HTML files", file_i - 1, len(paths))
-        ui.phase(f"Import: {path.name}")
+        ui.emit(ProgressEvent(kind="import_files_progress", current=file_i - 1, total=len(paths)))
+        ui.emit(ProgressEvent(kind="import_file_started", values={"filename": path.name}))
         raw = path.read_bytes()
         blocks, detected, notes = extract_blocks(raw, encoding=encoding, chapter_selector=chapter_selector)
         relative = str(path.relative_to(root))
@@ -425,7 +426,7 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
         manifest["warnings"].extend(f"{relative}: {n}" for n in notes)
         if not blocks:
             manifest["warnings"].append(f"No text in {relative}; no translation unit created.")
-            ui.overall("Import | HTML files", file_i, len(paths))
+            ui.emit(ProgressEvent(kind="import_files_progress", current=file_i, total=len(paths)))
             continue
 
         toc = [e for e in metadata["toc"] if e["file"] == relative]
@@ -469,7 +470,7 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
             block_serial += 1
             block.update(id=f"B{block_serial:07d}", order=block_serial, file=relative)
             current["blocks"].append(block)
-        ui.overall("Import | HTML files", file_i, len(paths))
+        ui.emit(ProgressEvent(kind="import_files_progress", current=file_i, total=len(paths)))
 
     if not discovered:
         raise PipelineError("Import produced no text.")
@@ -500,7 +501,10 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
 
     limit = int(settings["whole_section_char_limit"])
     for i, chapter in enumerate(manifest["chapters"], 1):
-        ui.chapter(f"Plan | section {i}/{len(manifest['chapters'])}", i - 1, len(manifest["chapters"]))
+        ui.emit(ProgressEvent(
+            kind="import_plan_progress", current=i - 1, total=len(manifest["chapters"]),
+            values={"section_number": i},
+        ))
         source_text = "\n\n".join(b["text"] for b in chapter["blocks"])
         chapter["source_chars"] = len(source_text)
         chapter["source_words"] = sum(len(re.findall(r"\S+", b["text"])) for b in chapter["blocks"])
@@ -551,7 +555,10 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
             manifest["chunks"].append(chunk)
 
         atomic_text(project / "chapters" / chapter["id"] / "source.txt", source_text + "\n")
-        ui.chapter(f"Plan | section {i}/{len(manifest['chapters'])}", i, len(manifest["chapters"]))
+        ui.emit(ProgressEvent(
+            kind="import_plan_progress", current=i, total=len(manifest["chapters"]),
+            values={"section_number": i},
+        ))
 
     manifest["source_fingerprint"] = digest(manifest["files"])
     manifest["warnings"].append(

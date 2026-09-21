@@ -4,10 +4,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..engine import Runner, analysis_plan, export_text, previous_context, source_blocks
+from ..progress import ProgressEvent
 from ..util import PipelineError, atomic_json, digest, read_json
 from .commands import AnalyzeCommand, TranslateCommand
 from .ports import ApplicationDependencies, ProgressSink
-from .projects import effective_settings, load_valid_book, parse_pass_profiles
+from .projects import effective_settings, load_valid_book, validate_pass_profiles
 from .results import PipelineResult
 from .sessions import OperationScope
 
@@ -20,10 +21,11 @@ def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) 
                 "The server model differs from the import model. Use --allow-model-change intentionally. "
                 "Existing chunk boundaries/checkpoints will be preserved."
             )
-        progress.message(
-            "WARNING: different model. Fixed chunk boundaries remain; per-request token counts are recalculated. "
-            "Old successful outputs are not replaced."
-        )
+        progress.emit(ProgressEvent(kind="model_changed", values={
+            "fixed_chunk_boundaries": True,
+            "recalculate_request_tokens": True,
+            "replace_successful_outputs": False,
+        }))
 
 
 def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
@@ -32,11 +34,17 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
     runner = Runner(store, client, settings, progress)
     done = sum(bool(store.get("analysis:" + unit["id"])) for unit in plan)
     for unit in plan:
-        progress.overall("P1/5 | analysis sections", done, len(plan))
-        progress.chapter(
-            f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part",
-            unit["part"] - 1, unit["parts"],
-        )
+        progress.emit(ProgressEvent(
+            kind="analysis_progress", current=done, total=len(plan), values={"pass_no": 1},
+        ))
+        progress.emit(ProgressEvent(
+            kind="analysis_unit_progress", current=unit["part"] - 1, total=unit["parts"],
+            values={
+                "pass_no": 1, "chapter_id": unit["chapter_id"],
+                "chapter_number": unit["chapter_number"], "chapter_total": len(book["chapters"]),
+                "unit_id": unit["id"], "part": unit["part"], "parts": unit["parts"],
+            },
+        ))
         receipt = store.get("analysis:" + unit["id"])
         if receipt:
             if not store.job(receipt["key"], receipt["fingerprint"]):
@@ -54,21 +62,33 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
             }
             (files.write_json(snapshot_path, inputs) if files else atomic_json(snapshot_path, inputs))
         key = "pass1/" + unit["id"]
+        progress.emit(ProgressEvent(kind="pass_started", values={
+            "pass_no": 1, "task_key": key, "chapter_id": unit["chapter_id"],
+            "unit_id": unit["id"],
+        }))
         value, path, fingerprint = runner.run(1, key, inputs)
         store.merge_analysis(key, fingerprint, value, unit["blocks"], unit["chapter_id"])
         store.save_analysis_receipt(
             unit["id"], {"key": key, "fingerprint": fingerprint, "path": path},
         )
         done += 1
-        progress.overall("P1/5 | analysis sections", done, len(plan))
-        progress.chapter(
-            f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part",
-            unit["part"], unit["parts"],
-        )
+        progress.emit(ProgressEvent(
+            kind="analysis_progress", current=done, total=len(plan), values={"pass_no": 1},
+        ))
+        progress.emit(ProgressEvent(
+            kind="analysis_unit_progress", current=unit["part"], total=unit["parts"],
+            values={
+                "pass_no": 1, "chapter_id": unit["chapter_id"],
+                "chapter_number": unit["chapter_number"], "chapter_total": len(book["chapters"]),
+                "unit_id": unit["id"], "part": unit["part"], "parts": unit["parts"],
+            },
+        ))
     store.finish_analysis()
     path = store.write_review(book["source_fingerprint"])
-    progress.phase("Analysis complete; human terminology review required. No prose translation generated.")
-    progress.message(f"Review data: {path}\nNext: review --project {store.root}")
+    progress.emit(ProgressEvent(kind="analysis_completed", values={
+        "project": str(store.root), "review_path": str(path),
+        "prose_translation_generated": False,
+    }))
     return PipelineResult(store.root, review_path=path)
 
 
@@ -87,12 +107,18 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
     by_chapter = {chapter["id"]: chapter for chapter in book["chapters"]}
     for run_index, chunk in enumerate(todo, 1):
         chapter = by_chapter[chunk["chapter_id"]]
-        label = (f"Chapter {chapter['number']}/{len(book['chapters'])} | "
-                 f"unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5")
-        progress.overall(
-            f"Translation | book units | this run {run_index - 1}/{len(todo)}", done, len(book["chunks"]),
-        )
-        progress.chapter(label, 0, 4)
+        progress.emit(ProgressEvent(
+            kind="translation_progress", current=done, total=len(book["chunks"]),
+            values={"run_current": run_index - 1, "run_total": len(todo)},
+        ))
+        progress.emit(ProgressEvent(
+            kind="translation_unit_progress", current=0, total=4,
+            values={
+                "chapter_id": chapter["id"], "chapter_number": chapter["number"],
+                "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
+                "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
+            },
+        ))
         context = previous_context(store, book, chunk, client, settings["continuity_tokens"])
         memory, dependencies = store.translation_memory(
             chunk, context["english"], client.count, settings["memory_tokens"],
@@ -102,29 +128,62 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             "CHUNK_ID": chunk["id"], "SOURCE_BLOCKS": blocks, **memory,
             "PREVIOUS_CONTEXT": context,
         }
-        p2, _, _ = runner.run(2, f"pass2/{chunk['id']}", {
+        key = f"pass2/{chunk['id']}"
+        progress.emit(ProgressEvent(kind="pass_started", values={
+            "pass_no": 2, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
+        }))
+        p2, _, _ = runner.run(2, key, {
             **common, "SOURCE_SENTENCES": chunk["sentences"],
         })
-        progress.chapter(label, 1, 4)
-        p3, _, _ = runner.run(3, f"pass3/{chunk['id']}", {**common, "SEMANTIC_AUDIT": p2})
-        progress.chapter(label, 2, 4)
-        p4, _, _ = runner.run(4, f"pass4/{chunk['id']}", {
+        progress.emit(ProgressEvent(kind="translation_unit_progress", current=1, total=4, values={
+            "chapter_id": chapter["id"], "chapter_number": chapter["number"],
+            "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
+            "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
+        }))
+        key = f"pass3/{chunk['id']}"
+        progress.emit(ProgressEvent(kind="pass_started", values={
+            "pass_no": 3, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
+        }))
+        p3, _, _ = runner.run(3, key, {**common, "SEMANTIC_AUDIT": p2})
+        progress.emit(ProgressEvent(kind="translation_unit_progress", current=2, total=4, values={
+            "chapter_id": chapter["id"], "chapter_number": chapter["number"],
+            "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
+            "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
+        }))
+        key = f"pass4/{chunk['id']}"
+        progress.emit(ProgressEvent(kind="pass_started", values={
+            "pass_no": 4, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
+        }))
+        p4, _, _ = runner.run(4, key, {
             **common, "SOURCE_SENTENCES": chunk["sentences"],
             "POLISH_DRAFT": p3, "SEMANTIC_AUDIT": p2,
         })
-        progress.chapter(label, 3, 4)
-        _, final_path, _ = runner.run(5, f"pass5/{chunk['id']}", {
+        progress.emit(ProgressEvent(kind="translation_unit_progress", current=3, total=4, values={
+            "chapter_id": chapter["id"], "chapter_number": chapter["number"],
+            "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
+            "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
+        }))
+        key = f"pass5/{chunk['id']}"
+        progress.emit(ProgressEvent(kind="pass_started", values={
+            "pass_no": 5, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
+        }))
+        _, final_path, _ = runner.run(5, key, {
             **common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4,
         })
         store.finish_chunk(chunk["id"], final_path, dependencies, digest(memory["APPROVED_LEXICON"]))
         export_text(store, book)
         done += 1
-        progress.overall(
-            f"Translation | book units | this run {run_index}/{len(todo)}", done, len(book["chunks"]),
-        )
-        progress.chapter(label, 4, 4)
+        progress.emit(ProgressEvent(
+            kind="translation_progress", current=done, total=len(book["chunks"]),
+            values={"run_current": run_index, "run_total": len(todo)},
+        ))
+        progress.emit(ProgressEvent(kind="translation_unit_progress", current=4, total=4, values={
+            "chapter_id": chapter["id"], "chapter_number": chapter["number"],
+            "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
+            "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
+        }))
     export_text(store, book)
-    progress.phase(f"Stopped after {len(todo)} completed unit(s). Rerun translate --continue N to proceed.")
+    progress.emit(ProgressEvent(kind="translation_stopped", values={"completed_units": len(todo)}))
     return PipelineResult(store.root, completed_units=len(todo))
 
 
@@ -146,7 +205,7 @@ class PipelineService:
             )
             client = scope.providers(
                 settings, profile=command.profile,
-                pass_profiles=parse_pass_profiles(command.pass_profiles),
+                pass_profiles=validate_pass_profiles(command.pass_profiles),
             )
             client.planning_pass = 1
             selected = client.for_pass(1)
@@ -171,7 +230,7 @@ class PipelineService:
             )
             client = scope.providers(
                 settings, profile=command.profile,
-                pass_profiles=parse_pass_profiles(command.pass_profiles),
+                pass_profiles=validate_pass_profiles(command.pass_profiles),
             )
             client.planning_pass = 2
             selected = client.for_pass(2)

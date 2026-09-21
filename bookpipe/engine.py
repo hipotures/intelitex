@@ -10,10 +10,11 @@ import jsonschema
 
 from .client import Client, ContextFull
 from .catalog import apply_estimate, load_catalog, pricing_snapshot
-from .contracts import SemanticRequest, preflight_display, preflight_measurement, preflight_metadata
+from .contracts import SemanticRequest, preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
 from .p1_compact import decode_output as decode_compact_p1
+from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps, normalized, occurs, read_json
@@ -463,9 +464,14 @@ class Runner:
             self.store.save_job(key, fingerprint, path, {**meta, "recovered_from": recovery["source_attempt"],
                                                         "validation_repairs": repairs,
                                                         "settings": self.settings["passes"][str(pass_no)]})
-            self.ui.phase(f"P{pass_no}/5 | {key} | recovered completed response; no model call")
+            self.ui.emit(ProgressEvent(kind="pass_recovered", values={
+                "pass_no": pass_no, "task_key": key, "model_called": False,
+            }))
             if repairs:
-                self.ui.message(f"Recovered {key}; applied {len(repairs)} conservative validation repair(s). See {work / 'recovery.json'}")
+                self.ui.emit(ProgressEvent(kind="recovery_repaired", values={
+                    "task_key": key, "repair_count": len(repairs),
+                    "recovery_path": str(work / "recovery.json"),
+                }))
             return value, str(path.relative_to(self.store.root)), fingerprint
         last_error = ""
         attempts = max(1, int(self.settings.get("json_retries", 1)) + 1)
@@ -517,7 +523,11 @@ class Runner:
                                 error={"type": type(exc).__name__, "message": str(exc)})
                 raise
             measurement = preflight_measurement(provider, input_count)
-            self.ui.phase(f"P{pass_no}/5 | {key} | waiting for model; {preflight_display(measurement)}")
+            self.ui.emit(ProgressEvent(kind="provider_waiting", values={
+                "pass_no": pass_no, "task_key": key, "attempt_number": number,
+                "input_value": measurement["value"], "input_unit": measurement["unit"],
+                "input_quality": measurement["quality"], "input_method": measurement["method"],
+            }))
             # A failed HTTP or length-limited request is NOT blindly retried; first
             # inspect/save its partial output. Only invalid completed JSON is retried.
             try:

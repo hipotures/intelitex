@@ -8,11 +8,12 @@ import pytest
 
 from bookpipe.application.api import Application
 from bookpipe.application import (
-    AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand, UsageCommand,
+    AnalyzeCommand, AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand, UsageCommand,
 )
 from bookpipe.application.ports import ApplicationDependencies
 from bookpipe.application.sessions import OperationScope, ReaderScope
 from bookpipe.bootstrap import create_application
+from bookpipe.cli import _model_options, parser
 from bookpipe.store import Store
 from bookpipe.util import project_lock, reader_lock
 from bookpipe.util import plan_fingerprint
@@ -118,6 +119,36 @@ def test_cli_is_only_decode_invoke_render_and_owns_no_project_lock():
     assert "Store(" not in source and ".db" not in source
     for group in ("projects", "pipeline", "review", "reader", "exports", "operations"):
         assert f"app.{group}." in source
+
+
+def test_cli_decodes_pass_profile_syntax_into_semantic_mapping(tmp_path):
+    args = parser().parse_args([
+        "analyze", "--project", str(tmp_path / "project"),
+        "--pass-profile", "P1=local", "--pass-profile", "3=astra",
+    ])
+    options = _model_options(args)
+    assert options["pass_profiles"] == {1: "local", 3: "astra"}
+    command = AnalyzeCommand(**options)
+    assert command.pass_profiles == {1: "local", 3: "astra"}
+    with pytest.raises(TypeError):
+        command.pass_profiles[2] = "other"
+
+
+def test_architecture_guards_semantic_progress_and_reader_session_boundary():
+    root = Path(__file__).parents[1] / "bookpipe"
+    pipeline = (root / "application" / "pipeline.py").read_text(encoding="utf-8")
+    projects = (root / "application" / "projects.py").read_text(encoding="utf-8")
+    reader = (root / "reader.py").read_text(encoding="utf-8")
+    reader_session = (root / "application" / "reader.py").read_text(encoding="utf-8")
+
+    for terminal_method in (".overall(", ".chapter(", ".phase(", ".received("):
+        assert terminal_method not in pipeline
+    assert "--pass-profile" not in projects
+    assert "parse_pass_profiles" not in projects
+    assert "self.server.context" not in reader
+    assert "self.server.repository" not in reader
+    assert "context_service" not in reader
+    assert "context_service" not in reader_session
 
 
 class LocalImportProvider:

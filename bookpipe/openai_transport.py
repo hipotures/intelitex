@@ -13,6 +13,7 @@ import httpx
 
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder
+from .progress import ProgressEvent
 from .util import PipelineError, dumps
 
 
@@ -209,7 +210,10 @@ class OpenAIResponsesClient:
                             raise PipelineError("OpenAI output delta was not text.")
                         answer.append(delta)
                         recorder.append_text("answer.partial.txt", delta)
-                        self.ui.received(sum(map(len, answer)), sum(map(len, reasoning)))
+                        self.ui.emit(ProgressEvent(kind="generation_progress", values={
+                            "answer_chars": sum(map(len, answer)),
+                            "reasoning_chars": sum(map(len, reasoning)),
+                        }))
                     elif kind in {"response.reasoning_summary_text.delta", "response.reasoning_text.delta"}:
                         delta = event.get("delta", "")
                         if isinstance(delta, str):

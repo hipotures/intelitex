@@ -21,6 +21,46 @@ MarkerConflict = ApplicationMarkerConflict
 MarkerRepository = ApplicationMarkerRepository
 
 
+class _RepositoryReaderSession:
+    """Compatibility adapter for callers that still pass a marker repository."""
+
+    def __init__(self, repository: MarkerRepository):
+        self._repository = repository
+        self.path = repository.path
+
+    def load(self):
+        return self._repository.load()
+
+    def metadata(self):
+        return self._repository.context.metadata()
+
+    def progress(self):
+        return self._repository.context.progress()
+
+    def chapter(self, chapter_id):
+        return self._repository.context.chapter(chapter_id)
+
+    def context(self, chapter_id, block_id, position):
+        return self._repository.context.context(chapter_id, block_id, position)
+
+    def create_marker(self, payload, expected_revision):
+        return self._repository.create(payload, expected_revision)
+
+    def delete_marker(self, marker_id, expected_revision):
+        return self._repository.delete(marker_id, expected_revision)
+
+
+def _reader_session(value: Path | object):
+    required = (
+        "load", "metadata", "progress", "chapter", "context",
+        "create_marker", "delete_marker", "path",
+    )
+    if all(hasattr(value, name) for name in required):
+        return value
+    repository = value if isinstance(value, MarkerRepository) else MarkerRepository(value)
+    return _RepositoryReaderSession(repository)
+
+
 HTML = """<!doctype html>
 <html lang="en">
 <head>
@@ -78,10 +118,8 @@ HTML = """<!doctype html>
 class ReaderServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, repository: MarkerRepository):
-        self.repository = repository
-        self.context = (repository.context_service if hasattr(repository, "context_service")
-                        else repository.context)
+    def __init__(self, address, session):
+        self.session = _reader_session(session)
         super().__init__(address, ReaderHandler)
 
 
@@ -150,15 +188,15 @@ class ReaderHandler(BaseHTTPRequestHandler):
                 self._send(raw, kind)
             elif path == "/api/reader":
                 self._json({
-                    **self.server.context.metadata(),
-                    "progress": self.server.context.progress(),
-                    "marker_state": self.server.repository.load(),
+                    **self.server.session.metadata(),
+                    "progress": self.server.session.progress(),
+                    "marker_state": self.server.session.load(),
                 })
             elif path.startswith("/api/chapters/"):
                 chapter_id = unquote(path[len("/api/chapters/"):])
                 if not chapter_id or "/" in chapter_id or chapter_id in {".", ".."}:
                     raise PipelineError("Invalid chapter path.")
-                self._json(self.server.context.chapter(chapter_id))
+                self._json(self.server.session.chapter(chapter_id))
             else:
                 self._error(PipelineError("Not found."), HTTPStatus.NOT_FOUND)
         except (PipelineError, OSError, ValueError) as exc:
@@ -172,7 +210,7 @@ class ReaderHandler(BaseHTTPRequestHandler):
                 expected = {"chapter_id", "block_id", "position"}
                 if set(body) != expected:
                     raise PipelineError("Context request must contain only chapter_id, block_id, and position.")
-                self._json(self.server.context.context(
+                self._json(self.server.session.context(
                     body["chapter_id"], body["block_id"], body["position"]
                 ))
                 return
@@ -181,7 +219,7 @@ class ReaderHandler(BaseHTTPRequestHandler):
                 return
             body = self._body()
             revision = body.pop("revision", None)
-            result = self.server.repository.create(body, revision)
+            result = self.server.session.create_marker(body, revision)
             self._json(result, HTTPStatus.CREATED if result["created"] else HTTPStatus.OK)
         except (PipelineError, OSError, ValueError) as exc:
             self._error(exc)
@@ -196,7 +234,7 @@ class ReaderHandler(BaseHTTPRequestHandler):
             body = self._body()
             if set(body) != {"revision"}:
                 raise PipelineError("Delete request must contain only revision.")
-            self._json(self.server.repository.delete(unquote(path[len(prefix):]), body["revision"]))
+            self._json(self.server.session.delete_marker(unquote(path[len(prefix):]), body["revision"]))
         except (PipelineError, OSError, ValueError) as exc:
             self._error(exc)
 
@@ -204,17 +242,17 @@ class ReaderHandler(BaseHTTPRequestHandler):
 def run_reader_server(root: Path | object, bind: str, port: int, open_browser: bool, ui) -> None:
     if not 0 <= port <= 65535:
         raise PipelineError("Reader port must be between 0 and 65535.")
-    repository = root if hasattr(root, "load") and hasattr(root, "context_service") else MarkerRepository(root)
-    repository.load()
+    session = _reader_session(root)
+    session.load()
     try:
-        server = ReaderServer((bind, port), repository)
+        server = ReaderServer((bind, port), session)
     except OSError as exc:
         raise PipelineError(f"Cannot start Reader server on {bind}:{port}: {exc}") from exc
     actual_port = server.server_address[1]
     display_host = "127.0.0.1" if bind in {"0.0.0.0", "::"} else bind
     url = f"http://{display_host}:{actual_port}/"
     ui.message(
-        f"Translation Reader: {url}\nMarker state: {repository.path}\n"
+        f"Translation Reader: {url}\nMarker state: {session.path}\n"
         "Press Ctrl-C to stop. Marker changes are saved atomically."
     )
     if bind not in {"127.0.0.1", "localhost", "::1"}:

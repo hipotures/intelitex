@@ -5,8 +5,10 @@ the omitted values as ``None`` is significant for configuration inheritance.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -18,7 +20,10 @@ class ModelOptions:
     thinking: str | None = None
     allow_model_change: bool = False
     profile: str | None = None
-    pass_profiles: tuple[str, ...] = ()
+    pass_profiles: Mapping[int, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pass_profiles", MappingProxyType(dict(self.pass_profiles)))
 
 
 @dataclass(frozen=True, slots=True)

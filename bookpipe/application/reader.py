@@ -163,8 +163,6 @@ class ReaderSession:
     @property
     def path(self): return self._repo.path
     @property
-    def context_service(self): return self._ctx
-    @property
     def _ctx(self):
         if self._context is None:
             raise RuntimeError("ReaderSession must be entered before use.")
@@ -184,9 +182,6 @@ class ReaderSession:
         return copy.deepcopy(self._ctx.context(chapter_id, block_id, position))
     def create_marker(self, payload, expected_revision): return self._repo.create(payload, expected_revision)
     def delete_marker(self, marker_id, expected_revision): return self._repo.delete(marker_id, expected_revision)
-    # Structural compatibility used by the unchanged HTTP adapter.
-    def create(self, payload, expected_revision): return self.create_marker(payload, expected_revision)
-    def delete(self, marker_id, expected_revision): return self.delete_marker(marker_id, expected_revision)
 
 
 class ReaderService:

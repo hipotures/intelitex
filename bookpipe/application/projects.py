@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from pathlib import Path
 
 from ..importer import import_folder
@@ -15,16 +16,16 @@ from .results import ChapterStatus, ChunkStatus, ImportResult, StatusResult
 from .sessions import OperationScope
 
 
-def parse_pass_profiles(values: tuple[str, ...] | list[str]) -> dict[int, str]:
+def validate_pass_profiles(values: Mapping[int, str]) -> dict[int, str]:
+    """Validate the semantic per-pass profile mapping supplied by an adapter."""
+    if not isinstance(values, Mapping):
+        raise PipelineError("Pass profiles must be a mapping from pass number to profile name.")
     result: dict[int, str] = {}
-    for value in values:
-        try:
-            number_text, name = value.split("=", 1)
-            number = int(number_text.removeprefix("P").removeprefix("p"))
-        except (ValueError, AttributeError) as exc:
-            raise PipelineError(f"Invalid --pass-profile {value!r}; expected P=PROFILE.") from exc
-        if number not in range(1, 6) or not name:
-            raise PipelineError(f"Invalid --pass-profile {value!r}; pass must be 1..5.")
+    for number, name in values.items():
+        if type(number) is not int or number not in range(1, 6):
+            raise PipelineError("Pass profile keys must be integers from 1 through 5.")
+        if not isinstance(name, str) or not name:
+            raise PipelineError(f"Profile name for pass {number} must be a non-empty string.")
         result[number] = name
     return result
 
@@ -43,7 +44,7 @@ def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = 
             settings, _ = migrate_settings_file(root, settings)
     override_profile = settings.get("profiles", {}).get(settings.get("default_profile"))
     if base is not None:
-        assignments = parse_pass_profiles(options.pass_profiles)
+        assignments = validate_pass_profiles(options.pass_profiles)
         selected = (assignments.get(1) or options.profile or settings.get("pass_profiles", {}).get("1")
                     or settings["default_profile"])
         override_profile = settings["profiles"].get(selected)
@@ -125,7 +126,7 @@ class ProjectsService:
                 materialize_configuration(root, configuration, settings)
             client = scope.providers(
                 settings, profile=command.profile,
-                pass_profiles=parse_pass_profiles(command.pass_profiles),
+                pass_profiles=validate_pass_profiles(command.pass_profiles),
             )
             client.discover(1)
             book = import_folder(

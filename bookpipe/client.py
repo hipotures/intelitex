@@ -13,6 +13,7 @@ import httpx
 
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder
+from .progress import ProgressEvent
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps
 
 
@@ -295,7 +296,9 @@ class Client:
                                         n_answer += len(text)
                                     else:
                                         n_thought += len(text)
-                            self.ui.received(n_answer, n_thought)
+                            self.ui.emit(ProgressEvent(kind="generation_progress", values={
+                                "answer_chars": n_answer, "reasoning_chars": n_thought,
+                            }))
             usage = info.get("usage") or {}
             if recorder:
                 normalized = normalized_usage(

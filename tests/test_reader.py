@@ -712,7 +712,45 @@ def test_reader_can_read_checkpoint_while_pipeline_sqlite_writer_is_active(tmp_p
 
 def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
     root, _ = make_reader_project(tmp_path)
-    server = ReaderServer(("127.0.0.1", 0), MarkerRepository(root))
+    repository = MarkerRepository(root)
+    context_service = ReaderContext(root)
+
+    class PublicReaderSession:
+        path = repository.path
+
+        def __init__(self):
+            self.calls = []
+
+        def load(self):
+            self.calls.append("load")
+            return repository.load()
+
+        def metadata(self):
+            self.calls.append("metadata")
+            return context_service.metadata()
+
+        def progress(self):
+            self.calls.append("progress")
+            return context_service.progress()
+
+        def chapter(self, chapter_id):
+            self.calls.append("chapter")
+            return context_service.chapter(chapter_id)
+
+        def context(self, chapter_id, block_id, position):
+            self.calls.append("context")
+            return context_service.context(chapter_id, block_id, position)
+
+        def create_marker(self, payload, revision):
+            self.calls.append("create_marker")
+            return repository.create(payload, revision)
+
+        def delete_marker(self, marker_id, revision):
+            self.calls.append("delete_marker")
+            return repository.delete(marker_id, revision)
+
+    session = PublicReaderSession()
+    server = ReaderServer(("127.0.0.1", 0), session)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -760,6 +798,8 @@ def test_reader_http_api_round_trip_and_no_arbitrary_file_access(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+    assert {"load", "metadata", "progress", "chapter", "context",
+            "create_marker", "delete_marker"} <= set(session.calls)
 
 
 def test_reader_javascript_range_regressions():

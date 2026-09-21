@@ -105,8 +105,22 @@ def _model_options(args) -> dict:
         "project": args.project.resolve(), "host": args.host, "port": args.port,
         "model": args.model, "context_size": args.context_size, "thinking": args.thinking,
         "allow_model_change": args.allow_model_change, "profile": args.profile,
-        "pass_profiles": tuple(args.pass_profile),
+        "pass_profiles": _parse_pass_profiles(args.pass_profile),
     }
+
+
+def _parse_pass_profiles(values: list[str]) -> dict[int, str]:
+    result: dict[int, str] = {}
+    for value in values:
+        try:
+            number_text, name = value.split("=", 1)
+            number = int(number_text.removeprefix("P").removeprefix("p"))
+        except (ValueError, AttributeError) as exc:
+            raise PipelineError(f"Invalid --pass-profile {value!r}; expected P=PROFILE.") from exc
+        if number not in range(1, 6) or not name:
+            raise PipelineError(f"Invalid --pass-profile {value!r}; pass must be 1..5.")
+        result[number] = name
+    return result
 
 
 def _render_import(result, ui: Display) -> None:

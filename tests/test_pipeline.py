@@ -716,7 +716,15 @@ def test_bilingual_review_uses_pipeline_checkpoints_and_preserves_annotations(pr
 
 def test_complete_workflow_through_direct_application_api(project):
     root, _args, state = project
-    app = create_application()
+    class RecordingProgress:
+        def __init__(self):
+            self.events = []
+
+        def emit(self, event):
+            self.events.append(event)
+
+    progress = RecordingProgress()
+    app = create_application(progress)
 
     analysis = app.pipeline.analyze(AnalyzeCommand(project=root))
     assert analysis.review_path == root / "terms.review.json"
@@ -742,3 +750,8 @@ def test_complete_workflow_through_direct_application_api(project):
         assert chapter["blocks"] and isinstance(chapter["complete"], bool)
         assert reader.load()["markers"] == []
     assert state.calls[1] > 0 and all(state.calls[number] > 0 for number in range(2, 6))
+    started = [event for event in progress.events if event.kind == "pass_started"]
+    assert {event.values["pass_no"] for event in started} == {1, 2, 3, 4, 5}
+    assert all(event.values.get("chapter_id") for event in started)
+    translated = [event for event in started if event.values["pass_no"] > 1]
+    assert all(event.values.get("chunk_id") and event.values.get("task_key") for event in translated)

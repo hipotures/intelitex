@@ -46,10 +46,69 @@ class Display:
 
     def emit(self, event):
         """Render a presentation-neutral application progress event."""
+        values = event.values
         if event.kind == "message":
             self.message(event.message)
         elif event.kind == "phase":
             self.phase(event.message)
+        elif event.kind == "import_files_progress":
+            self.overall("Import | HTML files", event.current, event.total)
+        elif event.kind == "import_file_started":
+            self.phase(f"Import: {values['filename']}")
+        elif event.kind == "import_plan_progress":
+            self.chapter(
+                f"Plan | section {values['section_number']}/{event.total}", event.current, event.total,
+            )
+        elif event.kind == "analysis_progress":
+            self.overall("P1/5 | analysis sections", event.current, event.total)
+        elif event.kind == "analysis_unit_progress":
+            self.chapter(
+                f"Chapter/section {values['chapter_number']}/{values['chapter_total']} | analysis part",
+                event.current, event.total,
+            )
+        elif event.kind == "analysis_completed":
+            self.phase("Analysis complete; human terminology review required. No prose translation generated.")
+            self.message(f"Review data: {values['review_path']}\nNext: review --project {values['project']}")
+        elif event.kind == "translation_progress":
+            self.overall(
+                f"Translation | book units | this run {values['run_current']}/{values['run_total']}",
+                event.current, event.total,
+            )
+        elif event.kind == "translation_unit_progress":
+            self.chapter(
+                f"Chapter {values['chapter_number']}/{values['chapter_total']} | "
+                f"unit {values['chunk_index']}/{values['chunk_total']} | passes P2-P5",
+                event.current, event.total,
+            )
+        elif event.kind == "provider_waiting":
+            amount = int(values["input_value"])
+            measurement = (f"input upper bound {amount:,} UTF-8 bytes"
+                           if values["input_unit"] == "utf8_bytes" else f"input {amount:,} tokens")
+            self.phase(
+                f"P{values['pass_no']}/5 | {values['task_key']} | waiting for model; {measurement}"
+            )
+        elif event.kind == "generation_progress":
+            self.received(int(values["answer_chars"]), int(values["reasoning_chars"]))
+        elif event.kind == "pass_recovered":
+            self.phase(
+                f"P{values['pass_no']}/5 | {values['task_key']} | "
+                "recovered completed response; no model call"
+            )
+        elif event.kind == "recovery_repaired":
+            self.message(
+                f"Recovered {values['task_key']}; applied {values['repair_count']} conservative "
+                f"validation repair(s). See {values['recovery_path']}"
+            )
+        elif event.kind == "model_changed":
+            self.message(
+                "WARNING: different model. Fixed chunk boundaries remain; per-request token counts are "
+                "recalculated. Old successful outputs are not replaced."
+            )
+        elif event.kind == "translation_stopped":
+            self.phase(
+                f"Stopped after {values['completed_units']} completed unit(s). "
+                "Rerun translate --continue N to proceed."
+            )
 
     def overall(self, label: str, done: int, total: int):
         self.progress.update(self.top, description=label, completed=done, total=max(total, 1))

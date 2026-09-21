@@ -95,7 +95,7 @@ app.operations.smoke(SmokeCommand) -> ReportResult
 
 `ImportBookCommand(project, source, ..., *, host=None, port=None, model=None,
 context_size=None, thinking=None, allow_model_change=False, profile=None,
-pass_profiles=())`, `AnalyzeCommand(project, *, same model options)`, and
+pass_profiles: Mapping[int, str] = {})`, `AnalyzeCommand(project, *, same model options)`, and
 `TranslateCommand(project, chunk_limit=5, *, same model options)` preserve the
 omitted/explicit configuration distinctions. The remaining commands are:
 
@@ -117,6 +117,15 @@ Review sessions expose `load`, `summary`, `evidence`, `patch_term`,
 `progress`, `chapter`, `context`, `create_marker`, and `delete_marker`. Returned
 drafts, reports, reader values, and result dataclasses are detached from live
 service state.
+
+The repeatable CLI spelling `--pass-profile P3=local` is decoded only by the CLI
+adapter. Application callers supply the semantic integer-to-profile mapping and
+never parse CLI strings. Runtime progress is published exclusively as structured
+`ProgressEvent` values. Events include pass number, task key, chapter/chunk IDs,
+completed/total counts, provider input measurement, and received character
+counts where applicable; `Display` alone turns them into the established terminal
+labels. The Reader HTTP adapter likewise calls only the public `ReaderSession`
+methods listed above and does not obtain or expose its underlying `ReaderContext`.
 
 The final dependency direction is:
 
@@ -154,6 +163,7 @@ Incremental commits and their focused gates were:
 | `71604e2` | 4, review/approval | 126 focused review/pipeline/series tests passed |
 | `201e168` | 5, reader | full suite: 223 passed; JS: 31 passed |
 | `baeaa1d`, `d75475d`, `f0dd980` | 6, thin adapters/capabilities/final API | 226 tests passed; JS: 31 passed |
+| corrective architecture follow-up | semantic pass profiles, structured progress, Reader HTTP boundary | 228 tests passed; JS: 31 passed |
 
 Final verification on `f0dd980`:
 
@@ -163,6 +173,20 @@ Final verification on `f0dd980`:
 | `uv run python -m compileall -q bookpipe translate.py` | passed |
 | `uv run --group dev python -m pytest -q` | 226 passed in 26.24s |
 | `node --test tests/test_review_filters.cjs tests/test_reader_ranges.cjs` | 31 passed in 254.88ms |
+
+Corrective follow-up verification:
+
+| Command | Actual result |
+| --- | --- |
+| `uv lock --check` | passed; 25 packages resolved, lock unchanged |
+| `uv run python -m compileall -q bookpipe translate.py` | passed |
+| `uv run --group dev python -m pytest -q` | 228 passed in 26.34s |
+| `node --test tests/test_review_filters.cjs tests/test_reader_ranges.cjs` | 31 passed in 234.28ms |
+
+Architecture regressions now assert that application commands contain semantic
+pass-profile mappings, pipeline code cannot call terminal-shaped progress
+methods, every P1-P5 start exposes structured identifiers, and Reader HTTP routes
+delegate to the public session without `context_service` access.
 
 The direct application acceptance test uses the existing local deterministic HTTP
 mock and disposable source/project directories. It executes analysis, bulk review,
