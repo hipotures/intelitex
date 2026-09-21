@@ -16,7 +16,6 @@ from .importer import pack_blocks, split_long
 from .p1_compact import decode_output as decode_compact_p1
 from .schemas import SCHEMAS
 from .store import Store
-from .ui import Display
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps, normalized, occurs, read_json
 
 
@@ -398,7 +397,7 @@ def _compatible_completed_attempts(key_root: Path, body: dict, semantic: dict | 
 
 
 class Runner:
-    def __init__(self, store: Store, client: Client, settings: dict, ui: Display):
+    def __init__(self, store: Store, client: Client, settings: dict, ui: Any):
         self.store, self.client, self.settings, self.ui = store, client, settings, ui
 
     def run(self, pass_no: int, key: str, inputs: dict) -> tuple[dict, str, str]:
@@ -644,39 +643,10 @@ def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> l
     return units
 
 
-def analyze(store: Store, book: dict, client: Client, settings: dict, ui: Display):
-    plan = analysis_plan(store, book, client, settings)
-    runner = Runner(store, client, settings, ui)
-    done = sum(bool(store.get("analysis:" + u["id"])) for u in plan)
-    for unit in plan:
-        ui.overall("P1/5 | analysis sections", done, len(plan))
-        ui.chapter(f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part", unit["part"]-1, unit["parts"])
-        receipt = store.get("analysis:" + unit["id"])
-        if receipt:
-            if not store.job(receipt["key"], receipt["fingerprint"]):
-                raise PipelineError("Analysis receipt has no valid checkpoint.")
-            continue
-        snapshot_path = store.root / "analysis_inputs" / (unit["id"] + ".json")
-        if snapshot_path.exists():
-            inputs = read_json(snapshot_path)
-        else:
-            text = "\n\n".join(b["text"] for b in unit["blocks"])
-            memory = store.analysis_memory(text, client.count, settings["memory_tokens"])
-            inputs = {"SECTION_ID": unit["id"], "SOURCE_BLOCKS": source_blocks(unit["blocks"]), "EXISTING_MEMORY": memory}
-            atomic_json(snapshot_path, inputs)
-        key = "pass1/" + unit["id"]
-        value, path, fp = runner.run(1, key, inputs)
-        store.merge_analysis(key, fp, value, unit["blocks"], unit["chapter_id"])
-        with store.db:
-            store.set("analysis:" + unit["id"], {"key": key, "fingerprint": fp, "path": path})
-        done += 1
-        ui.overall("P1/5 | analysis sections", done, len(plan))
-        ui.chapter(f"Chapter/section {unit['chapter_number']}/{len(book['chapters'])} | analysis part", unit["part"], unit["parts"])
-    with store.db:
-        store.set("analysis_done", True)
-    path = store.write_review(book["source_fingerprint"])
-    ui.phase("Analysis complete; human terminology review required. No prose translation generated.")
-    ui.message(f"Review data: {path}\nNext: review --project {store.root}")
+def analyze(store: Store, book: dict, client: Client, settings: dict, ui: Any):
+    """Compatibility entry point; orchestration lives in the application layer."""
+    from .application.pipeline import execute_analyze
+    return execute_analyze(store, book, client, settings, ui)
 
 
 def tail(text: str, client: Client, maximum: int) -> str:
@@ -716,42 +686,10 @@ def previous_context(store: Store, book: dict, chunk: dict, client: Client, maxi
     return {"source_chunk_id": None, "english": "", "polish": ""}
 
 
-def translate(store: Store, book: dict, client: Client, settings: dict, ui: Display, limit: int):
-    if not store.get("analysis_done"):
-        raise PipelineError("Run analyze to completion first. Translation does not trigger analysis implicitly.")
-    if not store.get("approved"):
-        raise PipelineError("Review terms.review.json and run approve before translation.")
-    if limit < 0:
-        raise PipelineError("--continue must be 0 (all) or a positive number of unfinished chunks.")
-    runner = Runner(store, client, settings, ui)
-    pending = [c for c in book["chunks"] if store.chunk(c["id"])["status"] != "done"]
-    todo = pending[:limit] if limit else pending
-    done = len(book["chunks"]) - len(pending)
-    bychapter = {c["id"]: c for c in book["chapters"]}
-    for run_idx, chunk in enumerate(todo, 1):
-        chapter = bychapter[chunk["chapter_id"]]
-        ui.overall(f"Translation | book units | this run {run_idx-1}/{len(todo)}", done, len(book["chunks"]))
-        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 0, 4)
-        # Capture continuity per chunk. A resumed call must not accidentally use
-        # text generated AFTER this chunk in a previous run.
-        context = previous_context(store, book, chunk, client, settings["continuity_tokens"])
-        memory, deps = store.translation_memory(chunk, context["english"], client.count, settings["memory_tokens"])
-        blocks = source_blocks(chunk["blocks"])
-        common = {"CHUNK_ID": chunk["id"], "SOURCE_BLOCKS": blocks, **memory, "PREVIOUS_CONTEXT": context}
-        p2, _, _ = runner.run(2, f"pass2/{chunk['id']}", {**common, "SOURCE_SENTENCES": chunk["sentences"]})
-        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 1, 4)
-        p3, _, _ = runner.run(3, f"pass3/{chunk['id']}", {**common, "SEMANTIC_AUDIT": p2})
-        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 2, 4)
-        p4, _, _ = runner.run(4, f"pass4/{chunk['id']}", {**common, "SOURCE_SENTENCES": chunk["sentences"], "POLISH_DRAFT": p3, "SEMANTIC_AUDIT": p2})
-        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 3, 4)
-        p5, final_path, _ = runner.run(5, f"pass5/{chunk['id']}", {**common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4})
-        store.finish_chunk(chunk["id"], final_path, deps, digest(memory["APPROVED_LEXICON"]))
-        export_text(store, book)
-        done += 1
-        ui.overall(f"Translation | book units | this run {run_idx}/{len(todo)}", done, len(book["chunks"]))
-        ui.chapter(f"Chapter {chapter['number']}/{len(book['chapters'])} | unit {chunk['index_in_chapter']}/{len(chapter['chunk_ids'])} | passes P2-P5", 4, 4)
-    export_text(store, book)
-    ui.phase(f"Stopped after {len(todo)} completed unit(s). Rerun translate --continue N to proceed.")
+def translate(store: Store, book: dict, client: Client, settings: dict, ui: Any, limit: int):
+    """Compatibility entry point; orchestration lives in the application layer."""
+    from .application.pipeline import execute_translate
+    return execute_translate(store, book, client, settings, ui, limit)
 
 
 def export_text(store: Store, book: dict):

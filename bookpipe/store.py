@@ -37,6 +37,15 @@ class Store:
     def close(self):
         self.db.close()
 
+    def save_analysis_receipt(self, unit_id: str, receipt: dict) -> None:
+        """Persist one P1 receipt atomically without exposing the connection."""
+        with self.db:
+            self.set("analysis:" + unit_id, receipt)
+
+    def finish_analysis(self) -> None:
+        with self.db:
+            self.set("analysis_done", True)
+
     def get(self, key: str, default=None):
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else default

@@ -10,8 +10,9 @@ import time
 from pathlib import Path
 
 from .application import (
-    AttemptsCommand, CatalogImportCommand, DiscoverCommand, DoctorCommand, ExportCommand,
+    AnalyzeCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand, DoctorCommand, ExportCommand,
     ImportBookCommand, ProfilesCommand, SmokeCommand, StatusCommand, UsageCommand,
+    TranslateCommand,
 )
 from .bootstrap import create_application
 
@@ -210,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.project.resolve()
     store = client = None
     try:
-        extracted = {"import", "status", "export", "profiles", "doctor", "attempts", "usage",
+        extracted = {"import", "analyze", "translate", "status", "export", "profiles", "doctor", "attempts", "usage",
                      "catalog-import", "discover", "smoke"}
         if args.command in extracted:
             with Display(args.quiet) as ui:
@@ -240,6 +241,17 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     for warning in result.warnings:
                         ui.message("NOTE: " + warning)
+                elif args.command in {"analyze", "translate"}:
+                    common = dict(
+                        project=root, host=args.host, port=args.port, model=args.model,
+                        context_size=args.context_size, thinking=args.thinking,
+                        allow_model_change=args.allow_model_change, profile=args.profile,
+                        pass_profiles=tuple(args.pass_profile),
+                    )
+                    if args.command == "analyze":
+                        app.pipeline.analyze(AnalyzeCommand(**common))
+                    else:
+                        app.pipeline.translate(TranslateCommand(**common, chunk_limit=args.chunk_limit))
                 elif args.command == "status":
                     result = app.projects.status(StatusCommand(root))
                     statuses = [chunk.status for chunk in result.chunks]

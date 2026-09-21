@@ -11,6 +11,7 @@ from bookpipe.application import (
     AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand, UsageCommand,
 )
 from bookpipe.application.ports import ApplicationDependencies
+from bookpipe.application.sessions import OperationScope
 from bookpipe.bootstrap import create_application
 from bookpipe.store import Store
 from bookpipe.util import project_lock, reader_lock
@@ -54,7 +55,7 @@ def test_operation_scope_owns_one_lock_and_closes_lazy_resources(tmp_path):
     events = []
     app = Application(dependencies(events))
     with pytest.raises(RuntimeError, match="boom"):
-        with app.pipeline.operation_scope(tmp_path / "project") as scope:
+        with OperationScope(app.projects.dependencies, tmp_path / "project") as scope:
             assert scope.store is scope.store
             assert scope.providers({}) is scope.providers({})
             raise RuntimeError("boom")
