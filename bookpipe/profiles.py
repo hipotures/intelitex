@@ -18,6 +18,47 @@ COMMON_KEYS = {
     "endpoint", "executable", "runtime_root", "options", "temperature", "seed",
 }
 
+_BUILTIN_CODEX_MODELS = {
+    "astra": ("gpt-6-astra", ("low", "medium", "high", "xhigh", "max")),
+    "sol": ("gpt-5.6-sol", ("none", "low", "medium", "high", "xhigh", "max")),
+    "terra": ("gpt-5.6-terra", ("none", "low", "medium", "high", "xhigh", "max")),
+    "luna": ("gpt-5.6-luna", ("none", "low", "medium", "high", "xhigh", "max")),
+}
+
+
+def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
+    """Profiles shipped with Intelitex and available to every project.
+
+    They stay outside per-book settings. A project may override any built-in by
+    defining the same profile name in its own settings.json.
+    """
+    result = {}
+    for family, (model, efforts) in _BUILTIN_CODEX_MODELS.items():
+        for effort in efforts:
+            result[f"codex-{family}-{effort}"] = {
+                "provider": "codex",
+                "enabled": True,
+                "model": model,
+                "executable": "codex",
+                "context_size": 1_050_000,
+                "planning_output_reserve": 16_000,
+                "max_output_tokens": None,
+                "request_timeout": 1_200,
+                "reasoning_effort": effort,
+                "options": {"auth_source": "~/.codex/auth.json"},
+            }
+    return result
+
+
+def with_builtin_profiles(settings: dict[str, Any]) -> dict[str, Any]:
+    """Return effective settings with central profiles merged non-destructively."""
+    value = copy.deepcopy(settings)
+    profiles = value.get("profiles")
+    if not isinstance(profiles, dict):
+        return value
+    value["profiles"] = {**builtin_codex_profiles(), **profiles}
+    return value
+
 
 def legacy_local_profile(settings: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -85,6 +126,7 @@ def migrate_settings_file(project: Path, settings: dict[str, Any]) -> tuple[dict
 
 
 def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> None:
+    settings = with_builtin_profiles(settings)
     profiles = settings.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise PipelineError("At least one named profile is required.")
@@ -144,6 +186,7 @@ def resolve_profile(
     command_pass_profiles: dict[int, str] | None = None,
     project: Path | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, str]]:
+    settings = with_builtin_profiles(settings)
     validate_profiles(settings, project)
     assignments = command_pass_profiles or {}
     if pass_no in assignments:

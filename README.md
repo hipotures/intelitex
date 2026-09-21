@@ -93,6 +93,18 @@ verified for the intended account/runtime):
 Codex uses private application-owned homes and an empty work directory outside
 the project/source tree. Only an explicitly configured `auth_source` is copied;
 user configuration, skills, rules, memories, plugins and trust settings are not.
+
+Intelitex also provides central Codex profiles to every project without copying
+them into each book's `settings.json`. Profile names follow
+`codex-{astra|sol|terra|luna}-{effort}`. Astra includes `low`, `medium`, `high`,
+`xhigh`, and `max`; Sol, Terra, and Luna additionally include `none`. They use
+`~/.codex/auth.json` as the authentication source. A project-local profile with
+the same name overrides the built-in definition. For example:
+
+```bash
+uv run translate.py translate --project "$PROJECT" \
+  --profile codex-sol-medium --continue 1 --allow-model-change
+```
 All discovered skills are disabled and re-listed before a thread starts. The
 saved rollout is copied into the attempt and the temporary authentication copy is
 removed after the child process is reaped. App-server can still add its small

@@ -13,14 +13,15 @@ from typing import Any
 from .catalog import load_catalog
 from .codex_transport import _RpcSession, app_server_argv
 from .evidence import AttemptRecorder, redact
-from .profiles import credential_status, resolve_profile
+from .profiles import credential_status, resolve_profile, with_builtin_profiles
 from .util import PipelineError, digest, read_json
 
 
 def profile_report(settings: dict[str, Any], project: Path) -> dict[str, Any]:
+    effective = with_builtin_profiles(settings)
     resolved = {}
     for pass_no in range(1, 6):
-        name, profile, provenance = resolve_profile(settings, pass_no, project=project)
+        name, profile, provenance = resolve_profile(effective, pass_no, project=project)
         safe = dict(profile)
         safe["credentials"] = credential_status(profile)
         safe.pop("credential_value", None)
@@ -28,7 +29,7 @@ def profile_report(settings: dict[str, Any], project: Path) -> dict[str, Any]:
     return {
         "default_profile": settings["default_profile"],
         "pass_profiles": settings.get("pass_profiles", {}),
-        "configured": redact(settings["profiles"]),
+        "configured": redact(effective["profiles"]),
         "resolved_passes": resolved,
     }
 

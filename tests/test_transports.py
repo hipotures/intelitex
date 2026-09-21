@@ -16,7 +16,8 @@ from bookpipe.contracts import preflight_display, preflight_measurement, preflig
 from bookpipe.evidence import AttemptRecorder, EvidenceError
 from bookpipe.engine import response_schema
 from bookpipe.openai_transport import OpenAIResponsesClient
-from bookpipe.profiles import migrate_settings_file, resolve_profile, validate_profiles, with_profiles
+from bookpipe.profiles import (builtin_codex_profiles, migrate_settings_file, resolve_profile,
+                               validate_profiles, with_builtin_profiles, with_profiles)
 from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
 from bookpipe.ui import Display
@@ -369,6 +370,41 @@ def test_profile_precedence_and_codex_capability_validation(tmp_path):
                                       "planning_output_reserve":100,"max_output_tokens":10,"options":{}}
     with pytest.raises(PipelineError, match="no verified hard output-token cap"):
         validate_profiles(bad, tmp_path)
+
+
+def test_builtin_codex_profiles_are_available_without_per_project_copies(tmp_path):
+    settings = {
+        "passes": {str(i): {"temperature": 0.1, "max_tokens": 100} for i in range(1, 6)},
+        "request_timeout": 30,
+        "profiles": {
+            "local": {"provider": "llamacpp", "enabled": True, "model": None,
+                      "endpoint": "127.0.0.1", "context_size": 1000,
+                      "planning_output_reserve": 100, "options": {}},
+        },
+        "default_profile": "local",
+        "pass_profiles": {},
+    }
+
+    builtins = builtin_codex_profiles()
+    assert len(builtins) == 23
+    assert "codex-sol-medium" not in settings["profiles"]
+    name, profile, provenance = resolve_profile(
+        settings, 4, command_profile="codex-sol-medium", project=tmp_path
+    )
+    assert name == "codex-sol-medium"
+    assert profile["model"] == "gpt-5.6-sol"
+    assert profile["reasoning_effort"] == "medium"
+    assert profile["options"]["auth_source"] == "~/.codex/auth.json"
+    assert provenance == {"profile": "command_profile_override"}
+    assert "codex-sol-medium" not in settings["profiles"]
+
+
+def test_project_profile_overrides_builtin_profile():
+    settings = {
+        "profiles": {"codex-sol-medium": {"provider": "codex", "model": "project-model"}}
+    }
+    effective = with_builtin_profiles(settings)
+    assert effective["profiles"]["codex-sol-medium"]["model"] == "project-model"
 
 
 def test_evidence_creation_failure_happens_before_provider_contact(tmp_path, monkeypatch):

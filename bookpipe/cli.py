@@ -17,7 +17,7 @@ from .importer import import_folder
 from .reader import run_reader_server
 from .review import run_review_server
 from .operations import attempt_report, doctor_report, print_json, profile_report, usage_report
-from .profiles import migrate_settings_file, validate_profiles
+from .profiles import migrate_settings_file, validate_profiles, with_builtin_profiles
 from .provider_registry import ProviderPool
 from .project_config import materialize_configuration
 from .series import continuation_metadata, prepare_handoff, validate_series_metadata
@@ -136,6 +136,13 @@ def effective_settings(root: Path, args, *, base: dict | None = None) -> dict:
         selected = (assignments.get(1) or args.profile or settings.get("pass_profiles", {}).get("1")
                     or settings["default_profile"])
         override_profile = settings["profiles"].get(selected)
+        if override_profile is None:
+            override_profile = with_builtin_profiles(settings)["profiles"].get(selected)
+            if override_profile is not None:
+                # Import-time scalar overrides must affect the selected profile
+                # passed to ProviderPool. Persisting this one explicitly selected
+                # built-in also preserves those overrides in the new project.
+                settings["profiles"][selected] = override_profile
         if override_profile is None:
             raise PipelineError(f"Unknown profile {selected!r}.")
     for key in ("host", "port", "model", "context_size", "thinking"):
