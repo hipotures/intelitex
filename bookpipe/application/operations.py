@@ -27,7 +27,7 @@ class OperationsService:
     def _offline(self, project, operation):
         root = project.resolve()
         with OperationScope(self.dependencies, root, self.progress):
-            load_valid_book(root)
+            load_valid_book(root, self.dependencies.plan_fingerprint)
             return ReportResult(copy.deepcopy(operation(root)))
 
     def profiles(self, command: ProfilesCommand) -> ReportResult:
@@ -52,7 +52,7 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root)
+            load_valid_book(root, self.dependencies.plan_fingerprint)
             settings = effective_settings(self.dependencies.bundle, root)
             providers = scope.providers(settings, profile=command.profile)
             return ReportResult(copy.deepcopy(providers.discover(command.pass_no)))
@@ -64,7 +64,7 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root)
+            load_valid_book(root, self.dependencies.plan_fingerprint)
             settings = effective_settings(self.dependencies.bundle, root)
             provider = scope.providers(settings, profile=command.profile).for_pass(command.pass_no)
             stamp = str(time.time_ns())

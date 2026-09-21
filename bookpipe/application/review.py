@@ -250,7 +250,7 @@ class ReviewSession:
         scope = OperationScope(self.dependencies, self.project, self.progress)
         scope.__enter__()
         try:
-            book = load_valid_book(self.project)
+            book = load_valid_book(self.project, self.dependencies.plan_fingerprint)
             if not scope.store.get("analysis_done"):
                 raise PipelineError("Analysis has not finished; run analyze to resume it.")
             path = scope.store.write_review(book["source_fingerprint"])
@@ -300,7 +300,7 @@ class ReviewService:
     def approve(self, command: ApproveCommand) -> ApprovalResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint)
             if not scope.store.get("analysis_done"):
                 raise PipelineError("Finish analysis before approving terminology.")
             return execute_approval(scope.store, book["source_fingerprint"], command.accept_defaults)

@@ -68,3 +68,4 @@ class ApplicationDependencies:
     store_factory: StoreFactory
     provider_factory: ProviderFactory
     bundle: Path
+    plan_fingerprint: Callable[[dict], str]

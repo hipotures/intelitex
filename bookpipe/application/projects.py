@@ -79,11 +79,11 @@ def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = 
     return settings
 
 
-def load_valid_book(root: Path) -> dict:
+def load_valid_book(root: Path, fingerprint=plan_fingerprint) -> dict:
     if not (root / "book.json").exists():
         raise PipelineError("Project not imported. Run import first.")
     book = read_json(root / "book.json")
-    if book.get("content_fingerprint") != plan_fingerprint(book):
+    if book.get("content_fingerprint") != fingerprint(book):
         raise PipelineError(
             "The frozen source/chunk manifest was modified. Restore book.json or import into a new project. "
             "Only titles and thread_id may be edited in place."
@@ -172,7 +172,7 @@ class ProjectsService:
     def status(self, command: StatusCommand) -> StatusResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint)
             store = scope.store
             chunks = tuple(ChunkStatus(c["id"], store.chunk(c["id"])["status"]) for c in book["chunks"])
             terms = store.terms()

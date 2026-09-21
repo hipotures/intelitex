@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 import bookpipe.reader as reader_module
+import bookpipe.application.reader as reader_application
 import bookpipe.cli as cli_module
 from bookpipe.cli import main
 from bookpipe.reader import MarkerConflict, MarkerRepository, ReaderServer
@@ -527,13 +528,13 @@ def test_marker_repository_unicode_validation_idempotency_and_atomic_write(tmp_p
     start = text.index("😀")
     end = text.index(" jaźń")
     calls = []
-    real_atomic_json = reader_module.atomic_json
+    real_atomic_json = reader_application.atomic_json
 
     def recording_atomic(path, value):
         calls.append(path)
         real_atomic_json(path, value)
 
-    monkeypatch.setattr(reader_module, "atomic_json", recording_atomic)
+    monkeypatch.setattr(reader_application, "atomic_json", recording_atomic)
     payload = {"chapter_id": "ch0001", "block_id": "B0000001", "start": start, "end": end, "text": text[start:end]}
     created = repository.create(payload, initial["_revision"])
     duplicate = repository.create(payload, created["revision"])
@@ -778,8 +779,8 @@ def test_reader_cli_dispatches_with_reader_options(tmp_path, monkeypatch):
     monkeypatch.setattr(cli_module, "plan_fingerprint", lambda value: "test-plan")
     called = {}
 
-    def fake_server(project, bind, port, open_browser, ui):
-        called.update(project=project, bind=bind, port=port, open_browser=open_browser)
+    def fake_server(session, bind, port, open_browser, ui):
+        called.update(project=session.project, bind=bind, port=port, open_browser=open_browser)
 
     monkeypatch.setattr(cli_module, "run_reader_server", fake_server)
     monkeypatch.setattr(cli_module, "Store", lambda project: pytest.fail("Reader must not open the read-write Store"))

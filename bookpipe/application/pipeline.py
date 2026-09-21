@@ -140,7 +140,7 @@ class PipelineService:
     def analyze(self, command: AnalyzeCommand) -> PipelineResult:
         root, scope = self._resources(command)
         with scope:
-            book = load_valid_book(root)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint)
             settings = effective_settings(self.dependencies.bundle, root, command)
             client = scope.providers(
                 settings, profile=command.profile,
@@ -161,7 +161,7 @@ class PipelineService:
     def translate(self, command: TranslateCommand) -> PipelineResult:
         root, scope = self._resources(command)
         with scope:
-            book = load_valid_book(root)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint)
             settings = effective_settings(self.dependencies.bundle, root, command)
             client = scope.providers(
                 settings, profile=command.profile,

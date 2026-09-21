@@ -11,6 +11,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from .reader_context import ReaderContext
+from .application.reader import (
+    MarkerConflict as ApplicationMarkerConflict,
+    MarkerRepository as ApplicationMarkerRepository,
+)
 from .util import PipelineError, atomic_json, digest, read_json
 
 
@@ -134,6 +138,12 @@ class MarkerRepository:
             return {"deleted": marker_id, "revision": digest(state)}
 
 
+# Compatibility exports use the application implementation so direct callers
+# and HTTP requests share the exact marker policy.
+MarkerConflict = ApplicationMarkerConflict
+MarkerRepository = ApplicationMarkerRepository
+
+
 HTML = """<!doctype html>
 <html lang="en">
 <head>
@@ -193,7 +203,8 @@ class ReaderServer(ThreadingHTTPServer):
 
     def __init__(self, address, repository: MarkerRepository):
         self.repository = repository
-        self.context = repository.context
+        self.context = (repository.context_service if hasattr(repository, "context_service")
+                        else repository.context)
         super().__init__(address, ReaderHandler)
 
 
@@ -313,10 +324,10 @@ class ReaderHandler(BaseHTTPRequestHandler):
             self._error(exc)
 
 
-def run_reader_server(root: Path, bind: str, port: int, open_browser: bool, ui) -> None:
+def run_reader_server(root: Path | object, bind: str, port: int, open_browser: bool, ui) -> None:
     if not 0 <= port <= 65535:
         raise PipelineError("Reader port must be between 0 and 65535.")
-    repository = MarkerRepository(root)
+    repository = root if hasattr(root, "load") and hasattr(root, "context_service") else MarkerRepository(root)
     repository.load()
     try:
         server = ReaderServer((bind, port), repository)

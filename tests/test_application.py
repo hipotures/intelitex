@@ -11,10 +11,11 @@ from bookpipe.application import (
     AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand, UsageCommand,
 )
 from bookpipe.application.ports import ApplicationDependencies
-from bookpipe.application.sessions import OperationScope
+from bookpipe.application.sessions import OperationScope, ReaderScope
 from bookpipe.bootstrap import create_application
 from bookpipe.store import Store
 from bookpipe.util import project_lock, reader_lock
+from bookpipe.util import plan_fingerprint
 
 
 class Resource:
@@ -41,6 +42,7 @@ def dependencies(events):
         store_factory=lambda path: Resource(events, "store"),
         provider_factory=lambda *args, **kwargs: Resource(events, "providers"),
         bundle=Path("/unused"),
+        plan_fingerprint=plan_fingerprint,
     )
 
 
@@ -68,7 +70,7 @@ def test_operation_scope_owns_one_lock_and_closes_lazy_resources(tmp_path):
 def test_reader_scope_has_separate_lock_and_no_mutable_store(tmp_path):
     events = []
     app = Application(dependencies(events))
-    with app.reader.reader_scope(tmp_path / "project") as scope:
+    with ReaderScope(app.projects.dependencies, tmp_path / "project") as scope:
         with pytest.raises(RuntimeError, match="does not expose"):
             _ = scope.store
     assert events == ["lock:project-reader", "unlock:project-reader"]
@@ -136,6 +138,7 @@ def test_direct_project_operations_need_no_cli_or_http(tmp_path):
     app = Application(ApplicationDependencies(
         project_lock=project_lock, reader_lock=reader_lock, store_factory=Store,
         provider_factory=LocalImportPool, bundle=bundle,
+        plan_fingerprint=plan_fingerprint,
     ))
 
     imported = app.projects.import_book(ImportBookCommand(project=project, source=source))

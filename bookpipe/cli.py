@@ -11,8 +11,8 @@ from pathlib import Path
 
 from .application import (
     AnalyzeCommand, ApproveCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand,
-    DoctorCommand, ExportCommand, ImportBookCommand, ProfilesCommand, ReviewSessionCommand,
-    SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
+    DoctorCommand, ExportCommand, ImportBookCommand, ProfilesCommand, ReaderSessionCommand,
+    ReviewSessionCommand, SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
 )
 from .bootstrap import create_application
 
@@ -211,11 +211,14 @@ def main(argv: list[str] | None = None) -> int:
     root = args.project.resolve()
     store = client = None
     try:
-        extracted = {"import", "analyze", "review", "approve", "translate", "status", "export", "profiles", "doctor", "attempts", "usage",
+        extracted = {"import", "analyze", "review", "reader", "approve", "translate", "status", "export", "profiles", "doctor", "attempts", "usage",
                      "catalog-import", "discover", "smoke"}
         if args.command in extracted:
             with Display(args.quiet) as ui:
-                app = create_application(ui, provider_factory=ProviderPool, store_factory=Store)
+                app = create_application(
+                    ui, provider_factory=ProviderPool, store_factory=Store,
+                    plan_fingerprint_fn=plan_fingerprint,
+                )
                 if args.command == "import":
                     result = app.projects.import_book(ImportBookCommand(
                         project=root, source=args.folder, previous_volume=args.previous_volume,
@@ -256,6 +259,10 @@ def main(argv: list[str] | None = None) -> int:
                     with app.review.open_session(ReviewSessionCommand(root)) as session:
                         ui.stop_progress()
                         run_review_server(session, args.bind, args.review_port, not args.no_browser, ui)
+                elif args.command == "reader":
+                    with app.reader.open_session(ReaderSessionCommand(root)) as session:
+                        ui.stop_progress()
+                        run_reader_server(session, args.bind, args.reader_port, not args.no_browser, ui)
                 elif args.command == "approve":
                     result = app.review.approve(ApproveCommand(root, args.accept_defaults))
                     ui.message(

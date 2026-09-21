@@ -20,7 +20,7 @@ class ExportsService:
     def export_text(self, command: ExportCommand) -> ExportResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint)
             rebuild_text(scope.store, book)
             destination = command.output.resolve() if command.output else None
             normalized_encoding = command.encoding.lower()

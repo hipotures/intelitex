@@ -11,7 +11,7 @@ BUNDLE = Path(__file__).resolve().parent.parent
 
 
 def create_application(progress: ProgressSink | None = None, *, provider_factory=None,
-                       store_factory=None) -> Application:
+                       store_factory=None, plan_fingerprint_fn=None) -> Application:
     """Build the dependency graph without opening files or contacting providers."""
     # Imports stay inside the composition root so importing the public API is
     # inert and application modules never depend on concrete infrastructure.
@@ -21,7 +21,9 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
     if store_factory is None:
         from .store import Store
         store_factory = Store
-    from .util import project_lock, reader_lock
+    from .util import plan_fingerprint, project_lock, reader_lock
+    if plan_fingerprint_fn is None:
+        plan_fingerprint_fn = plan_fingerprint
 
     return Application(
         ApplicationDependencies(
@@ -30,6 +32,7 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
             store_factory=store_factory,
             provider_factory=provider_factory,
             bundle=BUNDLE,
+            plan_fingerprint=plan_fingerprint_fn,
         ),
         progress,
     )
