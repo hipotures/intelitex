@@ -1,9 +1,6 @@
 """Text product and strict-copy orchestration."""
 from __future__ import annotations
 
-import os
-from tempfile import NamedTemporaryFile
-
 from ..engine import export_text as rebuild_text
 from ..util import PipelineError
 from .commands import ExportCommand
@@ -20,7 +17,7 @@ class ExportsService:
     def export_text(self, command: ExportCommand) -> ExportResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             rebuild_text(scope.store, book)
             destination = command.output.resolve() if command.output else None
             normalized_encoding = command.encoding.lower()
@@ -30,7 +27,7 @@ class ExportsService:
                         "Additional exports inside a project must be placed under its exports/ directory; "
                         "internal files are protected."
                     )
-                text = (root / "translation.txt").read_text(encoding="utf-8")
+                text = self.dependencies.files.read_text(root / "translation.txt", encoding="utf-8")
                 try:
                     raw = text.encode(command.encoding, errors="strict")
                 except (UnicodeError, LookupError) as exc:
@@ -39,13 +36,7 @@ class ExportsService:
                     ) from exc
                 if destination == root / "translation.txt" and normalized_encoding not in {"utf-8", "utf8"}:
                     raise PipelineError("Do not overwrite the internal UTF-8 translation with a legacy encoding.")
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with NamedTemporaryFile(dir=destination.parent, delete=False) as handle:
-                    name = handle.name
-                    handle.write(raw)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(name, destination)
+                self.dependencies.files.write_bytes(destination, raw)
             elif normalized_encoding not in {"utf-8", "utf8"}:
                 raise PipelineError("Supply --output for a legacy-encoding copy.")
             return ExportResult(root / "translation.txt", destination, command.encoding)

@@ -15,12 +15,12 @@ from .results import ApprovalResult
 from .sessions import OperationScope
 
 
-def _analysis_observations(path: Path, terms: list[dict]) -> dict[str, list[dict]]:
+def _analysis_observations(path: Path, terms: list[dict], files=None) -> dict[str, list[dict]]:
     memory_path = path.with_name("book_memory.json")
-    if not memory_path.is_file():
+    if not (files.is_file(memory_path) if files else memory_path.is_file()):
         return {}
     try:
-        memory = read_json(memory_path)
+        memory = files.read_json(memory_path) if files else read_json(memory_path)
     except (OSError, ValueError, json.JSONDecodeError):
         return {}
     facts = memory.get("observations", [])
@@ -52,14 +52,14 @@ def _analysis_observations(path: Path, terms: list[dict]) -> dict[str, list[dict
     return attached
 
 
-def ensure_review_state(path: Path) -> dict:
+def ensure_review_state(path: Path, files=None) -> dict:
     """Hydrate legacy draft fields without changing lexical choices."""
-    review = read_json(path)
+    review = files.read_json(path) if files else read_json(path)
     changed = False
     terms = review.get("terms")
     if not isinstance(terms, list):
         raise PipelineError("terms.review.json has no valid terms array.")
-    observations = (_analysis_observations(path, terms)
+    observations = (_analysis_observations(path, terms, files)
                     if any("observations" not in term for term in terms) else {})
     for term in terms:
         if "reviewed" not in term:
@@ -72,7 +72,7 @@ def ensure_review_state(path: Path) -> dict:
             term["observations"] = observations.get(term.get("id", ""), [])
             changed = True
     if changed:
-        atomic_json(path, review)
+        (files.write_json(path, review) if files else atomic_json(path, review))
     return review
 
 
@@ -104,14 +104,21 @@ class ReviewConflict(PipelineError):
 class ReviewRepository:
     """Session-confined draft service; mutations hold one mutex end to end."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, files=None):
         self.path = path
         self.lock = threading.Lock()
         self.evidence_reader = EvidenceReader(path.parent)
+        self.files = files
+
+    def _load_state(self):
+        return ensure_review_state(self.path, self.files)
+
+    def _write(self, path, value):
+        return self.files.write_json(path, value) if self.files else atomic_json(path, value)
 
     def load(self) -> dict:
         with self.lock:
-            review = ensure_review_state(self.path)
+            review = self._load_state()
             return copy.deepcopy({**review, "_revision": digest(review)})
 
     @staticmethod
@@ -134,7 +141,7 @@ class ReviewRepository:
 
     def evidence(self, term_id: str) -> dict:
         with self.lock:
-            review = ensure_review_state(self.path)
+            review = self._load_state()
             term = next((term for term in review["terms"] if term.get("id") == term_id), None)
             if term is None:
                 raise PipelineError(f"Unknown terminology ID: {term_id}.")
@@ -148,7 +155,7 @@ class ReviewRepository:
         if not isinstance(expected_revision, str) or not expected_revision:
             raise PipelineError("Bulk review requires the loaded review revision.")
         with self.lock:
-            review = ensure_review_state(self.path)
+            review = self._load_state()
             self._check_revision(review, expected_revision)
             indexed = {term["id"]: term for term in review["terms"]}
             if any(term_id not in indexed for term_id in term_ids):
@@ -157,13 +164,13 @@ class ReviewRepository:
             for term in targets:
                 self._check_choice(term)
             if targets:
-                atomic_json(
+                self._write(
                     self.path.parent / "history" / f"review_before_bulk_{digest(review)[:16]}.json", review,
                 )
                 for term in targets:
                     term["reviewed"] = True
                     term["review_method"] = "bulk"
-                atomic_json(self.path, review)
+                self._write(self.path, review)
             return copy.deepcopy({
                 "terms": targets, "changed_count": len(targets),
                 "summary": review_summary(review), "revision": digest(review),
@@ -175,7 +182,7 @@ class ReviewRepository:
         if unknown:
             raise PipelineError(f"Unsupported review field(s): {', '.join(sorted(unknown))}.")
         with self.lock:
-            review = ensure_review_state(self.path)
+            review = self._load_state()
             self._check_revision(review, expected_revision)
             term = next((term for term in review["terms"] if term.get("id") == term_id), None)
             if term is None:
@@ -213,7 +220,7 @@ class ReviewRepository:
                 term["reviewed"] = False
             if changed_choice or patch.get("reviewed") is False:
                 review["confirmed"] = False
-            atomic_json(self.path, review)
+            self._write(self.path, review)
             return copy.deepcopy({
                 "term": term, "summary": review_summary(review), "revision": digest(review),
             })
@@ -222,7 +229,7 @@ class ReviewRepository:
         if type(confirmed) is not bool:
             raise PipelineError("confirmed must be boolean.")
         with self.lock:
-            review = ensure_review_state(self.path)
+            review = self._load_state()
             self._check_revision(review, expected_revision)
             if confirmed:
                 for term in review["terms"]:
@@ -234,7 +241,7 @@ class ReviewRepository:
                         "Review them or use approve --accept-defaults intentionally."
                     )
             review["confirmed"] = confirmed
-            atomic_json(self.path, review)
+            self._write(self.path, review)
             return copy.deepcopy({"summary": review_summary(review), "revision": digest(review)})
 
 
@@ -250,11 +257,13 @@ class ReviewSession:
         scope = OperationScope(self.dependencies, self.project, self.progress)
         scope.__enter__()
         try:
-            book = load_valid_book(self.project, self.dependencies.plan_fingerprint)
+            book = load_valid_book(
+                self.project, self.dependencies.plan_fingerprint, self.dependencies.files,
+            )
             if not scope.store.get("analysis_done"):
                 raise PipelineError("Analysis has not finished; run analyze to resume it.")
             path = scope.store.write_review(book["source_fingerprint"])
-            repository = ReviewRepository(path)
+            repository = ReviewRepository(path, self.dependencies.files)
             repository.load()
         except BaseException:
             scope.__exit__(*__import__("sys").exc_info())
@@ -300,18 +309,22 @@ class ReviewService:
     def approve(self, command: ApproveCommand) -> ApprovalResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             if not scope.store.get("analysis_done"):
                 raise PipelineError("Finish analysis before approving terminology.")
-            return execute_approval(scope.store, book["source_fingerprint"], command.accept_defaults)
+            return execute_approval(
+                scope.store, book["source_fingerprint"], command.accept_defaults,
+                self.dependencies.files,
+            )
 
 
-def execute_approval(store, fingerprint: str, accept_defaults: bool) -> ApprovalResult:
+def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None) -> ApprovalResult:
     """Validate and commit the existing draft without merging draft and DB state."""
     path = store.root / "terms.review.json"
-    if not path.exists():
+    if not (files.exists(path) if files else path.exists()):
         raise PipelineError("Run analyze first; no terms.review.json exists.")
-    review, stored = read_json(path), store.terms()
+    review = files.read_json(path) if files else read_json(path)
+    stored = store.terms()
     if review.get("book_fingerprint") != fingerprint:
         raise PipelineError("Review belongs to another imported book.")
     if review.get("analysis_revision") != digest(stored):
@@ -342,8 +355,9 @@ def execute_approval(store, fingerprint: str, accept_defaults: bool) -> Approval
     store.export_memory()
     review["analysis_revision"] = digest(store.terms())
     review["confirmed"] = True
-    atomic_json(path, review)
-    atomic_json(store.root / "lexicon.approved.json", {"terms": [
+    write = files.write_json if files else atomic_json
+    write(path, review)
+    write(store.root / "lexicon.approved.json", {"terms": [
         {"id": term["id"], "source": term["source"], "aliases": term["aliases"],
          "polish": term["choice"]}
         for term in store.terms()

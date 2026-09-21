@@ -16,6 +16,7 @@ from bookpipe.bootstrap import create_application
 from bookpipe.store import Store
 from bookpipe.util import project_lock, reader_lock
 from bookpipe.util import plan_fingerprint
+from bookpipe.infrastructure.project_files import LocalProjectFiles
 
 
 class Resource:
@@ -43,6 +44,7 @@ def dependencies(events):
         provider_factory=lambda *args, **kwargs: Resource(events, "providers"),
         bundle=Path("/unused"),
         plan_fingerprint=plan_fingerprint,
+        files=LocalProjectFiles(),
     )
 
 
@@ -162,6 +164,7 @@ def test_direct_project_operations_need_no_cli_or_http(tmp_path):
         project_lock=project_lock, reader_lock=reader_lock, store_factory=Store,
         provider_factory=LocalImportPool, bundle=bundle,
         plan_fingerprint=plan_fingerprint,
+        files=LocalProjectFiles(),
     ))
 
     imported = app.projects.import_book(ImportBookCommand(project=project, source=source))

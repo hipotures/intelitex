@@ -27,16 +27,16 @@ class OperationsService:
     def _offline(self, project, operation):
         root = project.resolve()
         with OperationScope(self.dependencies, root, self.progress):
-            load_valid_book(root, self.dependencies.plan_fingerprint)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             return ReportResult(copy.deepcopy(operation(root)))
 
     def profiles(self, command: ProfilesCommand) -> ReportResult:
         return self._offline(command.project, lambda root: profile_report(
-            effective_settings(self.dependencies.bundle, root), root))
+            effective_settings(self.dependencies.bundle, root, files=self.dependencies.files), root))
 
     def doctor(self, command: DoctorCommand) -> ReportResult:
         return self._offline(command.project, lambda root: doctor_report(
-            effective_settings(self.dependencies.bundle, root), root))
+            effective_settings(self.dependencies.bundle, root, files=self.dependencies.files), root))
 
     def attempts(self, command: AttemptsCommand) -> ReportResult:
         return self._offline(command.project, lambda root: attempt_report(root, command.attempt))
@@ -52,8 +52,8 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root, self.dependencies.plan_fingerprint)
-            settings = effective_settings(self.dependencies.bundle, root)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
             providers = scope.providers(settings, profile=command.profile)
             return ReportResult(copy.deepcopy(providers.discover(command.pass_no)))
 
@@ -64,8 +64,8 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root, self.dependencies.plan_fingerprint)
-            settings = effective_settings(self.dependencies.bundle, root)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
             provider = scope.providers(settings, profile=command.profile).for_pass(command.pass_no)
             stamp = str(time.time_ns())
             attempt = root / "artifacts" / "smoke" / stamp / "attempt_001"

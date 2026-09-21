@@ -22,6 +22,7 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
         from .store import Store
         store_factory = Store
     from .util import plan_fingerprint, project_lock, reader_lock
+    from .infrastructure.project_files import LocalProjectFiles
     if plan_fingerprint_fn is None:
         plan_fingerprint_fn = plan_fingerprint
 
@@ -33,6 +34,7 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
             provider_factory=provider_factory,
             bundle=BUNDLE,
             plan_fingerprint=plan_fingerprint_fn,
+            files=LocalProjectFiles(),
         ),
         progress,
     )

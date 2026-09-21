@@ -22,7 +22,7 @@ class OperationScope:
         self._providers: Any = None
 
     def __enter__(self) -> OperationScope:
-        if not self.create and not (self.project / "book.json").is_file():
+        if not self.create and not self.dependencies.files.is_file(self.project / "book.json"):
             from ..util import PipelineError
             raise PipelineError("Project not imported. Run import first.")
         stack = ExitStack()

@@ -27,7 +27,7 @@ def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) 
 
 
 def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
-                    progress: ProgressSink) -> PipelineResult:
+                    progress: ProgressSink, files=None) -> PipelineResult:
     plan = analysis_plan(store, book, client, settings)
     runner = Runner(store, client, settings, progress)
     done = sum(bool(store.get("analysis:" + unit["id"])) for unit in plan)
@@ -43,8 +43,8 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
                 raise PipelineError("Analysis receipt has no valid checkpoint.")
             continue
         snapshot_path = store.root / "analysis_inputs" / (unit["id"] + ".json")
-        if snapshot_path.exists():
-            inputs = read_json(snapshot_path)
+        if (files.exists(snapshot_path) if files else snapshot_path.exists()):
+            inputs = files.read_json(snapshot_path) if files else read_json(snapshot_path)
         else:
             text = "\n\n".join(block["text"] for block in unit["blocks"])
             memory = store.analysis_memory(text, client.count, settings["memory_tokens"])
@@ -52,7 +52,7 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
                 "SECTION_ID": unit["id"], "SOURCE_BLOCKS": source_blocks(unit["blocks"]),
                 "EXISTING_MEMORY": memory,
             }
-            atomic_json(snapshot_path, inputs)
+            (files.write_json(snapshot_path, inputs) if files else atomic_json(snapshot_path, inputs))
         key = "pass1/" + unit["id"]
         value, path, fingerprint = runner.run(1, key, inputs)
         store.merge_analysis(key, fingerprint, value, unit["blocks"], unit["chapter_id"])
@@ -140,8 +140,10 @@ class PipelineService:
     def analyze(self, command: AnalyzeCommand) -> PipelineResult:
         root, scope = self._resources(command)
         with scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint)
-            settings = effective_settings(self.dependencies.bundle, root, command)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            settings = effective_settings(
+                self.dependencies.bundle, root, command, files=self.dependencies.files,
+            )
             client = scope.providers(
                 settings, profile=command.profile,
                 pass_profiles=parse_pass_profiles(command.pass_profiles),
@@ -156,13 +158,17 @@ class PipelineService:
                     "profile": selected.profile_name,
                 }
             check_model(client, book, command.allow_model_change, self.progress)
-            return execute_analyze(scope.store, book, client, settings, self.progress)
+            return execute_analyze(
+                scope.store, book, client, settings, self.progress, self.dependencies.files,
+            )
 
     def translate(self, command: TranslateCommand) -> PipelineResult:
         root, scope = self._resources(command)
         with scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint)
-            settings = effective_settings(self.dependencies.bundle, root, command)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            settings = effective_settings(
+                self.dependencies.bundle, root, command, files=self.dependencies.files,
+            )
             client = scope.providers(
                 settings, profile=command.profile,
                 pass_profiles=parse_pass_profiles(command.pass_profiles),

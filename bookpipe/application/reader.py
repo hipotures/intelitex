@@ -19,17 +19,19 @@ class MarkerConflict(PipelineError):
 
 
 class MarkerRepository:
-    def __init__(self, root: Path, context: ReaderContext | None = None):
+    def __init__(self, root: Path, context: ReaderContext | None = None, files=None):
         self.root = root.resolve()
         self.path = self.root / "translation.review.json"
         self.context = context or ReaderContext(self.root)
         self.lock = threading.Lock()
+        self.files = files
 
     def _empty(self) -> dict:
         return {"format_version": 1, "book_fingerprint": self.context.metadata()["book_fingerprint"], "markers": []}
 
     def _read(self) -> dict:
-        state = read_json(self.path) if self.path.is_file() else self._empty()
+        present = self.files.is_file(self.path) if self.files else self.path.is_file()
+        state = (self.files.read_json(self.path) if self.files else read_json(self.path)) if present else self._empty()
         if not isinstance(state, dict) or state.get("format_version") != 1:
             raise PipelineError("translation.review.json has an unsupported format version.")
         expected = self.context.metadata()["book_fingerprint"]
@@ -109,7 +111,7 @@ class MarkerRepository:
             number = max((int(marker["id"][1:]) for marker in state["markers"]), default=0) + 1
             marker = {"id": f"M{number:06d}", **payload}
             state["markers"].append(marker)
-            atomic_json(self.path, state)
+            (self.files.write_json(self.path, state) if self.files else atomic_json(self.path, state))
             return copy.deepcopy({"marker": marker, "revision": digest(state), "created": True})
 
     def delete(self, marker_id: str, expected_revision: object) -> dict:
@@ -123,7 +125,7 @@ class MarkerRepository:
             if index is None:
                 raise PipelineError(f"Unknown marker ID: {marker_id}.")
             state["markers"].pop(index)
-            atomic_json(self.path, state)
+            (self.files.write_json(self.path, state) if self.files else atomic_json(self.path, state))
             return {"deleted": marker_id, "revision": digest(state)}
 
 
@@ -140,9 +142,11 @@ class ReaderSession:
         scope = ReaderScope(self.dependencies, self.project, self.progress)
         scope.__enter__()
         try:
-            load_valid_book(self.project, self.dependencies.plan_fingerprint)
+            load_valid_book(
+                self.project, self.dependencies.plan_fingerprint, self.dependencies.files,
+            )
             context = ReaderContext(self.project)
-            markers = MarkerRepository(self.project, context)
+            markers = MarkerRepository(self.project, context, self.dependencies.files)
             markers.load()
         except BaseException:
             import sys

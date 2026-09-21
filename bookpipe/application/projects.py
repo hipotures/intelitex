@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import copy
-import shutil
 from pathlib import Path
 
 from ..importer import import_folder
 from ..profiles import migrate_settings_file, validate_profiles, with_builtin_profiles
 from ..project_config import materialize_configuration
 from ..series import continuation_metadata, prepare_handoff, validate_series_metadata
-from ..util import PipelineError, atomic_json, digest, plan_fingerprint, read_json
+from ..util import PipelineError, digest, plan_fingerprint, read_json
 from .commands import ImportBookCommand, ModelOptions, StatusCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .results import ChapterStatus, ChunkStatus, ImportResult, StatusResult
@@ -31,13 +30,15 @@ def parse_pass_profiles(values: tuple[str, ...] | list[str]) -> dict[int, str]:
 
 
 def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = None,
-                       *, base: dict | None = None) -> dict:
+                       *, base: dict | None = None, files=None) -> dict:
     options = options or ModelOptions()
-    installed = (root / "settings.json").exists()
+    exists = files.exists if files else Path.exists
+    read = files.read_json if files else read_json
+    installed = exists(root / "settings.json")
     if base is not None:
         settings = copy.deepcopy(base)
     else:
-        settings = read_json(root / "settings.json") if installed else read_json(bundle / "settings.default.json")
+        settings = read(root / "settings.json") if installed else read(bundle / "settings.default.json")
         if installed:
             settings, _ = migrate_settings_file(root, settings)
     override_profile = settings.get("profiles", {}).get(settings.get("default_profile"))
@@ -79,10 +80,12 @@ def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = 
     return settings
 
 
-def load_valid_book(root: Path, fingerprint=plan_fingerprint) -> dict:
-    if not (root / "book.json").exists():
+def load_valid_book(root: Path, fingerprint=plan_fingerprint, files=None) -> dict:
+    exists = files.exists if files else Path.exists
+    read = files.read_json if files else read_json
+    if not exists(root / "book.json"):
         raise PipelineError("Project not imported. Run import first.")
-    book = read_json(root / "book.json")
+    book = read(root / "book.json")
     if book.get("content_fingerprint") != fingerprint(book):
         raise PipelineError(
             "The frozen source/chunk manifest was modified. Restore book.json or import into a new project. "
@@ -98,9 +101,9 @@ class ProjectsService:
     def import_book(self, command: ImportBookCommand) -> ImportResult:
         root, source = command.project.resolve(), command.source.resolve()
         with OperationScope(self.dependencies, root, self.progress, create=True) as scope:
-            if (root / "book.json").exists():
+            if self.dependencies.files.exists(root / "book.json"):
                 raise PipelineError("Project already imported. Use analyze/status/translate, not import again.")
-            if (root / "state.sqlite3").exists():
+            if self.dependencies.files.exists(root / "state.sqlite3"):
                 raise PipelineError("Incomplete or unrelated project database found. Use a new project directory.")
             if root.is_relative_to(source):
                 raise PipelineError("Keep the project outside the input folder to avoid importing generated files.")
@@ -110,6 +113,7 @@ class ProjectsService:
             settings = effective_settings(
                 self.dependencies.bundle, root, command,
                 base=configuration["settings"] if configuration else None,
+                files=self.dependencies.files,
             )
             if command.whole_section_limit is not None:
                 settings["whole_section_char_limit"] = command.whole_section_limit
@@ -138,11 +142,10 @@ class ProjectsService:
             book["content_fingerprint"] = plan_fingerprint(book)
             book["planning_settings"] = {"whole_section_char_limit": settings["whole_section_char_limit"]}
             if not configuration:
-                atomic_json(root / "settings.json", settings)
-                prompts = root / "prompts"
-                prompts.mkdir(exist_ok=True)
-                for prompt in (self.dependencies.bundle / "prompts").glob("*.txt"):
-                    shutil.copy2(prompt, prompts / prompt.name)
+                self.dependencies.files.write_json(root / "settings.json", settings)
+                self.dependencies.files.copy_prompts(
+                    self.dependencies.bundle / "prompts", root / "prompts",
+                )
             store = scope.store
             store.register_chunks(book)
             series_id = None
@@ -150,16 +153,16 @@ class ProjectsService:
             inherited_terms = inherited_observations = 0
             if handoff:
                 seed_path = root / "series.seed.json"
-                atomic_json(seed_path, handoff["seed"])
+                self.dependencies.files.write_json(seed_path, handoff["seed"])
                 store.seed_series(handoff["seed"])
                 series = continuation_metadata(book["source_fingerprint"], handoff, digest(seed_path.read_bytes()))
-                atomic_json(root / "series.json", series)
+                self.dependencies.files.write_json(root / "series.json", series)
                 series_id = handoff["series_id"]
                 series_volume = handoff["previous_volume"] + 1
                 inherited_terms = len(handoff["seed"]["terms"])
                 inherited_observations = len(handoff["seed"]["observations"])
             # Completed-import marker is deliberately last.
-            atomic_json(root / "book.json", book)
+            self.dependencies.files.write_json(root / "book.json", book)
             return ImportResult(
                 project=root, narrative_sections=len(book["chapters"]),
                 translation_units=len(book["chunks"]),
@@ -172,14 +175,16 @@ class ProjectsService:
     def status(self, command: StatusCommand) -> StatusResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             store = scope.store
             chunks = tuple(ChunkStatus(c["id"], store.chunk(c["id"])["status"]) for c in book["chunks"])
             terms = store.terms()
             series_id = series_volume = None
             series_path = root / "series.json"
-            if series_path.is_file():
-                series = validate_series_metadata(root, book["source_fingerprint"], read_json(series_path))
+            if self.dependencies.files.is_file(series_path):
+                series = validate_series_metadata(
+                    root, book["source_fingerprint"], self.dependencies.files.read_json(series_path),
+                )
                 series_id, series_volume = series["series_id"], series["volume"]
             chapters = tuple(ChapterStatus(
                 id=chapter["id"], title=chapter["title"],
