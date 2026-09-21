@@ -332,6 +332,28 @@ def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_c
     raise PipelineError(f"Unknown response wire format: {wire_format!r}")
 
 
+def _vary_llamacpp_sampling(provider: Any, body: dict, attempt_no: int) -> dict:
+    """Deterministically diversify successive physical llama.cpp attempts.
+
+    The physical attempt number is persisted in the artifact directory, so the
+    variation also advances when a later command resumes the same failed task.
+    Cloud transports are deliberately left alone because seed/temperature are
+    not verified capabilities there.
+    """
+    if getattr(provider, "provider", None) != "llamacpp" or attempt_no <= 1:
+        return body
+
+    varied = copy.deepcopy(body)
+    offset = attempt_no - 1
+    seed = varied.get("seed")
+    temperature = varied.get("temperature")
+    if isinstance(seed, int) and not isinstance(seed, bool):
+        varied["seed"] = seed + offset
+    if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+        varied["temperature"] = min(2.0, round(float(temperature) + 0.05 * offset, 10))
+    return varied
+
+
 def _compatible_completed_attempts(key_root: Path, body: dict, semantic: dict | None = None) -> list[Path]:
     """Find completed older attempts whose semantic request matches this one.
 
@@ -488,6 +510,7 @@ class Runner:
                     identity = provider.discover()
                     recorder.event("inbound", "provider_discovery", identity)
                     body = provider.body(prompt, payload, schema, pass_no)
+                body = _vary_llamacpp_sampling(provider, body, number)
                 input_count = provider.preflight(body, recorder)
             except BaseException as exc:
                 recorder.finish(generation="not_submitted", validation="not_run",

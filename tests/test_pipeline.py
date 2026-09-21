@@ -12,7 +12,8 @@ import pytest
 
 from bookpipe.cli import main
 from bookpipe.client import Client
-from bookpipe.engine import Runner, analysis_plan, validate_result, response_schema, conservative_repair, source_blocks
+from bookpipe.engine import (Runner, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
+                             response_schema, source_blocks, validate_result)
 from bookpipe.importer import extract_blocks, import_folder, pack_blocks, reading_order, split_long
 from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
@@ -155,6 +156,25 @@ def test_p1_schema_constrains_evidence_to_current_blocks():
     obs_items = schema["properties"]["observations"]["items"]["properties"]["evidence"]["items"]
     assert term_items["enum"] == ["B0000001", "B0000002"]
     assert obs_items["enum"] == ["B0000001", "B0000002"]
+
+
+def test_successive_llamacpp_attempts_vary_seed_and_temperature():
+    provider = type("Provider", (), {"provider": "llamacpp"})()
+    base = {"seed": 42, "temperature": 0.05, "messages": []}
+
+    assert _vary_llamacpp_sampling(provider, base, 1) == base
+    assert _vary_llamacpp_sampling(provider, base, 2)["seed"] == 43
+    assert _vary_llamacpp_sampling(provider, base, 2)["temperature"] == 0.1
+    assert _vary_llamacpp_sampling(provider, base, 4)["seed"] == 45
+    assert _vary_llamacpp_sampling(provider, base, 4)["temperature"] == 0.2
+    assert _vary_llamacpp_sampling(provider, {**base, "temperature": 1.99}, 4)["temperature"] == 2.0
+    assert base == {"seed": 42, "temperature": 0.05, "messages": []}
+
+
+def test_attempt_sampling_does_not_change_unverified_cloud_transports():
+    provider = type("Provider", (), {"provider": "openai"})()
+    base = {"seed": 42, "temperature": 0.05}
+    assert _vary_llamacpp_sampling(provider, base, 3) is base
 
 
 def test_p1_conservative_repair_drops_only_bad_observations():
@@ -468,6 +488,13 @@ def test_bad_completed_json_has_bounded_retry(project):
     state.bad_json_once = 1
     assert main(["analyze", *args]) == 0
     assert state.calls[1] == 3
+    pass1_requests = [(inputs, body) for stage, inputs, body in state.requests if stage == 1]
+    initial_inputs, initial_body = pass1_requests[0]
+    retry_inputs, retry_body = pass1_requests[1]
+    assert retry_inputs["SOURCE_BLOCKS"] == initial_inputs["SOURCE_BLOCKS"]
+    assert "VALIDATION_ERROR" in retry_inputs
+    assert retry_body["seed"] == initial_body["seed"] + 1
+    assert retry_body["temperature"] == pytest.approx(initial_body["temperature"] + 0.05)
     assert list((root / "artifacts").rglob("validation_error.txt"))
 
 
