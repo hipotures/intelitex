@@ -8,21 +8,6 @@ from .pipeline import PipelineService
 from .projects import ProjectsService
 from .review import ReviewService
 from .reader import ReaderService
-from .sessions import OperationScope, ReaderScope
-
-
-class _ScopedService:
-    def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink):
-        self.dependencies = dependencies
-        self.progress = progress
-
-    def operation_scope(self, project):
-        return OperationScope(self.dependencies, project, self.progress)
-
-
-class _ReaderScopedService(_ScopedService):
-    def reader_scope(self, project):
-        return ReaderScope(self.dependencies, project, self.progress)
 
 
 class Application:

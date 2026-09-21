@@ -13,7 +13,6 @@ import httpx
 
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder
-from .ui import Display
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps
 
 
@@ -27,7 +26,7 @@ class Client:
     preflight_input_quality = "native_or_tokenizer_count"
     preflight_input_method = "llama.cpp complete-request token count"
 
-    def __init__(self, settings: dict[str, Any], ui: Display):
+    def __init__(self, settings: dict[str, Any], ui: Any):
         self.settings, self.ui = settings, ui
         host = settings.get("host", "127.0.0.1")
         if "://" not in host:

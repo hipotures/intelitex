@@ -13,7 +13,6 @@ import httpx
 
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder
-from .ui import Display
 from .util import PipelineError, dumps
 
 
@@ -23,7 +22,7 @@ class OpenAIResponsesClient:
     preflight_input_quality = "provider_exact"
     preflight_input_method = "POST /v1/responses/input_tokens"
 
-    def __init__(self, profile: dict[str, Any], ui: Display):
+    def __init__(self, profile: dict[str, Any], ui: Any):
         self.settings = profile
         self.ui = ui
         self.profile_name = profile["profile_name"]

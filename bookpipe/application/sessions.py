@@ -11,15 +11,20 @@ from .ports import ApplicationDependencies, NullProgress, ProgressSink
 class OperationScope:
     """Own one project lock and lazily created Store/provider resources."""
 
-    def __init__(self, dependencies: ApplicationDependencies, project: Path, progress: ProgressSink | None = None):
+    def __init__(self, dependencies: ApplicationDependencies, project: Path,
+                 progress: ProgressSink | None = None, *, create: bool = False):
         self.dependencies = dependencies
         self.project = project.resolve()
         self.progress = progress or NullProgress()
+        self.create = create
         self._stack: ExitStack | None = None
         self._store: Any = None
         self._providers: Any = None
 
     def __enter__(self) -> OperationScope:
+        if not self.create and not (self.project / "book.json").is_file():
+            from ..util import PipelineError
+            raise PipelineError("Project not imported. Run import first.")
         stack = ExitStack()
         try:
             stack.enter_context(self.dependencies.project_lock(self.project))

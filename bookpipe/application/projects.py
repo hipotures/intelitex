@@ -97,7 +97,7 @@ class ProjectsService:
 
     def import_book(self, command: ImportBookCommand) -> ImportResult:
         root, source = command.project.resolve(), command.source.resolve()
-        with OperationScope(self.dependencies, root, self.progress) as scope:
+        with OperationScope(self.dependencies, root, self.progress, create=True) as scope:
             if (root / "book.json").exists():
                 raise PipelineError("Project already imported. Use analyze/status/translate, not import again.")
             if (root / "state.sqlite3").exists():

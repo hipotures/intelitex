@@ -7,7 +7,6 @@ from .client import Client
 from .codex_transport import CodexAppServerClient
 from .openai_transport import OpenAIResponsesClient
 from .profiles import resolve_profile
-from .ui import Display
 from .util import PipelineError, digest
 
 
@@ -17,7 +16,7 @@ class ProviderPool:
     def __init__(
         self,
         settings: dict[str, Any],
-        ui: Display,
+        ui: Any,
         project: Path,
         *,
         command_profile: str | None = None,

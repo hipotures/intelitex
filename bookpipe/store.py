@@ -336,64 +336,6 @@ class Store:
             self.set("approved", True)
         return stale
 
-    def _legacy_approve(self, fingerprint: str, accept_defaults: bool) -> tuple[int, int]:
-        """Retained temporarily as a line-for-line reference for persisted behavior."""
-        path = self.root / "terms.review.json"
-        if not path.exists():
-            raise PipelineError("Run analyze first; no terms.review.json exists.")
-        review, stored = read_json(path), self.terms()
-        if review.get("book_fingerprint") != fingerprint:
-            raise PipelineError("Review belongs to another imported book.")
-        if review.get("analysis_revision") != digest(stored):
-            raise PipelineError("Review is stale after a memory change. Run review to regenerate it safely.")
-        if not accept_defaults and review.get("confirmed") is not True:
-            raise PipelineError("Set confirmed=true in terms.review.json, or explicitly use approve --accept-defaults.")
-        expected = {t["id"] for t in stored}
-        entries = review.get("terms", [])
-        if len(entries) != len(expected) or {t.get("id") for t in entries} != expected:
-            raise PipelineError("Review term IDs are missing, duplicated or unknown. Do not delete entries.")
-        indexed = {t["id"]: t for t in stored}
-        decisions = []
-        for entry in entries:
-            old = indexed[entry["id"]]
-            custom = entry.get("custom", "")
-            if not isinstance(custom, str):
-                raise PipelineError("custom must be a string.")
-            chosen = custom.strip()
-            if not chosen:
-                number = entry.get("select")
-                if type(number) is not int or not 1 <= number <= len(old["candidates"]):
-                    raise PipelineError(f"Invalid candidate number for {entry['id']}.")
-                chosen = old["candidates"][number - 1]["text"]
-            decisions.append((old, chosen))
-        changed = {old["id"] for old, choice in decisions if old["choice"] and old["choice"] != choice}
-        # SQLite backup, not a raw copy of a live WAL database.
-        target = self.root / "history" / f"before_approval_{digest(review)[:16]}.sqlite3"
-        target.parent.mkdir(exist_ok=True)
-        backup = sqlite3.connect(target)
-        self.db.backup(backup)
-        backup.close()
-        stale = 0
-        with self.db:
-            for old, chosen in decisions:
-                self.db.execute("UPDATE terms SET choice=?,approved=1 WHERE id=?", (chosen, int(old["id"][1:])))
-                if old["choice"] != chosen or not old["approved"]:
-                    self.note("human_choice", {"id": old["id"], "old": old["choice"], "new": chosen})
-            for row in self.db.execute("SELECT id,deps FROM chunks WHERE status='done'").fetchall():
-                if changed & set(json.loads(row["deps"])):
-                    self.db.execute("UPDATE chunks SET status='stale' WHERE id=?", (row["id"],))
-                    stale += 1
-            self.set("approved", True)
-        self.export_memory()
-        # Refresh version token while preserving all user choices.
-        review["analysis_revision"] = digest(self.terms())
-        review["confirmed"] = True
-        atomic_json(path, review)
-        atomic_json(self.root / "lexicon.approved.json", {"terms": [
-            {"id": t["id"], "source": t["source"], "aliases": t["aliases"], "polish": t["choice"]} for t in self.terms()
-        ]})
-        return len(decisions), stale
-
     def translation_memory(self, chunk: dict, previous: str, count, limit: int) -> tuple[dict, list[str]]:
         source = "\n".join(b["text"] for b in chunk["blocks"]) + "\n" + previous
         selected = [t for t in self.terms() if any(occurs(source, n) for n in [t["source"]] + t["aliases"])]

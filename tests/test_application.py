@@ -57,7 +57,7 @@ def test_operation_scope_owns_one_lock_and_closes_lazy_resources(tmp_path):
     events = []
     app = Application(dependencies(events))
     with pytest.raises(RuntimeError, match="boom"):
-        with OperationScope(app.projects.dependencies, tmp_path / "project") as scope:
+        with OperationScope(app.projects.dependencies, tmp_path / "project", create=True) as scope:
             assert scope.store is scope.store
             assert scope.providers({}) is scope.providers({})
             raise RuntimeError("boom")
@@ -70,6 +70,8 @@ def test_operation_scope_owns_one_lock_and_closes_lazy_resources(tmp_path):
 def test_reader_scope_has_separate_lock_and_no_mutable_store(tmp_path):
     events = []
     app = Application(dependencies(events))
+    (tmp_path / "project").mkdir()
+    (tmp_path / "project" / "book.json").write_text("{}", encoding="utf-8")
     with ReaderScope(app.projects.dependencies, tmp_path / "project") as scope:
         with pytest.raises(RuntimeError, match="does not expose"):
             _ = scope.store
@@ -93,6 +95,27 @@ def test_application_and_domain_modules_have_no_presentation_imports():
                     imports.add(node.module)
             assert not any(name == blocked or name.startswith(blocked + ".")
                            for name in imports for blocked in forbidden), path
+
+
+def test_application_does_not_construct_sqlite_provider_or_cli_processes():
+    root = Path(__file__).parents[1] / "bookpipe" / "application"
+    forbidden_names = {"Store", "ProviderPool", "sqlite3", "subprocess"}
+    for path in root.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                assert node.id not in forbidden_names, (path, node.id)
+            if isinstance(node, ast.Attribute):
+                assert node.attr != "db", path
+
+
+def test_cli_is_only_decode_invoke_render_and_owns_no_project_lock():
+    source = (Path(__file__).parents[1] / "bookpipe" / "cli.py").read_text(encoding="utf-8")
+    assert "create_application(" in source
+    assert "project_lock" not in source and "reader_lock" not in source
+    assert "Store(" not in source and ".db" not in source
+    for group in ("projects", "pipeline", "review", "reader", "exports", "operations"):
+        assert f"app.{group}." in source
 
 
 class LocalImportProvider:

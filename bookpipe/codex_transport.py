@@ -14,7 +14,6 @@ from typing import Any
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
-from .ui import Display
 from .util import PipelineError, atomic_text, dumps
 
 
@@ -188,7 +187,7 @@ class CodexAppServerClient:
     preflight_input_quality = "conservative_upper_bound"
     preflight_input_method = "UTF-8 byte length; no verified app-server input-token RPC"
 
-    def __init__(self, profile: dict[str, Any], ui: Display):
+    def __init__(self, profile: dict[str, Any], ui: Any):
         self.settings = profile
         self.ui = ui
         self.profile_name = profile["profile_name"]

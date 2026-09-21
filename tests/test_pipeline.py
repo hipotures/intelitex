@@ -11,6 +11,11 @@ from pathlib import Path
 import pytest
 
 from bookpipe.cli import main
+from bookpipe.application import (
+    AnalyzeCommand, ApproveCommand, ExportCommand, ReaderSessionCommand, ReviewSessionCommand,
+    StatusCommand, TranslateCommand,
+)
+from bookpipe.bootstrap import create_application
 from bookpipe.client import Client
 from bookpipe.engine import (Runner, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
                              response_schema, source_blocks, validate_result)
@@ -707,3 +712,33 @@ def test_bilingual_review_uses_pipeline_checkpoints_and_preserves_annotations(pr
     assert read_json(root / "terms.review.json")["terms"][0]["user_notes"]
     assert any(e["status"] == "stale" for e in repository.evidence(term_id)["entries"])
     assert state.calls == calls_before  # Merely viewing/approving never calls the LLM.
+
+
+def test_complete_workflow_through_direct_application_api(project):
+    root, _args, state = project
+    app = create_application()
+
+    analysis = app.pipeline.analyze(AnalyzeCommand(project=root))
+    assert analysis.review_path == root / "terms.review.json"
+    with app.review.open_session(ReviewSessionCommand(root)) as review:
+        draft = review.load()
+        reviewed = review.review_terms([term["id"] for term in draft["terms"]], draft["_revision"])
+        confirmed = review.set_confirmed(True, reviewed["revision"])
+        assert confirmed["summary"]["confirmed"] is True
+    approval = app.review.approve(ApproveCommand(root))
+    assert approval.approved_terms > 0 and approval.stale_chunks == 0
+
+    translated = app.pipeline.translate(TranslateCommand(project=root, chunk_limit=1))
+    assert translated.completed_units == 1
+    exported = app.exports.export_text(ExportCommand(root))
+    assert exported.internal_output.read_text(encoding="utf-8").startswith("Translated:")
+    status = app.projects.status(StatusCommand(root))
+    assert status.analysis_complete and status.approved
+    assert sum(chunk.status == "done" for chunk in status.chunks) == 1
+
+    with app.reader.open_session(ReaderSessionCommand(root)) as reader:
+        metadata = reader.metadata()
+        chapter = reader.chapter(metadata["chapters"][0]["id"])
+        assert chapter["blocks"] and isinstance(chapter["complete"], bool)
+        assert reader.load()["markers"] == []
+    assert state.calls[1] > 0 and all(state.calls[number] > 0 for number in range(2, 6))

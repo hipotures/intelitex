@@ -44,6 +44,13 @@ class Display:
     def __exit__(self, *args):
         self.progress.stop()
 
+    def emit(self, event):
+        """Render a presentation-neutral application progress event."""
+        if event.kind == "message":
+            self.message(event.message)
+        elif event.kind == "phase":
+            self.phase(event.message)
+
     def overall(self, label: str, done: int, total: int):
         self.progress.update(self.top, description=label, completed=done, total=max(total, 1))
 

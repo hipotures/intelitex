@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -174,7 +173,3 @@ def doctor_report(settings: dict[str, Any], project: Path) -> dict[str, Any]:
     catalog, path = load_catalog(project)
     report["catalog"] = {"status": "passed", "path": str(path), "models": len(catalog["models"]), "sha256": digest(path.read_bytes())}
     return report
-
-
-def print_json(value: Any) -> None:
-    print(json.dumps(value, ensure_ascii=False, indent=2))
