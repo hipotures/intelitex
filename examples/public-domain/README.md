@@ -43,3 +43,31 @@ from the pinned source with:
 uv run python examples/public-domain/build_andersen_samples.py \
   "/path/to/Fairy Tales of Hans Christian Andersen.epub"
 ```
+
+### Full translation demo: *The Time Machine*
+
+`time-machine-demo.epub` contains H. G. Wells's complete novel: sixteen chapters
+and an epilogue. Intelitex imports it as 17 narrative sections and 17 translation
+units with 32,377 words. A complete five-pass run uses 85 model calls per target
+language, so this fixture is intended for qualitative translation comparisons,
+not short smoke tests or CI.
+
+The source is [Project Gutenberg ebook #35](https://www.gutenberg.org/ebooks/35).
+The pinned source EPUB has SHA-256
+`6fe07408989c3c74d498336408b811e27fef4103a44bc7b97c544141ff56f376` and identifies
+the text as public domain in the USA. The novel was published in 1895, and Wells
+died in 1946.
+
+The demo retains the complete narrative text and inline emphasis. Its generator
+removes the Project Gutenberg header, generated cover, contents page, footer,
+license text, branding, generator-specific markup, and one stray `>` conversion
+artifact before chapter IV, then creates fresh EPUB 3 metadata, navigation, and
+styling. The source link above is an acknowledgement outside the EPUB publication.
+The new packaging is dedicated under the repository's CC0 1.0 license.
+
+Regenerate the byte-stable demo from the pinned source with:
+
+```bash
+uv run python examples/public-domain/build_time_machine_demo.py \
+  "/path/to/The Time Machine by H. G. Wells.epub"
+```
