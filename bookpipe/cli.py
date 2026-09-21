@@ -9,6 +9,12 @@ import sys
 import time
 from pathlib import Path
 
+from .application import (
+    AttemptsCommand, CatalogImportCommand, DiscoverCommand, DoctorCommand, ExportCommand,
+    ImportBookCommand, ProfilesCommand, SmokeCommand, StatusCommand, UsageCommand,
+)
+from .bootstrap import create_application
+
 from .catalog import import_catalog, load_catalog, pricing_snapshot
 from .contracts import preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder
@@ -204,6 +210,75 @@ def main(argv: list[str] | None = None) -> int:
     root = args.project.resolve()
     store = client = None
     try:
+        extracted = {"import", "status", "export", "profiles", "doctor", "attempts", "usage",
+                     "catalog-import", "discover", "smoke"}
+        if args.command in extracted:
+            with Display(args.quiet) as ui:
+                app = create_application(ui, provider_factory=ProviderPool, store_factory=Store)
+                if args.command == "import":
+                    result = app.projects.import_book(ImportBookCommand(
+                        project=root, source=args.folder, previous_volume=args.previous_volume,
+                        opf=args.opf, input_encoding=args.input_encoding, chapter_mode=args.chapter_mode,
+                        chapter_selector=args.chapter_selector, include_glob=args.include_glob,
+                        sidecar_txt=args.sidecar_txt, whole_section_limit=args.whole_section_limit,
+                        host=args.host, port=args.port, model=args.model, context_size=args.context_size,
+                        thinking=args.thinking, allow_model_change=args.allow_model_change,
+                        profile=args.profile, pass_profiles=tuple(args.pass_profile),
+                    ))
+                    ui.message(
+                        f"Imported {result.narrative_sections} narrative sections and "
+                        f"{result.translation_units} translation units. Excluded {result.excluded_sections} "
+                        f"front/back-matter section(s) from analysis/translation.\n"
+                        f"Extracted UTF-8 text: {root / 'extracted'}\nNext: analyze --project {root}"
+                    )
+                    if result.series_id is not None:
+                        ui.message("Inherited predecessor settings, project prompts and optional project model catalog.")
+                        ui.message(
+                            f"Series continuation: {result.series_id} volume {result.series_volume}; "
+                            f"inherited {result.inherited_terms} term(s) and "
+                            f"{result.inherited_observations} observation(s)."
+                        )
+                    for warning in result.warnings:
+                        ui.message("NOTE: " + warning)
+                elif args.command == "status":
+                    result = app.projects.status(StatusCommand(root))
+                    statuses = [chunk.status for chunk in result.chunks]
+                    series_line = (f"Series: {result.series_id} | volume {result.series_volume}\n"
+                                   if result.series_id else "")
+                    ui.message(
+                        f"Book: {result.title}\n{series_line}"
+                        f"Narrative sections: {result.narrative_sections}\n"
+                        f"Translation units: {len(statuses)} | done: {statuses.count('done')} | "
+                        f"stale: {statuses.count('stale')} | pending: {statuses.count('pending')}\n"
+                        f"P1 complete: {result.analysis_complete}\nHuman approval: {result.approved}\n"
+                        f"Terms: {result.term_count} | retained candidates: {result.retained_candidates}\n"
+                        f"Readable output: {result.readable_output}"
+                    )
+                    for chapter in result.chapters:
+                        ui.message(f"  {chapter.id}  {chapter.completed}/{chapter.total} units  {chapter.title[:100]}")
+                elif args.command == "export":
+                    result = app.exports.export_text(ExportCommand(root, args.encoding, args.output))
+                    if result.copy_output:
+                        ui.message(f"Exported {args.output} ({args.encoding}, strict).")
+                    else:
+                        ui.message(f"Exported {result.internal_output} (UTF-8).")
+                else:
+                    if args.command == "profiles":
+                        report = app.operations.profiles(ProfilesCommand(root))
+                    elif args.command == "doctor":
+                        report = app.operations.doctor(DoctorCommand(root))
+                    elif args.command == "attempts":
+                        report = app.operations.attempts(AttemptsCommand(root, args.attempt))
+                    elif args.command == "usage":
+                        report = app.operations.usage(UsageCommand(root))
+                    elif args.command == "catalog-import":
+                        report = app.operations.import_catalog(CatalogImportCommand(root, args.file))
+                    elif args.command == "discover":
+                        report = app.operations.discover(DiscoverCommand(root, args.profile, args.pass_no))
+                    else:
+                        report = app.operations.smoke(SmokeCommand(root, args.live, args.profile, args.pass_no))
+                    print_json(report.value)
+            return 0
         if args.command != "import" and not (root / "book.json").exists():
             raise PipelineError("Project not imported. Run import first.")
         command_lock = reader_lock(root) if args.command == "reader" else project_lock(root)
