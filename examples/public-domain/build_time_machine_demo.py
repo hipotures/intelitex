@@ -156,6 +156,30 @@ def navigation() -> str:
 """
 
 
+def contents_xhtml() -> str:
+    items = "\n".join(
+        f'        <li><a href="{chapter.slug}.xhtml#{chapter.slug}">{escape(chapter.title)}</a></li>'
+        for chapter in CHAPTERS
+    )
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en" xml:lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Contents</title>
+    <link rel="stylesheet" type="text/css" href="../styles/book.css"/>
+  </head>
+  <body>
+    <section epub:type="toc">
+      <h1 id="contents">Contents</h1>
+      <ol>
+{items}
+      </ol>
+    </section>
+  </body>
+</html>
+"""
+
+
 def package() -> str:
     manifest = "\n".join(
         f'    <item id="chapter-{index}" href="text/{chapter.slug}.xhtml" media-type="application/xhtml+xml"/>'
@@ -180,9 +204,11 @@ def package() -> str:
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="css" href="styles/book.css" media-type="text/css"/>
+    <item id="contents" href="text/contents.xhtml" media-type="application/xhtml+xml"/>
 {manifest}
   </manifest>
   <spine>
+    <itemref idref="contents" linear="no"/>
 {spine}
   </spine>
 </package>
@@ -225,6 +251,7 @@ def build(texts: dict[Chapter, list[str]], output: Path) -> None:
         entry("EPUB/package.opf", package()),
         entry("EPUB/nav.xhtml", navigation()),
         entry("EPUB/styles/book.css", CSS),
+        entry("EPUB/text/contents.xhtml", contents_xhtml()),
     ]
     members.extend(
         entry(f"EPUB/text/{chapter.slug}.xhtml", chapter_xhtml(chapter, texts[chapter]))
@@ -257,7 +284,10 @@ def main() -> int:
     output = args.output_dir / OUTPUT_NAME
     build(texts, output)
     words = sum(len(BeautifulSoup(" ".join(texts[chapter]), "html.parser").get_text(" ").split()) for chapter in CHAPTERS)
-    print(f"{output}: {len(CHAPTERS)} chapters, {words} prose words, {output.stat().st_size} bytes")
+    print(
+        f"{output}: Contents opt-out unit plus {len(CHAPTERS)} narrative documents, "
+        f"{words} narrative prose words, {output.stat().st_size} bytes"
+    )
     return 0
 
 

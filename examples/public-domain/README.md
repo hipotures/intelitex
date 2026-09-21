@@ -47,10 +47,14 @@ uv run python examples/public-domain/build_andersen_samples.py \
 ### Full translation demo: *The Time Machine*
 
 `time-machine-demo.epub` contains H. G. Wells's complete novel: sixteen chapters
-and an epilogue. Intelitex imports it as 17 narrative sections and 17 translation
-units with 32,377 words. A complete five-pass run uses 85 model calls per target
-language, so this fixture is intended for qualitative translation comparisons,
-not short smoke tests or CI.
+and an epilogue, plus a reader-visible contents page intentionally kept as a WebUI
+opt-out test case. That page is marked non-linear in the EPUB spine, but the current
+importer deliberately includes it with a warning. Intelitex imports 18 currently
+translation-eligible sections and units with 32,445 words: the disposable 68-word
+`Contents` unit followed by 17 narrative units with 32,377 words. A complete
+five-pass run uses 90 model calls per target language, or 85 after the contents unit
+is disabled. This fixture is intended for qualitative translation comparisons, not
+short smoke tests or CI.
 
 The source is [Project Gutenberg ebook #35](https://www.gutenberg.org/ebooks/35).
 The pinned source EPUB has SHA-256
@@ -59,11 +63,12 @@ the text as public domain in the USA. The novel was published in 1895, and Wells
 died in 1946.
 
 The demo retains the complete narrative text and inline emphasis. Its generator
-removes the Project Gutenberg header, generated cover, contents page, footer,
-license text, branding, generator-specific markup, and one stray `>` conversion
-artifact before chapter IV, then creates fresh EPUB 3 metadata, navigation, and
-styling. The source link above is an acknowledgement outside the EPUB publication.
-The new packaging is dedicated under the repository's CC0 1.0 license.
+removes the Project Gutenberg header, generated cover, original generated contents
+page, footer, license text, branding, generator-specific markup, and one stray `>`
+conversion artifact before chapter IV. It then creates fresh EPUB 3 metadata,
+navigation, styling, and the small `Contents` test unit described above. The source
+link above is an acknowledgement outside the EPUB publication. The new packaging is
+dedicated under the repository's CC0 1.0 license.
 
 Regenerate the byte-stable demo from the pinned source with:
 
