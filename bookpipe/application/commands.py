@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ModelOptions:
     host: str | None = None
     port: int | None = None
@@ -23,8 +23,8 @@ class ModelOptions:
 
 @dataclass(frozen=True, slots=True)
 class ImportBookCommand(ModelOptions):
-    project: Path = Path()
-    source: Path = Path()
+    project: Path
+    source: Path
     previous_volume: Path | None = None
     opf: Path | None = None
     input_encoding: str | None = None
@@ -37,12 +37,12 @@ class ImportBookCommand(ModelOptions):
 
 @dataclass(frozen=True, slots=True)
 class AnalyzeCommand(ModelOptions):
-    project: Path = Path()
+    project: Path
 
 
 @dataclass(frozen=True, slots=True)
 class TranslateCommand(ModelOptions):
-    project: Path = Path()
+    project: Path
     chunk_limit: int = 5
 
 
