@@ -42,6 +42,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       else if (url.pathname === '/api/workspaces' && request.method() === 'GET') body = { workspaces }
       else if (url.pathname === '/api/library') { libraryRequests++; body = { configured: true, sources: [source], next_cursor: null } }
       else if (url.pathname === '/api/profiles') body = profiles
+      else if (/^\/api\/workspaces\/w-\d+\/profiles$/.test(url.pathname)) body = profiles
       else if (url.pathname.endsWith('/preflight')) body = preflight
       else if (url.pathname.endsWith('/inspect')) body = { ...preflight, sample_word_count: 126, sampled_documents: 2,
         document_count: 8, sample_previews: [{ position: 1, heading: 'Opening', excerpt: 'The relay moved through the valley.' },
@@ -67,6 +68,9 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
         prepares.push(request.postDataJSON())
         body = { job_id: 'j-prepare', workspace_id: url.pathname.split('/')[3], operation: 'import', state: 'starting',
           sequence: 0, started_at: null, finished_at: null, last_event: null, error: null }
+        const current = workspaces.find(item => item.workspace_id === body.workspace_id)
+        current.active_job = body
+        current.last_job = body
       }
       if (body) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
@@ -127,11 +131,46 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.getByRole('button', { name: 'Toggle theme' }).click()
       await page.setViewportSize({ width: 1440, height: 1000 })
       assert.equal(await page.locator('.phase').first().isDisabled(), true)
+      await page.getByText('Ready to prepare').waitFor()
+      await page.getByText('P1 profile: codex-luna-low (codex)').waitFor()
       assert.equal(saves.length, 1)
       const prepareResponse = page.waitForResponse(response => response.url().endsWith('/prepare'))
       await page.getByRole('button', { name: 'Prepare', exact: true }).first().click()
       await prepareResponse
       assert.match(prepares[0].request_key, /^[a-f0-9]{32}$/)
+      await page.getByText('Preparing source…').waitFor()
+      assert.equal(await page.locator('.phase.preparing').count(), 1)
+      workspaces[0].active_job = null
+      workspaces[0].last_job = { ...workspaces[0].last_job, state: 'failed', error: { type: 'PipelineError', message: 'Operation failed; inspect locally.' } }
+      await page.reload()
+      await page.getByRole('heading', { name: 'Preparation failed' }).waitFor()
+      await page.getByText('Prepare failed before the source structure was saved.').waitFor()
+      await page.getByText('Failed', { exact: true }).waitFor()
+      await page.getByRole('button', { name: 'Retry Prepare' }).waitFor()
+      await page.evaluate(() => window.testStream.emitSnapshot())
+      await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Retry Prepare' && !button.disabled))
+      await page.screenshot({ path: `${output}/draft-prepare-failed-dark-1440.png`, animations: 'disabled' })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await page.screenshot({ path: `${output}/draft-prepare-failed-light-390.png`, animations: 'disabled' })
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await page.setViewportSize({ width: 1440, height: 1000 })
+      const retryResponse = page.waitForResponse(response => response.url().endsWith('/prepare'))
+      await page.getByRole('button', { name: 'Retry Prepare' }).click()
+      await retryResponse
+      assert.equal(prepares.length, 2)
+      workspaces[0].active_job = null
+      workspaces[0].last_job = { ...workspaces[0].last_job, state: 'failed', error: { type: 'PipelineError', message: 'Operation failed; inspect locally.' } }
+      await page.reload()
+      await page.getByRole('button', { name: 'Retry Prepare' }).waitFor()
+      await page.evaluate(() => window.testStream.emitSnapshot())
+      await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Retry Prepare' && !button.disabled))
+      workspaces[0].active_job = { ...workspaces[0].last_job, state: 'starting', error: null }
+      await page.getByRole('button', { name: 'Retry Prepare' }).click()
+      await page.getByRole('button', { name: 'Starting…' }).waitFor()
+      assert.equal(prepares.length, 2, 'a fresh workspace read must prevent a duplicate Prepare job')
+      workspaces[0].active_job = null
       await page.getByRole('link', { name: 'Library', exact: true }).click()
       await page.locator('[data-source-id="book.epub"]').waitFor()
       await page.getByText('1 workspace', { exact: true }).waitFor()
@@ -155,7 +194,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.screenshot({ path: `${output}/setup-light-390.png`, animations: 'disabled' })
       assert.deepEqual(failed, [])
       assert.deepEqual(errors, [])
-      assert.equal(libraryRequests, 1, 'setup and navigation must not rescan Library')
+      assert.equal(libraryRequests, 2, 'the explicit browser reload may fetch Library, but setup and navigation must not rescan it')
       failNextSave = true
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       await page.getByText('Save may have succeeded.').waitFor()

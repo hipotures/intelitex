@@ -187,6 +187,6 @@
     "bookpipe/runtime/worker.py": "c400ba008d75447d6ed9483e681c6b851305826c",
     "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
     "bookpipe/application/source_preflight.py": "38fe9386c077b78f1dfe112d3fe2629910d82178",
-    "bookpipe/application/workspace_setup.py": "ff65b524c7d90e3d85e81edad901168a423146b4"
+    "bookpipe/application/workspace_setup.py": "701b025ac4a151d8db380d8f993b8d6211482562"
   }
 }

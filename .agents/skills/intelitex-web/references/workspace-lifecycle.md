@@ -14,8 +14,10 @@ POST /api/imports receives workspace_id and source_id plus allowlisted options.
 It schedules a validated ImportJobSpec through the existing supervisor.
 
 Sources are HTML/XHTML directories or selected packed EPUB files (there is no upload
-route). A configured D05 draft destination may preexist with only `workspace.json`
-and `settings.json`; legacy import destinations must not preexist. `book.json` is the
+route). A configured D05 draft destination may preexist with `workspace.json` and
+`settings.json`. An empty regular `.lock` may remain after a failed first Prepare;
+the validator accepts that file for retry, but rejects symlinks, nonempty locks and
+all other unexpected project files. Legacy import destinations must not preexist. `book.json` is the
 completed-import marker; the job can be followed by ID/SSE
 before workspace discovery includes it. Never create a destination in React first.
 A failed/cancelled import can leave a partial directory; no auto-delete/overwrite.
@@ -23,8 +25,11 @@ A failed/cancelled import can leave a partial directory; no auto-delete/overwrit
 No client-supplied root paths, ports/endpoints, shell commands or credentials. Source
 IDs reject traversal/escaping symlinks. Previous volume is another workspace ID;
 OPF is relative to the confined source. `sidecar_txt` explicitly allows source writes,
-so do not enable it by default. Import may perform existing model discovery/token
-counting, but that is not a generated prose request.
+so do not enable it by default. Import performs P1 profile model discovery/token
+counting before it saves the source structure, but that is not a generated prose
+request. A failed discovery leaves the draft unprepared; its import job failure is
+available in the workspace list, since the pipeline endpoint is unavailable until
+import succeeds.
 
 ## Run, Stop, Retry
 

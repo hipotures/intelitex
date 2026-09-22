@@ -36,6 +36,13 @@ lives in the catalog with an optimistic revision; archiving preserves a configur
 draft directory. Opening a source does not create a project directory. Save creates
 the durable unprepared draft; Prepare submits the existing import
 command to a supervised worker; only real import produces `book.json` and sections.
+Prepare uses the saved P1 provider for discovery and token counting before saving
+the source plan. It does not request generated translation text. If this early step
+fails, the application lock leaves an empty `.lock` in the configured draft; the
+draft validator accepts that one safe file on retry and still rejects unrelated
+files, symlinks and partial project state. `workspace_setup.py::validate_draft_destination`
+is the audited boundary (blob `701b025ac4a151d8db380d8f993b8d6211482562`),
+with retry/unsafe-lock regression in `tests/test_web_production.py`.
 
 `application/web.py::WebWorkspaceService` handles metadata, bounded source preview,
 revision-controlled settings, section aggregates and archive lifecycle. `processing.py`
@@ -62,7 +69,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | --- | --- | --- |
 | Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts; visible Library loads bounded pages on scroll, while explicit Refresh restarts discovery and retains its last successful result on error |
 | Workspace | GET pipeline/settings/activity; jobs/stop | Five-phase rail, seven-column sections table, counts, actual provenance, supervised Run/Stop |
-| Prepare | POST workspace prepare; GET preparation | Real import; frozen manifest and source-package checks; no simulated sections |
+| Prepare | GET workspaces/draft profiles; POST workspace prepare; GET preparation after import | Real import; failed draft import remains visible, empty-lock retry works, fresh workspace read prevents a stale duplicate submission; no simulated sections |
 | Analyse | GET pipeline/usage | Whole-book P1 units, recorded usage and artifact availability |
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
 | Translate | GET pipeline/usage/activity | Existing P2→P3→P4→P5 chunk execution, actual attempt diagnostics and section aggregates |
@@ -137,6 +144,13 @@ Setup and job commands generate 128-bit random request keys with
 before any mutation is sent.
 An unprepared draft presents one Prepare command in the dedicated card; the
 workspace header starts showing its primary pipeline action after Prepare completes.
+The draft rail shows Ready, Preparing or Failed from the workspace import job;
+the card shows the saved P1 profile and the real discovery/tokenizer dependency.
+The action first reads current workspace state before POST, while the backend keeps
+the final concurrency and destination checks. A prepared workspace with its pipeline
+query still loading shows a disabled loading action, not another Prepare command.
+The original v33 does not depict a persisted pre-import draft or provider-dependent
+Prepare; these are intentional production differences from that mock.
 
 ## Acceptance traceability
 

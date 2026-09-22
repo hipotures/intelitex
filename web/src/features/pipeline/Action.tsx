@@ -1,9 +1,9 @@
-import { useContext, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Play, Square } from 'lucide-react'
 import { z } from 'zod'
-import { endpoint, useApi, request, reconcile, Scope } from '../../api/client'
-import { jobSchema, pipelineSchema, type Workspace, type Pipeline } from '../../api/schema'
+import { endpoint, useApi, request, reconcile, Scope, queryClient } from '../../api/client'
+import { jobSchema, pipelineSchema, workspacesSchema, type Workspace, type Pipeline } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
 import { Button, ErrorNote } from '../../components/ui/common'
@@ -26,6 +26,8 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
   const query = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared && !pipeline)
   const command = useCommand(workspace.workspace_id)
   const [localError, setLocalError] = useState<unknown>(null)
+  const [checking, setChecking] = useState(false)
+  const checkLatch = useRef(false)
   const navigate = useNavigate()
   const scope = useContext(Scope)
   const live = useLive()
@@ -34,14 +36,28 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
   const freshJob = snapshotJob ? live.state.jobs[snapshotJob.job_id] : undefined
   const activeJob = freshJob && freshJob.sequence > snapshotJob!.sequence && ['starting','running','stopping'].includes(freshJob.state) ? freshJob : snapshotJob
   const recentPublication = [...(live.state.activity[workspace.workspace_id] ?? [])].reverse().find(e => e.job_id === activeJob?.job_id && e.event.kind.startsWith('publication_'))
-  const action = p ? primaryAction({ ...p, publishing: p.publishing || recentPublication?.event.kind === 'publication_started', active_job: activeJob }) : workspace.metadata.lifecycle.archived
+  const action = p ? primaryAction({ ...p, publishing: p.publishing || recentPublication?.event.kind === 'publication_started', active_job: activeJob }) : workspace.prepared
+    ? { label: 'Loading action…', allowed: false }
+    : workspace.metadata.lifecycle.archived
     ? { label: 'Restore before running', allowed: false, operation: 'prepare' }
-    : { label: activeJob ? activeJob.state === 'stopping' ? 'Stopping…' : 'Stop' : 'Prepare', allowed: !activeJob || activeJob.state === 'running', operation: activeJob ? 'stop' : 'prepare' }
+    : { label: activeJob ? activeJob.state === 'starting' ? 'Starting…' : activeJob.state === 'stopping' ? 'Stopping…' : 'Stop' : workspace.last_job?.operation === 'import' && workspace.last_job.state === 'failed' ? 'Retry Prepare' : 'Prepare', allowed: !activeJob || activeJob.state === 'running', operation: activeJob ? 'stop' : 'prepare' }
   async function run() {
+    if (checkLatch.current || !action.allowed) return
     setLocalError(null)
     if (row && action.label === 'Finished') { await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: workspace.workspace_id } }); return }
     if (action.operation === 'review') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'review' } }); return }
     if (action.operation === 'stop' && activeJob) { await command.send(`/api/jobs/${encodeURIComponent(activeJob.job_id)}/stop`, jobSchema, {}); return }
+    if (action.operation === 'prepare') {
+      checkLatch.current = true; setChecking(true)
+      try {
+        const latest = await request('/api/workspaces', workspacesSchema)
+        queryClient.setQueryData([scope, '/api/workspaces'], latest)
+        const current = latest.workspaces.find(item => item.workspace_id === workspace.workspace_id)
+        if (!current) { setLocalError(new Error('Workspace is no longer available.')); return }
+        if (current.prepared || current.active_job || current.metadata.lifecycle.archived) return
+      } catch (error) { setLocalError(error); return }
+      finally { checkLatch.current = false; setChecking(false) }
+    }
     const resource = action.operation === 'prepare' ? 'prepare' : 'jobs'
     const storageKey = `intelitex.pending.${scope}.${workspace.workspace_id}.${resource}.${action.operation}`
     let key: string
@@ -60,7 +76,7 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
       } catch { /* Keep the pending receipt and the original error for deliberate recovery. */ }
     }
   }
-  return <div className="command"><Button variant={action.operation === 'stop' ? 'danger' : row ? 'secondary' : 'primary'} disabled={command.disabled || (!action.allowed && !(row && action.label === 'Finished'))} onClick={() => void run()} title={!action.allowed ? p?.actions.publish?.reason?.replaceAll('_', ' ') : undefined}>
-    {command.pending ? 'Saving…' : <>{action.operation === 'stop' ? <Square size={12} /> : action.label === 'Run' && !row ? <Play size={13} /> : null}{row && action.label === 'Finished' ? 'Open' : action.label}</>}</Button><ErrorNote error={localError ?? command.error ?? query.error} /></div>
+  return <div className="command"><Button variant={action.operation === 'stop' ? 'danger' : row ? 'secondary' : 'primary'} disabled={checking || command.disabled || (!action.allowed && !(row && action.label === 'Finished'))} onClick={() => void run()} title={!action.allowed ? p?.actions.publish?.reason?.replaceAll('_', ' ') : undefined}>
+    {checking ? 'Checking workspace…' : command.pending ? 'Saving…' : <>{action.operation === 'stop' ? <Square size={12} /> : action.label === 'Run' && !row ? <Play size={13} /> : null}{row && action.label === 'Finished' ? 'Open' : action.label}</>}</Button><ErrorNote error={localError ?? command.error ?? query.error} /></div>
 }
 export const emptyResponse = z.object({})

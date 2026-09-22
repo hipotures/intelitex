@@ -33,6 +33,9 @@ def validate_draft_destination(root: Path, source_id: str) -> dict:
     settings = root / 'settings.json'
     if settings.is_symlink() or not settings.is_file():
         raise PipelineError('Draft settings are unavailable.')
-    if {entry.name for entry in root.iterdir()} != {'workspace.json', 'settings.json'}:
+    lock = root / '.lock'
+    if lock.is_symlink() or (lock.exists() and (not lock.is_file() or lock.stat().st_size != 0)):
+        raise PipelineError('Draft lock file is unsafe.')
+    if {entry.name for entry in root.iterdir()} - {'workspace.json', 'settings.json', '.lock'}:
         raise PipelineError('Draft contains unexpected project files.')
     return value

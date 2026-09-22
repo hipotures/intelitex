@@ -137,6 +137,10 @@ is shared with the compatibility HTTP adapter.
   the same configured draft; a distinct Save may create another workspace from
   the same Library source. See `docs/server-api.md` for the full payload.
 - POST `/api/workspaces/{id}/prepare`: optional request_key/profile/pass_profiles; supervised real import.
+  A configured draft can retry after an early failed import leaves an empty regular
+  `.lock`; unrelated or partially imported destinations still conflict. Drafts have
+  no pipeline response, so GET `/api/workspaces` supplies their active/last import job.
+  GET `/api/workspaces/{id}/profiles` resolves their saved P1–P5 assignments.
 - PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
   allow_model_change:true only after explicit user confirmation.
 - PATCH `/api/workspaces/{id}/settings`: revision, pass_profiles, allow_model_change.

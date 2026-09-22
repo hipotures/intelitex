@@ -77,6 +77,36 @@ def test_configured_setup_is_explicit_durable_and_allows_multiple_workspaces(api
         service.save_setup({**setup, 'request_key': 'setup-request-2222222222'})
 
 
+def test_prepare_retry_accepts_only_the_empty_lock_left_by_a_failed_draft_import(api):
+    _, root, service, _ = api
+    source = service.imports.root / 'retry-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<p>Offline retry source.</p>')
+    profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': 'retry-book', 'source_fingerprint': source_signature(service.imports.root, 'retry-book'),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': profiles, 'request_key': 'retry-draft-0123456789',
+    })
+    destination = root.parent / draft['workspace_id']
+    lock = destination / '.lock'
+    lock.touch()  # OperationScope leaves this after a failed first Prepare.
+
+    def spec():
+        return ImportJobSpec(workspace_root=str(root.parent), workspace_id=draft['workspace_id'],
+                             project=str(destination), import_root=str(service.imports.root), source_id='retry-book')
+
+    assert spec().source_id == 'retry-book'
+    assert not (destination / 'book.json').exists()
+    lock.write_text('unexpected content')
+    with pytest.raises(DestinationConflict):
+        spec()
+    lock.unlink()
+    lock.symlink_to(source / 'chapter.html')
+    with pytest.raises(DestinationConflict):
+        spec()
+
+
 def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):
     _, root, service, server = api
     profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
