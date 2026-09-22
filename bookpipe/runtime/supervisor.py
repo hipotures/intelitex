@@ -185,6 +185,12 @@ class JobSupervisor:
             signal_descendants(children, signal.SIGKILL)
             reap_descendants(children)
 
+    def begin_shutdown(self):
+        """Reject new jobs and release SSE readers before the HTTP server drains."""
+        with self.lock:
+            self.closing = True
+        self.broker.close()
+
     def shutdown(self):
         with self.lock:
             self.closing = True

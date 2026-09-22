@@ -137,16 +137,23 @@ def test_success_failure_events_and_failure_isolation(runtime):
 
 
 def test_shutdown_stops_all_owned_workers_and_escalates(runtime):
-    root, _, supervisor = runtime
+    root, registry, supervisor = runtime
     jobs = [supervisor.start(spec(root, ident)) for ident in ("a", "b", "stubborn")]
     for job in jobs:
         running(supervisor, job)
     owned = dict(supervisor.owned)
+    event_counts = {job.job_id: len(registry.events(0, workspace_root=str(root), job_id=job.job_id))
+                    for job in jobs}
+    supervisor.begin_shutdown()
+    assert supervisor.closing and supervisor.broker.closed
+    with pytest.raises(JobConflict):
+        supervisor.start(spec(root, "c"))
     supervisor.shutdown()
     assert not supervisor.owned
     for job in jobs:
         assert supervisor.get(job.job_id).state == "cancelled"
         assert owned[job.job_id].process.poll() is not None
+        assert len(registry.events(0, workspace_root=str(root), job_id=job.job_id)) > event_counts[job.job_id]
     assert supervisor.get(jobs[-1].job_id).exit_code == -signal.SIGKILL
     with pytest.raises(JobConflict):
         supervisor.start(spec(root, "c"))

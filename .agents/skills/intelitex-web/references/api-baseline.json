@@ -3,13 +3,18 @@
   "repository": "hipotures/intelitex",
   "inspected_commit": "b0c40dfaf90add7340da2b992d4e18f7b473383e",
   "audit_date": "2026-09-22",
-  "audit_basis": "Post-implementation working tree before delivery commit; route, application, runtime, frontend binding and tests manually inspected. The docs/server-runtime.md hash was updated after reviewing its canonical CLI command change and tests/test_cli_entrypoint.py. Commit identity appears in delivery report.",
+  "audit_basis": "Post-implementation working tree before delivery commit; route, application, runtime, frontend binding and tests manually inspected. Canonical CLI and graceful SIGINT/SIGTERM shutdown were re-audited against tests/test_cli_entrypoint.py and tests/test_runtime.py. Commit identity appears in delivery report.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
       "create_app",
       "stream",
       "ASGIServer"
+    ],
+    "bookpipe/server/__init__.py": [
+      "serve",
+      "begin_shutdown",
+      "server.shutdown"
     ],
     "bookpipe/server/routes.py": [
       "dispatch"
@@ -78,7 +83,9 @@
     "bookpipe/runtime/supervisor.py": [
       "JobSupervisor",
       "owns_project",
-      "start"
+      "start",
+      "begin_shutdown",
+      "shutdown"
     ],
     "bookpipe/provider_registry.py": [
       "ProviderPool",
@@ -99,6 +106,7 @@
   "evidence": [
     "tests/test_server_api.py",
     "tests/test_web_production.py",
+    "tests/test_cli_entrypoint.py",
     "tests/test_runtime.py",
     "web/tests/bootstrap.test.mjs",
     "web/tests/development.test.mjs",
@@ -106,6 +114,7 @@
   ],
   "source_blobs": {
     "bookpipe/server/asgi.py": "a71b58194abab206c453972e207cce044ec92854",
+    "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
     "bookpipe/server/routes.py": "2d8abfb0c21de69ae0c31b4ff139ad83d3d4b99c",
     "bookpipe/server/http.py": "7ab93a75c92bd7aae47ed3090c0ec8248dd781b7",
     "bookpipe/server/service.py": "b9b30d84ff063bc8f98ba7fb63cd8c13afd51192",
@@ -119,10 +128,10 @@
     "bookpipe/application/imports.py": "f4b241f9c36537a2727dc7d69db87b6566e318cd",
     "bookpipe/processing.py": "3fc026cd72dc3418a3df4308dcd489840c13a822",
     "bookpipe/runtime/registry.py": "d7dfd1cc89347e7eff9ca56cd312c9de5628cf52",
-    "bookpipe/runtime/supervisor.py": "110e1962e289cc24cfbbdcd007d226dddcad0920",
+    "bookpipe/runtime/supervisor.py": "a1d814c1010047ccf0edb01e0d11557b9267d4bb",
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
     "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
     "bookpipe/store.py": "286f9ce2f80585c555a4af228d16e38ce45b1c65",
-    "docs/server-runtime.md": "ae554f5fb331bc0444a97124577e6fdde4fb8dec"
+    "docs/server-runtime.md": "9c334000170d6074e06cd16525715ca08753c587"
   }
 }

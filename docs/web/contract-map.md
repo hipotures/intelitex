@@ -17,6 +17,8 @@ See the skill's decision register, [differences](differences.md), and
 one runtime registry and detached workers. FastAPI/Starlette/Uvicorn serve `web/dist`,
 explicit API routes, vetted EPUB downloads and SSE on the same origin. The compatibility
 HTTP adapter shares `server/routes.py::dispatch`; it remains covered by the same API tests.
+The CLI owns SIGINT/SIGTERM shutdown: it closes SSE and new-job admission, drains
+HTTP, then invokes the supervisor's bounded worker cancellation before closing the registry.
 No Node production server, reload worker, upload endpoint or CLI-output parser is used.
 
 `state.sqlite3`, validated checkpoint receipts and atomic project JSON remain durable
