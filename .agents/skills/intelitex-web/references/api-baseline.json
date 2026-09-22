@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "repository": "hipotures/intelitex",
+  "inspected_commit": "2bb9aa2df178355502a7529e460fca12804ef377",
+  "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
+  "source_blobs": {
+    "bookpipe/server/http.py": "2ea54ac21abae6b5714384dde70ee760b4cbd38d",
+    "bookpipe/application/workflow.py": "bc671cc9e89a4c4969c11fd2eba15674201ff73d",
+    "docs/server-runtime.md": "055d9e4774154031efd95b54037e61125a0bae9c"
+  }
+}

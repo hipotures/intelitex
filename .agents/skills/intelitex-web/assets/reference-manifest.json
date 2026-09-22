@@ -1,0 +1,16 @@
+{
+  "format_version": 1,
+  "reference": {
+    "path": "assets/intelitex_workspace_mockup_v33.html",
+    "bytes": 143061,
+    "sha256": "c50fe95eb761ae332171759cfb2ba95fcc996baaa98d9a1471a570f6f54a26a5",
+    "title": "Intelitex Workspace Mockup v33",
+    "provenance": "Original user-supplied HTML, preserved byte-for-byte; not reconstructed v32."
+  },
+  "supplied_contract": {
+    "path": "references/implementation-contract.md",
+    "bytes": 92586,
+    "sha256": "5cb7d0ed9520517d8e2a6f29239b0d0f217b7e2ea189d748b81f035c4503af91",
+    "provenance": "Previously delivered English implementation prompt, preserved as source text; read decisions-and-provenance.md before interpreting historical proposals."
+  }
+}

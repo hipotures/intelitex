@@ -1,0 +1,3 @@
+# Keep immutable reference bytes stable across platform line-ending settings.
+assets/intelitex_workspace_mockup_v33.html -text
+references/implementation-contract.md -text

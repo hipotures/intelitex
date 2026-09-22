@@ -1,0 +1,6 @@
+interface:
+  display_name: "Intelitex Web"
+  short_description: "Build Intelitex UI against v33 and verified Python state"
+  default_prompt: "Use $intelitex-web for this Intelitex web task. Read the relevant references, verify current API contracts and v33 integrity, implement only the requested scope, and report real test evidence."
+policy:
+  allow_implicit_invocation: true

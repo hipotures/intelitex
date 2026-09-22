@@ -1,0 +1,2962 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Intelitex Workspace Mockup v33</title>
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg-soft: #111419;
+      --panel: #14181e;
+      --panel-2: #171c23;
+      --panel-3: #1d232c;
+      --line: #282f39;
+      --line-strong: #35404d;
+      --text: #edf1f5;
+      --text-soft: #b5bdc8;
+      --text-dim: #7f8996;
+      --accent: #4f9dea;
+      --accent-soft: rgba(79,157,234,.14);
+      --green: #32b889;
+      --green-soft: rgba(50,184,137,.14);
+      --red: #e15d58;
+      --red-soft: rgba(225,93,88,.14);
+      --amber: #d5a63e;
+      --amber-soft: rgba(213,166,62,.14);
+      --shadow: 0 16px 50px rgba(0,0,0,.24);
+      --radius: 14px;
+      --radius-sm: 9px;
+      --header-h: 64px;
+      --cover-1: linear-gradient(145deg,#203c57,#5c7fa1 55%,#c8d4df);
+      --cover-2: linear-gradient(145deg,#4c2645,#9b4f72 55%,#dfb8b1);
+      --cover-3: linear-gradient(145deg,#4a411d,#a88d38 55%,#e8d49a);
+      --cover-4: linear-gradient(145deg,#263f37,#477b69 55%,#b6d0c6);
+      --cover-5: linear-gradient(145deg,#2d2f54,#6669a5 55%,#c4c6e7);
+      color-scheme: dark;
+    }
+    html[data-theme="light"] {
+      --bg: #f5f6f8;
+      --bg-soft: #eef1f4;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --panel-3: #edf1f5;
+      --line: #dce2e8;
+      --line-strong: #c9d1da;
+      --text: #17202a;
+      --text-soft: #4f5d6c;
+      --text-dim: #7b8794;
+      --accent: #2f7ed1;
+      --accent-soft: rgba(47,126,209,.12);
+      --green: #178b67;
+      --green-soft: rgba(23,139,103,.12);
+      --red: #c84a45;
+      --red-soft: rgba(200,74,69,.11);
+      --amber: #a87916;
+      --amber-soft: rgba(168,121,22,.11);
+      --shadow: 0 16px 46px rgba(23,32,42,.09);
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { min-height:100vh; }
+    button, input, select { font:inherit; }
+    button { color:inherit; }
+    [hidden] { display:none !important; }
+
+    .app {
+      min-height:100vh;
+      background:
+        radial-gradient(circle at 80% -10%, var(--accent-soft), transparent 28rem),
+        var(--bg);
+    }
+
+    .topbar {
+      height:var(--header-h);
+      padding:0 28px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid var(--line);
+      position:sticky;
+      top:0;
+      z-index:30;
+      background:color-mix(in srgb, var(--bg) 90%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display:flex; align-items:center; gap:12px; min-width:180px; }
+    .brand-mark {
+      width:28px;height:28px;border-radius:8px;
+      background:linear-gradient(135deg,var(--accent),#7f65e8);
+      display:grid;place-items:center;font-weight:800;color:white;font-size:13px;
+      box-shadow:0 0 0 1px rgba(255,255,255,.08) inset;
+    }
+    .brand-name { font-weight:700; letter-spacing:-.02em; }
+
+    .mode-switch {
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:3px;
+      display:flex;
+      gap:2px;
+    }
+    .mode-switch button {
+      border:0;background:transparent;color:var(--text-dim);
+      padding:7px 14px;border-radius:7px;cursor:pointer;font-weight:600;font-size:14px;
+    }
+    .mode-switch button.active { background:var(--panel-3); color:var(--text); box-shadow:0 1px 0 rgba(255,255,255,.03) inset; }
+
+    .top-actions { display:flex;align-items:center;gap:8px;min-width:180px;justify-content:flex-end; }
+    .icon-btn, .ghost-btn, .secondary-btn, .primary-btn, .danger-btn {
+      border:1px solid var(--line);
+      border-radius:9px;
+      cursor:pointer;
+      transition:.16s ease;
+    }
+    .icon-btn {
+      width:36px;height:36px;background:var(--panel);display:grid;place-items:center;color:var(--text-soft);
+      font-size:16px;
+    }
+    .icon-btn:hover, .ghost-btn:hover, .secondary-btn:hover { border-color:var(--line-strong); background:var(--panel-2); }
+    .primary-btn {
+      background:var(--accent); border-color:transparent; color:#fff; padding:9px 15px; font-weight:700;
+    }
+    .primary-btn:hover { filter:brightness(1.07); transform:translateY(-1px); }
+    .danger-btn {
+      background:var(--red-soft); border-color:color-mix(in srgb,var(--red) 55%,var(--line)); color:var(--red); padding:9px 15px;font-weight:700;
+    }
+    .secondary-btn { background:var(--panel); padding:9px 15px; font-weight:650; }
+    .ghost-btn { background:transparent; padding:8px 12px; color:var(--text-soft); }
+    .ghost-btn.compact { padding:6px 10px;font-size:13px; }
+    .primary-btn:disabled,.secondary-btn:disabled,.ghost-btn:disabled { opacity:.45;cursor:not-allowed;transform:none; }
+
+    .main {
+      max-width:1480px;
+      margin:0 auto;
+      padding:30px 34px 70px;
+    }
+
+    .page-title-row { display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:16px; }
+    .eyebrow { color:var(--text-dim);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px; }
+    h1,h2,h3,p { margin:0; }
+    h1 { font-size:27px;letter-spacing:-.035em;line-height:1.15; }
+    h2 { font-size:18px;letter-spacing:-.02em; }
+    .subtitle { margin-top:6px;color:var(--text-dim);font-size:14px;line-height:1.45; }
+
+    .section { margin-top:30px; }
+    .section-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
+    .section-title { display:flex;align-items:center;gap:9px; }
+    .count-badge { font-size:12px;color:var(--text-dim);border:1px solid var(--line);background:var(--panel);padding:2px 7px;border-radius:20px; }
+
+    .workspace-list {
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      overflow:hidden;
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+    .workspace-row {
+      --workspace-action-width:112px;
+      min-height:100px;
+      padding:16px 18px;
+      display:grid;
+      grid-template-columns:58px minmax(260px,1.25fr) minmax(250px,1fr) minmax(230px,.8fr) var(--workspace-action-width);
+      align-items:center;
+      gap:16px;
+      border-bottom:1px solid var(--line);
+      cursor:pointer;
+      transition:.14s ease;
+    }
+    .workspace-row:last-child { border-bottom:0; }
+    .workspace-row:hover { background:var(--panel-2); }
+    .mini-cover {
+      width:48px;height:66px;border-radius:5px;
+      display:grid;place-items:center;padding:5px;
+      color:rgba(255,255,255,.96);
+      font-size:15px;font-weight:850;line-height:1;
+      letter-spacing:.02em;text-align:center;
+      white-space:nowrap;overflow:hidden;
+      box-shadow:0 5px 16px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.08) inset;
+    }
+    .workspace-title { font-weight:720;letter-spacing:-.015em;font-size:16px; }
+    .workspace-author { margin-top:4px;color:var(--text-dim);font-size:13px; }
+    .workspace-state { color:var(--text-soft);font-size:14px; }
+    .workspace-state small { display:block;color:var(--text-dim);margin-top:4px; }
+    .progress-wrap { display:flex;align-items:center;gap:10px; }
+    .progress-bar { height:6px;background:var(--panel-3);border-radius:20px;overflow:hidden;flex:1;min-width:110px; }
+    .progress-fill { height:100%;background:var(--accent);border-radius:20px;transition:width .25s ease; }
+    .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
+    .row-actions {
+      width:var(--workspace-action-width);
+      display:flex;
+      align-items:center;
+      gap:8px;
+      justify-content:flex-end;
+    }
+    .row-actions > [data-ws-action] {
+      width:100%;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      white-space:nowrap;
+    }
+    .status-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-dim); }
+    .status-dot.running { background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft); }
+    .status-dot.waiting { background:var(--amber); }
+    .status-dot.error { background:var(--red); }
+    .status-dot.done { background:var(--green); }
+
+    .library-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+      gap:16px;
+    }
+    .book-card {
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      padding:12px;
+      cursor:pointer;
+      transition:.16s ease;
+      min-width:0;
+    }
+    .book-card:hover { transform:translateY(-2px);border-color:var(--line-strong);box-shadow:var(--shadow); }
+    .cover {
+      aspect-ratio:2/3;
+      border-radius:8px;
+      padding:16px 13px;
+      display:grid;
+      place-items:center;
+      box-shadow:0 10px 25px rgba(0,0,0,.23),0 0 0 1px rgba(255,255,255,.09) inset;
+      color:white;
+      overflow:hidden;
+      position:relative;
+    }
+    .cover::after {
+      content:"";
+      position:absolute;inset:0;
+      background:linear-gradient(110deg,rgba(255,255,255,.11),transparent 23%,transparent 70%,rgba(0,0,0,.12));
+      pointer-events:none;
+    }
+    .cover-initials {
+      position:relative;z-index:1;
+      display:block;
+      max-width:100%;
+      color:rgba(255,255,255,.97);
+      font-size:42px;
+      font-weight:850;
+      line-height:1;
+      letter-spacing:.015em;
+      text-align:center;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:clip;
+      text-shadow:0 1px 8px rgba(0,0,0,.22);
+    }
+    .book-meta { padding:11px 2px 2px; }
+    .book-name { font-weight:690;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .book-detail { color:var(--text-dim);font-size:12.5px;margin-top:4px;display:flex;gap:7px;align-items:center;flex-wrap:wrap; }
+    .workspace-chip { color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);padding:1px 6px;border-radius:20px;font-size:11px; }
+
+    /* Workspace */
+    .workspace-page { max-width:1520px; }
+    .back-row { margin-bottom:18px; }
+    .back-link { border:0;background:transparent;color:var(--text-soft);padding:0;cursor:pointer;font-weight:650;display:flex;align-items:center;gap:7px; }
+    .back-link:hover { color:var(--text); }
+    .workspace-head {
+      display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:22px;
+    }
+    .workspace-heading { display:flex;gap:14px;align-items:center;min-width:0; }
+    .workspace-heading .mini-cover { width:44px;height:60px;flex:0 0 auto; }
+    .workspace-heading h1 { white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .workspace-meta-line { color:var(--text-dim);font-size:13px;margin-top:6px;display:flex;gap:9px;align-items:center;flex-wrap:wrap; }
+    .workspace-head-actions { display:flex;gap:8px;align-items:center; }
+
+    .phase-rail {
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:var(--radius);
+      padding:14px 16px;
+      display:grid;
+      grid-template-columns:repeat(5,1fr);
+      gap:8px;
+      box-shadow:var(--shadow);
+    }
+    .phase {
+      min-width:0;
+      padding:12px 13px;
+      border-radius:10px;
+      background:var(--panel-2);
+      border:1px solid transparent;
+      cursor:default;
+      transition:.15s ease;
+    }
+    .phase.clickable { cursor:pointer; }
+    .phase.clickable:hover { border-color:var(--line-strong); }
+    .phase.active { border-color:var(--accent);background:var(--accent-soft); }
+    .phase.done { background:var(--green-soft); }
+    .phase.blocked { opacity:.55; }
+    .phase.error { background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 45%,transparent); }
+    .phase-top { display:flex;align-items:center;gap:8px;min-width:0; }
+    .phase-icon { width:20px;height:20px;border-radius:50%;border:2px solid var(--line-strong);display:grid;place-items:center;font-size:11px;flex:0 0 auto;color:var(--text-dim); }
+    .phase.done .phase-icon { border-color:var(--green);background:var(--green);color:white; }
+    .phase.active .phase-icon { border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft); }
+    .phase.error .phase-icon { border-color:var(--red);background:var(--red);color:white; }
+    .phase-name { font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .phase-sub { color:var(--text-dim);font-size:11.5px;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+    .notice {
+      margin-top:14px;
+      border:1px solid color-mix(in srgb,var(--amber) 36%,var(--line));
+      background:var(--amber-soft);
+      border-radius:var(--radius-sm);
+      padding:13px 14px;
+      display:flex;align-items:center;justify-content:space-between;gap:18px;
+    }
+    .notice.error { background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 40%,var(--line)); }
+    .notice strong { font-size:13px; }
+    .notice p { color:var(--text-soft);font-size:12.5px;margin-top:3px; }
+
+    .workspace-toolbar {
+      margin-top:20px;
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
+    }
+    .toolbar-left { display:flex;align-items:center;gap:9px;min-width:0; }
+    .toolbar-title { font-size:17px;font-weight:720; }
+    .toolbar-sub { color:var(--text-dim);font-size:12px;margin-left:4px; }
+    .filter-segment {
+      display:flex;background:var(--panel);border:1px solid var(--line);padding:3px;border-radius:9px;
+    }
+    .filter-segment button { border:0;background:transparent;color:var(--text-dim);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px; }
+    .filter-segment button.active { background:var(--panel-3);color:var(--text); }
+
+    .table-card { margin-top:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden;box-shadow:var(--shadow); }
+    table { width:100%;border-collapse:collapse;table-layout:fixed; }
+    .sections-table col.section-col { width:40%; }
+    .sections-table col.processing-col { width:18%; }
+    .sections-table col.pass-col { width:8.4%; }
+    th {
+      text-align:left;
+      color:var(--text-dim);
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      padding:11px 12px;
+      background:var(--panel-2);
+      border-bottom:1px solid var(--line);
+      font-weight:750;
+    }
+    td { padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle; }
+    tbody tr:last-child td { border-bottom:0; }
+    tbody tr { cursor:pointer;transition:.12s ease; }
+    tbody tr:hover { background:var(--panel-2); }
+    tbody tr.excluded { opacity:.42;background:var(--bg-soft); }
+    .section-number { color:var(--text-dim);width:34px;display:inline-block;font-variant-numeric:tabular-nums; }
+    .section-name {
+      font-weight:620;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      vertical-align:middle;
+      display:inline-block;
+      width:calc(100% - 40px);
+      max-width:calc(100% - 40px);
+      min-width:0;
+    }
+    .section-name.fallback {
+      color:var(--text-soft);
+      font-weight:560;
+      font-style:italic;
+    }
+    .processing-switch {
+      display:inline-grid;
+      grid-template-columns:repeat(3, 1fr);
+      width:84px;
+      height:28px;
+      padding:2px;
+      gap:2px;
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:var(--panel-2);
+      vertical-align:middle;
+    }
+    .processing-switch button {
+      min-width:0;
+      border:0;
+      border-radius:5px;
+      background:transparent;
+      color:var(--text-dim);
+      cursor:pointer;
+      font-size:11px;
+      font-weight:800;
+      line-height:1;
+      padding:0;
+      transition:.12s ease;
+    }
+    .processing-switch button:hover { color:var(--text); background:var(--panel-3); }
+    .processing-switch button.active[data-mode-value="Full"] {
+      color:#fff;background:var(--green);
+    }
+    .processing-switch button.active[data-mode-value="Translate only"] {
+      color:#fff;background:var(--accent);
+    }
+    .processing-switch button.active[data-mode-value="Excluded"] {
+      color:#fff;background:var(--text-dim);
+    }
+
+    .section-model-icons {
+      display:flex;
+      align-items:center;
+      gap:5px;
+      flex-wrap:wrap;
+      min-height:26px;
+    }
+    .section-model-empty {
+      color:var(--text-dim);
+      font-weight:700;
+      display:inline-block;
+      width:100%;
+      text-align:center;
+    }
+    .model-chip,.profile-swatch {
+      width:18px;
+      height:18px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      display:inline-block;
+      flex:0 0 auto;
+      box-shadow:0 0 0 1px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .profile-swatch-lg {
+      width:22px;
+      height:22px;
+    }
+    .profile-swatch.palette {
+      width:20px;
+      height:20px;
+    }
+
+    .type-icon-btn {
+      width:30px;height:30px;
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:var(--panel-2);
+      color:var(--text-soft);
+      display:inline-grid;
+      place-items:center;
+      cursor:pointer;
+      font-size:15px;
+      font-weight:750;
+      line-height:1;
+      transition:.12s ease;
+    }
+    .type-icon-btn:hover, .type-icon-btn.open {
+      border-color:var(--accent);
+      color:var(--text);
+      background:var(--accent-soft);
+    }
+
+    .type-menu {
+      position:fixed;
+      z-index:110;
+      width:210px;
+      padding:5px;
+      border:1px solid var(--line-strong);
+      border-radius:10px;
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+    .type-menu button {
+      width:100%;
+      display:grid;
+      grid-template-columns:28px 1fr auto;
+      align-items:center;
+      gap:8px;
+      border:0;
+      border-radius:7px;
+      background:transparent;
+      color:var(--text-soft);
+      padding:8px 9px;
+      cursor:pointer;
+      text-align:left;
+      font-size:12.5px;
+    }
+    .type-menu button:hover { background:var(--panel-2); color:var(--text); }
+    .type-menu button.active { background:var(--accent-soft); color:var(--text); }
+    .type-menu-icon {
+      width:24px;height:24px;border-radius:6px;
+      display:grid;place-items:center;
+      border:1px solid var(--line);
+      background:var(--panel-2);
+      color:var(--text);
+      font-size:13px;font-weight:800;
+    }
+    .type-menu-check { color:var(--accent); font-weight:800; }
+
+    .drawer .field select { transition:.12s ease; }
+    .autosave-note {
+      margin-top:-4px;
+      margin-bottom:16px;
+      color:var(--text-dim);
+      font-size:11.5px;
+    }
+    .pass-cell { text-align:center; }
+    .pass-mark {
+      width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;
+      border:2px solid color-mix(in srgb,var(--line) 88%, #ffffff 12%);font-size:10px;line-height:1;
+      color:transparent;background:transparent;position:relative;
+      box-shadow:0 0 0 1px rgba(0,0,0,.20), inset 0 0 0 1px rgba(255,255,255,.05);
+    }
+    .pass-mark.has-model { border-color:var(--model-color); }
+    .pass-mark.done { background:color-mix(in srgb,var(--model-color) 88%, #ffffff 12%);border-color:color-mix(in srgb,var(--model-color) 94%, #ffffff 6%);color:white; }
+    .pass-mark.active { border-color:var(--model-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--model-color) 18%, transparent), inset 0 0 0 1px rgba(255,255,255,.05); }
+    .pass-mark.active::after { content:"";width:8px;height:8px;border-radius:50%;border:2px solid var(--model-color);border-top-color:transparent;animation:spin 1s linear infinite; }
+    .pass-mark.error { background:color-mix(in srgb,var(--model-color) 72%, #521515 28%);border-color:color-mix(in srgb,var(--model-color) 82%, #ffffff 18%);color:white; }
+    .pass-dash { color:var(--text-dim); }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .accordion { margin-top:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden; }
+    .accordion-head {
+      width:100%;border:0;background:transparent;color:var(--text);padding:13px 15px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;text-align:left;
+    }
+    .accordion-head:hover { background:var(--panel-2); }
+    .accordion-title { font-weight:680;font-size:13px; }
+    .accordion-sub { color:var(--text-dim);font-size:12px;margin-left:8px; }
+    .accordion-body { border-top:1px solid var(--line);padding:14px 15px;background:var(--panel-2); }
+
+    .activity-body {
+      padding:0;
+      background:#0f1217;
+    }
+    html[data-theme="light"] .activity-body {
+      background:#f3f5f7;
+    }
+    .activity-stream {
+      max-height:250px;
+      overflow:auto;
+      padding:10px 13px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+      font-size:11.5px;
+      line-height:1.55;
+      scrollbar-width:thin;
+    }
+    .activity-line {
+      display:grid;
+      grid-template-columns:max-content minmax(0,1fr);
+      gap:10px;
+      padding:3px 0;
+      color:var(--text-soft);
+    }
+    .activity-time {
+      color:var(--text-dim);
+      font-variant-numeric:tabular-nums;
+    }
+    .activity-message {
+      white-space:pre-wrap;
+      overflow-wrap:anywhere;
+    }
+    .activity-line.error .activity-message { color:var(--red); }
+    .activity-line.success .activity-message { color:var(--green); }
+    .activity-line.waiting .activity-message { color:var(--text); }
+    .activity-count {
+      min-width:20px;
+      padding:1px 6px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      color:var(--text-dim);
+      font-size:10px;
+      text-align:center;
+      margin-left:7px;
+      vertical-align:1px;
+    }
+    .workspace-bottom-actions {
+      display:flex;
+      justify-content:flex-end;
+      padding:16px 0 2px;
+    }
+    .archive-workspace-btn {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border:1px solid color-mix(in srgb,var(--red) 28%,var(--line));
+      border-radius:9px;
+      background:var(--panel);
+      color:var(--text-soft);
+      padding:8px 11px;
+      cursor:pointer;
+      font-size:12px;
+      font-weight:650;
+      text-decoration:none;
+      transition:.14s ease;
+      box-shadow:0 1px 0 rgba(255,255,255,.025) inset;
+    }
+    .archive-workspace-btn::before {
+      content:"↘";
+      width:18px;height:18px;
+      display:grid;place-items:center;
+      border-radius:5px;
+      background:var(--red-soft);
+      color:var(--red);
+      font-size:11px;
+      font-weight:800;
+    }
+    .archive-workspace-btn:hover {
+      color:var(--text);
+      border-color:color-mix(in srgb,var(--red) 48%,var(--line));
+      background:var(--panel-2);
+      transform:translateY(-1px);
+    }
+    .archive-workspace-btn:active {
+      transform:translateY(0);
+    }
+    .model-grid { display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px; }
+    .model-slot { padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel); }
+    .model-slot label { display:block;color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px; }
+    .model-slot select { width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px; }
+
+    .prepare-card {
+      margin-top:20px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      box-shadow:var(--shadow);
+      padding:28px;
+      min-height:250px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+    }
+    .prepare-inner { max-width:540px; }
+    .prepare-icon { width:52px;height:52px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 16px;font-weight:800;font-size:20px; }
+    .prepare-card h2 { font-size:21px; }
+    .prepare-card p { color:var(--text-dim);line-height:1.55;margin:9px auto 18px;max-width:480px;font-size:13.5px; }
+    .prepare-progress { max-width:360px;margin:18px auto 0; }
+    .prepare-progress .progress-bar { height:8px; }
+    .prepare-progress-note { color:var(--text-dim);font-size:12px;margin-top:8px; }
+
+    /* Drawers and modal */
+    .scrim { position:fixed;inset:0;background:rgba(0,0,0,.46);z-index:60;opacity:0;pointer-events:none;transition:.18s ease; }
+    .scrim.open { opacity:1;pointer-events:auto; }
+    .drawer {
+      position:fixed;top:0;right:0;height:100vh;width:min(520px,94vw);background:var(--panel);border-left:1px solid var(--line);z-index:70;
+      transform:translateX(105%);transition:.2s ease;box-shadow:-18px 0 50px rgba(0,0,0,.28);display:flex;flex-direction:column;
+    }
+    .drawer.open { transform:translateX(0); }
+    .drawer-head { padding:20px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:18px; }
+    .drawer-body { padding:20px;overflow:auto;flex:1; }
+    .drawer-foot { padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px; }
+    .preview-text { background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:16px;line-height:1.75;color:var(--text-soft);font-family:Georgia,serif;font-size:15px;margin-top:18px; }
+    .field { margin-bottom:16px; }
+    .drawer-model-grid {
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-top:8px;
+    }
+    .drawer-model-slot {
+      display:grid;
+      grid-template-columns:104px minmax(0,1fr);
+      align-items:center;
+      gap:14px;
+      background:var(--panel-2);
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:10px 12px;
+      min-width:0;
+    }
+    .drawer-model-label {
+      display:flex;
+      flex-direction:row;
+      align-items:center;
+      gap:10px;
+      min-height:22px;
+      margin:0;
+      padding:0;
+      font-size:12px;
+      line-height:1;
+      color:var(--text-dim);
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .drawer-model-label .profile-swatch-lg {
+      display:block;
+      width:18px;
+      height:18px;
+      flex:0 0 18px;
+      margin:0;
+    }
+    .drawer-model-slot select {
+      width:100%;
+      min-width:0;
+      background:transparent;
+      border:1px solid var(--line);
+      border-radius:8px;
+      color:var(--text);
+      padding:9px 11px;
+    }
+    .model-override-note {
+      margin-top:14px;
+      margin-bottom:18px;
+      line-height:1.45;
+    }
+    .field label { display:block;font-size:12px;color:var(--text-dim);font-weight:650;margin-bottom:7px; }
+    .field input,.field select {
+      width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px;
+    }
+    .field-row { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+
+    .modal {
+      position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:24px;opacity:0;pointer-events:none;transition:.18s ease;
+    }
+    .modal.open { opacity:1;pointer-events:auto; }
+    .modal-card { width:min(850px,96vw);max-height:88vh;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;transform:translateY(8px) scale(.99);transition:.18s ease; }
+    .modal.open .modal-card { transform:none; }
+    .modal-head { padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px; }
+    .modal-body { overflow:auto;padding:20px; }
+    .modal-foot { padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px; }
+    .review-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px; }
+    .stat { border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:12px; }
+    .stat-value { font-size:20px;font-weight:750; }
+    .stat-label { color:var(--text-dim);font-size:11px;margin-top:3px; }
+    .review-list { border:1px solid var(--line);border-radius:10px;overflow:hidden; }
+    .review-item { display:grid;grid-template-columns:1.2fr 1.1fr 90px;gap:14px;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line);font-size:13px; }
+    .review-item:last-child { border-bottom:0; }
+    .review-item select { background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:6px; }
+    .confidence { color:var(--text-dim);font-size:11px;text-align:right; }
+
+    .settings-tabs { display:flex;gap:5px;border-bottom:1px solid var(--line);padding:0 20px; }
+    .settings-tabs button { border:0;background:transparent;color:var(--text-dim);padding:12px 10px;cursor:pointer;border-bottom:2px solid transparent;font-weight:650;font-size:13px; }
+    .settings-tabs button.active { color:var(--text);border-bottom-color:var(--accent); }
+    .settings-section { margin-bottom:24px; }
+    .settings-section h3 { font-size:14px;margin-bottom:12px; }
+    .model-config-list { border:1px solid var(--line);border-radius:10px;overflow:hidden; }
+    .model-config-row { display:grid;grid-template-columns:minmax(0,1.2fr) 1fr auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid var(--line); }
+    .model-config-row:last-child { border-bottom:0; }
+    .model-config-main { display:flex;align-items:center;gap:12px;min-width:0; }
+    .model-config-name { font-weight:650;font-size:13px; }
+    .model-config-desc { color:var(--text-dim);font-size:11px;margin-top:3px; }
+    .icon-palette { display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px; }
+    .health { color:var(--text-dim);font-size:12px; }
+    .health.ok { color:var(--green); }
+    .health.testing { color:var(--amber); }
+
+    /* Archive + reader */
+    .archive-list { display:flex;flex-direction:column;gap:10px; }
+    .archive-item { border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px; }
+    .reader-shell { display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - var(--header-h) - 100px);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--panel);box-shadow:var(--shadow); }
+    .reader-books { border-right:1px solid var(--line);padding:14px; }
+    .reader-book { padding:10px;border-radius:8px;cursor:pointer;margin-bottom:4px; }
+    .reader-book:hover,.reader-book.active { background:var(--panel-2); }
+    .reader-book strong { display:block;font-size:13px; }
+    .reader-book span { color:var(--text-dim);font-size:11px; }
+    .reader-content { padding:50px min(9vw,110px);overflow:auto; }
+    .reader-page { max-width:760px;margin:0 auto;font-family:Georgia,serif;line-height:1.85;font-size:18px;color:color-mix(in srgb,var(--text) 90%,var(--text-soft)); }
+    .reader-page h2 { font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:24px;margin-bottom:28px; }
+    .reader-page p { margin-bottom:18px; }
+
+    /* Full-page terminology review */
+    .review-page { max-width:1600px; }
+    .review-page-head {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:18px;
+      margin-bottom:16px;
+    }
+    .review-page-title {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+    }
+    .review-page-title h1 {
+      font-size:24px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .review-page-meta {
+      margin-top:5px;
+      color:var(--text-dim);
+      font-size:12.5px;
+    }
+    .review-confirmed-badge {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 9px;
+      border-radius:999px;
+      border:1px solid color-mix(in srgb,var(--green) 45%,var(--line));
+      background:var(--green-soft);
+      color:var(--green);
+      font-size:12px;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .review-toolbar {
+      border-top:1px solid var(--line);
+      border-bottom:1px solid var(--line);
+      padding:10px 0;
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .review-search {
+      flex:1 1 420px;
+      min-width:220px;
+      height:38px;
+      border:1px solid var(--line);
+      background:var(--panel);
+      color:var(--text);
+      border-radius:9px;
+      padding:0 12px;
+      outline:none;
+    }
+    .review-search:focus { border-color:var(--accent); }
+    .review-filter-row {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      overflow-x:auto;
+      padding-bottom:2px;
+      scrollbar-width:thin;
+    }
+    .review-chip {
+      border:1px solid var(--line);
+      background:var(--panel);
+      color:var(--text-soft);
+      border-radius:999px;
+      padding:5px 9px;
+      cursor:pointer;
+      font-size:11.5px;
+      white-space:nowrap;
+    }
+    .review-chip.active {
+      background:var(--text);
+      color:var(--bg);
+      border-color:var(--text);
+    }
+    .review-layout {
+      --review-panel-height:clamp(560px, calc(100vh - 300px), 780px);
+      display:grid;
+      grid-template-columns:minmax(340px, 40%) minmax(0,1fr);
+      gap:18px;
+      align-items:start;
+    }
+    .review-term-card {
+      position:relative;
+      align-self:start;
+      min-width:0;
+    }
+    .review-term-scroll {
+      max-height:var(--review-panel-height);
+      overflow-y:auto;
+      overflow-x:hidden;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+    .review-term-row {
+      position:relative;
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      cursor:pointer;
+      transition:.12s ease;
+      background:transparent;
+      overflow:hidden;
+    }
+    .review-term-row:hover { background:var(--panel-2); }
+    .review-term-row.active {
+      z-index:2;
+      background:var(--accent-soft);
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%, transparent);
+    }
+    .review-term-title {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      font-size:13px;
+      font-weight:720;
+    }
+    .review-term-sub {
+      margin-top:4px;
+      color:var(--text-dim);
+      font-size:11px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .review-term-status {
+      color:var(--text-dim);
+      font-size:10.5px;
+      font-weight:600;
+      white-space:nowrap;
+    }
+    .review-term-status.reviewed { color:var(--green); }
+    .review-term-list-tail {
+      display:none;
+      height:16px;
+      border-top:1px solid transparent;
+    }
+    .review-detail-wrap {
+      height:var(--review-panel-height);
+      min-height:560px;
+      overflow:hidden;
+      padding:0;
+      background:transparent;
+      position:relative;
+    }
+    .review-detail-card {
+      max-width:860px;
+      height:100%;
+      min-height:0;
+      margin:0 auto;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:var(--panel);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      box-shadow:var(--shadow);
+      position:relative;
+    }
+    .review-detail-card::before {
+      content:"Selected term";
+      position:absolute;
+      top:16px;
+      left:16px;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:color-mix(in srgb,var(--accent) 7%,var(--panel-2));
+      color:var(--text-dim);
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-weight:800;
+      z-index:2;
+    }
+    .review-detail-body {
+      padding:48px 18px 18px;
+      flex:1 1 auto;
+      min-height:0;
+      overflow:auto;
+      overscroll-behavior:contain;
+    }
+    .review-detail-heading {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+    }
+    .review-detail-heading h2 {
+      font-size:20px;
+      line-height:1.2;
+    }
+    .review-id {
+      margin-top:6px;
+      color:var(--text-dim);
+      font-size:11px;
+    }
+    .review-tags { display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end; }
+    .review-tag {
+      padding:4px 7px;
+      border-radius:999px;
+      background:var(--panel-3);
+      color:var(--text-dim);
+      border:1px solid var(--line);
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      font-weight:700;
+    }
+    .review-block { margin-top:18px; }
+    .review-label {
+      font-size:10.5px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--text-dim);
+      font-weight:800;
+      margin-bottom:7px;
+    }
+    .review-copy { color:var(--text-soft);font-size:13px;line-height:1.55; }
+    .candidate-list { display:flex;flex-direction:column;gap:8px; }
+    .candidate {
+      display:grid;
+      grid-template-columns:22px 1fr auto;
+      gap:10px;
+      align-items:flex-start;
+      border:1px solid var(--line);
+      border-radius:9px;
+      padding:10px;
+      cursor:pointer;
+      background:var(--panel-2);
+    }
+    .candidate.selected { border-color:var(--accent);background:var(--accent-soft); }
+    .candidate-dot {
+      width:14px;height:14px;border-radius:50%;
+      border:2px solid var(--line-strong);
+      margin-top:2px;
+      display:grid;place-items:center;
+    }
+    .candidate.selected .candidate-dot { border-color:var(--accent); }
+    .candidate.selected .candidate-dot::after {
+      content:"";
+      width:6px;height:6px;border-radius:50%;background:var(--accent);
+    }
+    .candidate-title { font-size:13px;font-weight:700; }
+    .candidate-note { margin-top:2px;color:var(--text-dim);font-size:11px; }
+    .candidate-confidence { color:var(--text-dim);font-size:10px;text-transform:uppercase; }
+    .review-custom-row {
+      display:grid;
+      grid-template-columns:1fr auto auto;
+      gap:8px;
+      margin-top:8px;
+    }
+    .review-custom-row input {
+      min-width:0;
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:var(--panel-2);
+      color:var(--text);
+      padding:8px 10px;
+    }
+    .evidence-list { display:flex;flex-direction:column;gap:8px; }
+    .evidence-item {
+      border-top:1px solid var(--line);
+      padding-top:8px;
+    }
+    .evidence-id {
+      color:var(--text-dim);
+      font-size:10.5px;
+      margin-bottom:5px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    }
+    .evidence-text {
+      font-size:12.5px;
+      color:var(--text-soft);
+      line-height:1.6;
+    }
+    .review-detail-footer {
+      flex:0 0 auto;
+      border-top:1px solid var(--line);
+      padding:11px 14px;
+      display:grid;
+      grid-template-columns:1fr auto 1fr;
+      align-items:center;
+      gap:12px;
+      background:var(--panel-2);
+      position:relative;
+      z-index:2;
+    }
+    .review-detail-footer > .review-term-status { justify-self:start; }
+    .review-detail-footer > .review-footer-actions { grid-column:2; justify-self:center; }
+    .review-footer-actions {
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:center;
+      white-space:nowrap;
+    }
+    @media (min-width:821px) {
+      #reviewPrevBtn { width:118px; }
+      #reviewNextBtn { width:142px; }
+      #reviewOnlyNextBtn { width:96px; }
+    }
+    .review-warning {
+      margin-bottom:12px;
+      border:1px solid color-mix(in srgb,var(--amber) 42%,var(--line));
+      background:var(--amber-soft);
+      color:var(--text-soft);
+      border-radius:10px;
+      padding:10px 12px;
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    @media (max-width: 820px) {
+      .review-page-head { flex-direction:column; }
+      .review-layout {
+        --review-panel-height:68vh;
+        grid-template-columns:1fr;
+        gap:12px;
+      }
+      .review-term-scroll {
+        max-height:240px;
+      }
+      .review-detail-wrap {
+        height:68vh;
+        min-height:520px;
+      }
+      .review-detail-card { max-width:none; height:100%; }
+      .review-custom-row { grid-template-columns:1fr; }
+      .review-detail-footer {
+        grid-template-columns:1fr;
+        align-items:stretch;
+      }
+      .review-detail-footer > .review-term-status {
+        display:none;
+      }
+      .review-detail-footer > .review-footer-actions {
+        grid-column:1;
+        width:100%;
+        justify-self:stretch;
+      }
+      .review-footer-actions button { flex:1; min-width:0; }
+    }
+
+    .empty-note { color:var(--text-dim);font-size:13px;padding:26px;text-align:center;border:1px dashed var(--line);border-radius:10px; }
+    .toast {
+      position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--text);color:var(--bg);padding:9px 13px;border-radius:9px;
+      font-size:12.5px;font-weight:650;z-index:120;opacity:0;pointer-events:none;transition:.2s ease;box-shadow:var(--shadow);
+    }
+    .toast.show { opacity:1;transform:translate(-50%,0); }
+
+    @media (max-width: 1020px) {
+      .workspace-row { grid-template-columns:58px 1fr var(--workspace-action-width); }
+      .workspace-state,.row-progress { display:none; }
+      .phase-rail { grid-template-columns:1fr; }
+      .phase { display:flex;align-items:center;justify-content:space-between; }
+      .phase-sub { margin-top:0; }
+      .model-grid { grid-template-columns:1fr 1fr; }
+      .reader-shell { grid-template-columns:220px 1fr; }
+    }
+    @media (max-width: 720px) {
+      .topbar { padding:0 14px; }
+      .brand-name { display:none; }
+      .brand { min-width:auto; }
+      .top-actions { min-width:auto; }
+      .mode-switch button { padding:7px 10px; }
+      .main { padding:20px 14px 55px; }
+      .workspace-row { grid-template-columns:46px 1fr;gap:12px; }
+      .workspace-row .mini-cover { width:42px;height:58px; }
+      .row-actions { grid-column:2;justify-content:flex-start;width:var(--workspace-action-width); }
+      .workspace-head { flex-direction:column; }
+      .workspace-head-actions { width:100%;justify-content:flex-end; }
+      .library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .cover-initials { font-size:34px; }
+      .mini-cover { font-size:14px; }
+      .sections-table col.section-col { width:43%; }
+      .sections-table col.processing-col { width:21%; }
+      .sections-table col.pass-col { width:7.2%; }
+      .sections-table th { padding:9px 3px; font-size:8.5px; letter-spacing:.035em; }
+      .sections-table td { padding:9px 3px; font-size:11px; }
+      .sections-table th:first-child, .sections-table td:first-child { padding-left:8px; }
+      .sections-table th:last-child, .sections-table td:last-child { padding-right:6px; }
+      .section-number { width:24px; font-size:10px; }
+      .section-name { width:calc(100% - 28px); max-width:calc(100% - 28px); }
+      .processing-switch { width:54px; height:25px; gap:1px; padding:2px; border-radius:7px; }
+      .processing-switch button { font-size:9px; }
+      .section-model-icons { gap:2px; }
+      .model-chip,.profile-swatch { width:14px;height:14px;border-radius:999px; }
+      .type-icon-btn { width:25px;height:25px;font-size:12px;border-radius:7px; }
+      .pass-mark { width:14px;height:14px;border-width:1.5px;font-size:8px; }
+      .pass-mark.active::after { width:5px;height:5px; }
+      .model-grid { grid-template-columns:1fr; }
+      .drawer-model-grid { display:flex;flex-direction:column; }
+      .review-stats { grid-template-columns:1fr 1fr; }
+      .review-item { grid-template-columns:1fr; }
+      .confidence { text-align:left; }
+      .reader-shell { grid-template-columns:1fr; }
+      .reader-books { border-right:0;border-bottom:1px solid var(--line);display:flex;overflow:auto; }
+      .reader-book { min-width:180px; }
+      .reader-content { padding:30px 20px; }
+      .reader-page { font-size:17px; }
+    }
+
+    .phase-detail-page { max-width:1180px; }
+    .phase-detail-head {
+      display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:20px;
+    }
+    .phase-detail-title { min-width:0; }
+    .phase-detail-title h1 { display:flex;align-items:center;gap:10px; }
+    .phase-detail-meta { margin-top:7px;color:var(--text-dim);font-size:13px; }
+    .phase-status-badge {
+      display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;
+      border:1px solid var(--line);background:var(--panel);font-size:12px;font-weight:700;color:var(--text-soft);
+      white-space:nowrap;
+    }
+    .phase-status-badge.done { color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line));background:color-mix(in srgb,var(--green) 9%,var(--panel)); }
+    .phase-status-badge.active { color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft); }
+    .phase-status-badge.error { color:var(--red);border-color:color-mix(in srgb,var(--red) 42%,var(--line));background:var(--red-soft); }
+    .phase-metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px; }
+    .phase-metric { border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:13px 14px;min-width:0; }
+    .phase-metric-label { color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:750; }
+    .phase-metric-value { margin-top:5px;font-size:18px;font-weight:760;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .phase-detail-grid { display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:14px;align-items:start; }
+    .phase-detail-stack { display:flex;flex-direction:column;gap:14px;min-width:0; }
+    .phase-detail-card { border:1px solid var(--line);background:var(--panel);border-radius:12px;overflow:hidden;min-width:0; }
+    .phase-detail-card-head { padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px; }
+    .phase-detail-card-head h2 { font-size:14px; }
+    .phase-detail-card-body { padding:14px 15px; }
+    .phase-kv { display:grid;grid-template-columns:minmax(110px,.45fr) minmax(0,1fr);gap:9px 14px;font-size:13px; }
+    .phase-kv dt { color:var(--text-dim); }
+    .phase-kv dd { margin:0;color:var(--text);min-width:0;overflow-wrap:anywhere; }
+    .phase-detail-table { width:100%;border-collapse:collapse;table-layout:fixed; }
+    .phase-detail-table th { text-align:left;color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;padding:9px 10px;border-bottom:1px solid var(--line); }
+    .phase-detail-table td { padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .phase-detail-table tr:last-child td { border-bottom:0; }
+    .phase-detail-table .num { text-align:right;font-variant-numeric:tabular-nums; }
+    .phase-model { display:inline-flex;align-items:center;gap:7px;min-width:0; }
+    .phase-model-dot { width:10px;height:10px;border-radius:50%;flex:0 0 10px;box-shadow:0 0 0 1px rgba(255,255,255,.12); }
+    .phase-check-list { display:flex;flex-direction:column;gap:9px;font-size:13px; }
+    .phase-check { display:flex;align-items:flex-start;gap:9px;color:var(--text-soft); }
+    .phase-check strong { color:var(--text);font-weight:680; }
+    .phase-check-icon { width:18px;flex:0 0 18px;text-align:center;color:var(--green);font-weight:800; }
+    .phase-empty { padding:22px 16px;color:var(--text-dim);font-size:13px;text-align:center; }
+    .phase-output-path { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow-wrap:anywhere;color:var(--text-soft); }
+    .phase-activity-list { max-height:260px;overflow:auto; }
+
+    @media (max-width:900px) {
+      .phase-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .phase-detail-grid { grid-template-columns:1fr; }
+    }
+    @media (max-width:560px) {
+      .phase-detail-head { flex-direction:column;gap:12px; }
+      .phase-metrics { grid-template-columns:1fr 1fr; }
+      .phase-kv { grid-template-columns:1fr;gap:3px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">IX</div>
+      <div class="brand-name">Intelitex</div>
+    </div>
+    <div class="mode-switch" aria-label="Application mode">
+      <button id="workModeBtn" class="active" type="button">Work</button>
+      <button id="readerModeBtn" type="button">Reader</button>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+      <button class="icon-btn" id="settingsBtn" type="button" title="Settings" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main class="main" id="main"></main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<aside class="drawer" id="previewDrawer" aria-label="Section preview">
+  <div class="drawer-head">
+    <div>
+      <div class="eyebrow">Section</div>
+      <h2 id="previewTitle">Chapter</h2>
+      <div class="subtitle" id="previewMeta"></div>
+    </div>
+    <button class="icon-btn" data-close-drawer type="button">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="field-row">
+      <div class="field">
+        <label for="drawerMode">Processing</label>
+        <select id="drawerMode">
+          <option value="Full">F — Full</option>
+          <option value="Translate only">T — Translate only</option>
+          <option value="Excluded">E — Excluded</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="drawerType">Content type · metadata only</label>
+        <select id="drawerType">
+          <option value="Narrative">¶  Narrative</option>
+          <option value="Contents">☷  Contents</option>
+          <option value="Glossary">≡  Glossary</option>
+          <option value="Footnotes">†  Footnotes</option>
+          <option value="Front matter">◁  Front matter</option>
+          <option value="Back matter">▷  Back matter</option>
+          <option value="Advertisement">◇  Advertisement</option>
+          <option value="Unclassified">?  Unclassified</option>
+        </select>
+      </div>
+    </div>
+    <div class="autosave-note">Changes are applied immediately. Only Processing controls pipeline inclusion; Content type is descriptive metadata.</div>
+    <div class="field">
+      <label>Model overrides · optional</label>
+      <div class="drawer-model-grid" id="drawerModelGrid"></div>
+      <div class="autosave-note model-override-note">The first option inherits the workspace pipeline model. Colors match the configured model profiles.</div>
+    </div>
+    <div class="preview-text" id="previewText"></div>
+  </div>
+</aside>
+
+<aside class="drawer" id="archiveDrawer" aria-label="Workspace archive">
+  <div class="drawer-head">
+    <div>
+      <div class="eyebrow">Workspaces</div>
+      <h2>Archive</h2>
+      <div class="subtitle">Completed or parked workspaces stay available here.</div>
+    </div>
+    <button class="icon-btn" data-close-drawer type="button">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="archive-list" id="archiveList"></div>
+  </div>
+</aside>
+
+<div class="modal" id="settingsModal" aria-label="Settings">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <div class="eyebrow">Intelitex</div>
+        <h2>Settings</h2>
+      </div>
+      <button class="icon-btn" data-close-modal type="button">×</button>
+    </div>
+    <div class="settings-tabs">
+      <button class="active" data-settings-tab="paths" type="button">Paths</button>
+      <button data-settings-tab="models" type="button">Models</button>
+      <button data-settings-tab="interface" type="button">Interface</button>
+    </div>
+    <div class="modal-body" id="settingsBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="archiveConfirmModal" aria-label="Archive workspace confirmation">
+  <div class="modal-card" style="width:min(500px,94vw)">
+    <div class="modal-head">
+      <div>
+        <div class="eyebrow">Workspace</div>
+        <h2>Archive workspace?</h2>
+      </div>
+      <button class="icon-btn" data-close-modal type="button">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="subtitle" style="margin:0">
+        <strong id="archiveConfirmTitle" style="color:var(--text)"></strong> will be removed from active workspaces.
+        Its state will be kept in the archive and can be restored later.
+      </p>
+    </div>
+    <div class="modal-foot">
+      <button class="secondary-btn" data-close-modal type="button">Cancel</button>
+      <button class="danger-btn" id="confirmArchiveBtn" type="button">Archive workspace</button>
+    </div>
+  </div>
+</div>
+
+<div class="type-menu" id="typeMenu" hidden></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const STORAGE_KEY = "intelitex-mockup-v22";
+
+  const baseSections = [
+    {
+      id:"s01", name:"Title page", mode:"Translate only", type:"Front matter",
+      text:"THE GLASS MERIDIAN\\n\\nA novel by Elian Mercer\\n\\nOrison Press",
+      passes:{1:"skip",2:"pending",3:"pending",4:"pending",5:"pending"}
+    },
+    {
+      id:"s02", name:"Contents", mode:"Translate only", type:"Contents",
+      text:"CONTENTS\\n\\nPrologue\\nThe River Station\\nA Quiet Orbit\\nThe Glass Meridian\\nNotes",
+      passes:{1:"skip",2:"pending",3:"pending",4:"pending",5:"pending"}
+    },
+    {
+      id:"s03", name:"Prologue", mode:"Full", type:"Narrative",
+      text:"The station appeared over the limb of the moon as a line of cold light. Mara watched it grow through the forward glass, one hand resting on the sealed transit case beside her.",
+      passes:{1:"done",2:"done",3:"done",4:"done",5:"done"}
+    },
+    {
+      id:"s04", name:"Chapter 1 — The River Station", mode:"Full", type:"Narrative",
+      text:"At 03:17 ship time, the river station stopped answering. The silence lasted eleven seconds. It was enough for everyone on the bridge to understand that the mission had changed.",
+      passes:{1:"done",2:"done",3:"done",4:"active",5:"pending"}
+    },
+    {
+      id:"s05", name:"Chapter 2 — A Quiet Orbit", mode:"Full", type:"Narrative",
+      text:"No one called it a blockade. The ships simply held their positions and waited, dark against the planet, while traffic control repeated the same harmless instructions.",
+      passes:{1:"done",2:"pending",3:"pending",4:"pending",5:"pending"}
+    },
+    {
+      id:"s06", name:"Advertisement", mode:"Excluded", type:"Advertisement",
+      text:"Also available from Orison Press: THE LAST CARTOGRAPHER and WINTER SIGNAL.",
+      passes:{1:"skip",2:"skip",3:"skip",4:"skip",5:"skip"}
+    },
+    {
+      id:"s07", name:"Chapter 3 — Meridian", mode:"Full", type:"Narrative",
+      text:"The object did not reflect the sun. It bent the stars around itself and left a narrow darkness where the survey map insisted empty space should be.",
+      passes:{1:"done",2:"pending",3:"pending",4:"pending",5:"pending"}
+    },
+    {
+      id:"s08", name:"Glossary", mode:"Translate only", type:"Glossary",
+      text:"ANCHOR FIELD — A localized metric constraint used to stabilize a transit aperture.\\n\\nDRIFT ASSEMBLY — The governing body of the outer habitats.",
+      passes:{1:"skip",2:"pending",3:"pending",4:"pending",5:"pending"}
+    }
+  ];
+
+  const blankSections = [
+    {id:"s01",name:"Title page",mode:"Full",type:"Unclassified",text:"THE CLOCKMAKER'S SHORE\\n\\nA novel by Rowan Vale",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s02",name:"Contents",mode:"Full",type:"Unclassified",text:"CONTENTS\\n\\nOne\\nTwo\\nThree\\nFour\\nNotes",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s03",name:"Chapter 1",mode:"Full",type:"Unclassified",text:"The first clock stopped at noon. By evening every clock along the harbor had followed it.",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s04",name:"",mode:"Full",type:"Unclassified",text:"Tomas found the brass key under the tide table, wrapped in paper that had stayed dry for fifty years, and when he unfolded it he discovered a line of coordinates leading far beyond the old harbor wall.",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s05",name:"Chapter 3",mode:"Full",type:"Unclassified",text:"The road above the cliffs was empty except for gulls and a courier bicycle leaning against the wall.",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s06",name:"Other books",mode:"Full",type:"Unclassified",text:"OTHER BOOKS BY ROWAN VALE\\n\\nA Field of Brass\\nThe Ninth Harbor",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}},
+    {id:"s07",name:"Notes",mode:"Full",type:"Unclassified",text:"NOTES\\n\\nHistorical references and acknowledgements.",passes:{1:"pending",2:"pending",3:"pending",4:"pending",5:"pending"}}
+  ];
+
+  const mockReviewTerms = [{"id": "T000001", "source": "Commonwealth Navy Capital-class ships", "category": "Ships", "meaning": "Heavy warships of the Commonwealth Navy, used as a benchmark for high-level firepower.", "aliases": ["Capital-class ships", "Capital-class"], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "okręty klasy Capital Marynarki Wspólnoty", "note": "Literal and precise.", "confidence": "high"}, {"text": "okręty klasy Capital Marynarki Commonwealthu", "note": "Retains 'Commonwealth' as a proper name.", "confidence": "high"}], "evidence": [{"id": "ch0001 · B0000010", "text": "As well as its formidable stealth ability, the ship was big, a fat ovoid over six hundred meters long and two hundred meters across at the center. But its real advantage came from its armaments; there were weapons on board that could knock out a half a dozen Commonwealth Navy Capital-class ships while barely stirring out of standby mode."}, {"id": "ch0001 · B0000348", "text": "The naval registry grouped the new hulls with the older Capital-class ships, although their mission profile was substantially different."}, {"id": "ch0001 · B0000372", "text": "No civilian vessel was permitted inside the Capital-class security cordon."}]}, {"id": "T000002", "source": "Greater Commonwealth", "category": "Organizations", "meaning": "The interstellar political community referred to as the Greater Commonwealth.", "aliases": ["Commonwealth"], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "Większa Wspólnota", "note": "Direct rendering.", "confidence": "high"}, {"text": "Wielka Wspólnota", "note": "More idiomatic, less literal.", "confidence": "medium"}], "evidence": [{"id": "ch0002 · B0000432", "text": "The Greater Commonwealth had never maintained a permanent office on the station."}]}, {"id": "T000003", "source": "Accelerator Faction", "category": "Organizations", "meaning": "A political faction advocating accelerated technological development.", "aliases": ["Accelerators"], "reviewed": false, "uncertain": true, "select": 1, "candidates": [{"text": "Frakcja Akceleratorów", "note": "Keeps established faction naming.", "confidence": "medium"}, {"text": "Frakcja Przyspieszenia", "note": "Literal concept translation.", "confidence": "low"}], "evidence": [{"id": "ch0003 · B0000711", "text": "The Accelerator Faction considered the delay an ideological defeat."}]}, {"id": "T000004", "source": "Higher", "category": "Status & social", "meaning": "A social or post-human status designation.", "aliases": [], "reviewed": false, "uncertain": true, "select": 1, "candidates": [{"text": "Wyższy", "note": "Literal title.", "confidence": "medium"}, {"text": "Higher", "note": "Keep source form.", "confidence": "low"}], "evidence": [{"id": "ch0004 · B0000814", "text": "Only a Higher could authorize the transfer."}]}, {"id": "T000005", "source": "biononics", "category": "Technology", "meaning": "Integrated biological/nanotechnological augmentation.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "bionika", "note": "Compact established rendering.", "confidence": "high"}, {"text": "bionanotechnika", "note": "More explicit technical rendering.", "confidence": "medium"}], "evidence": [{"id": "ch0004 · B0000830", "text": "His biononics opened the secure channel before he consciously requested it."}]}, {"id": "T000006", "source": "exovision", "category": "Technology", "meaning": "Enhanced visual perception technology.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "eksowizja", "note": "Direct technical calque.", "confidence": "high"}, {"text": "widzenie zewnętrzne", "note": "Descriptive rendering.", "confidence": "medium"}], "evidence": [{"id": "ch0005 · B0000921", "text": "The target bloomed across her exovision as a lattice of probability."}]}, {"id": "T000007", "source": "Ilanthe", "category": "People", "meaning": "A named person.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "Ilanthe", "note": "Proper name retained.", "confidence": "high"}], "evidence": [{"id": "ch0005 · B0000944", "text": "Ilanthe turned away before anyone could answer."}]}, {"id": "T000008", "source": "smartcore", "category": "Technology", "meaning": "Embedded computational core or intelligent processor.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "smartcore", "note": "Keep source technical term.", "confidence": "high"}, {"text": "rdzeń inteligentny", "note": "Translated technical term.", "confidence": "medium"}], "evidence": [{"id": "ch0006 · B0001102", "text": "The smartcore had already isolated three possible causes."}]}, {"id": "T000009", "source": "The Swarm", "category": "Technology", "meaning": "A collective network or swarm system.", "aliases": ["Swarm"], "reviewed": false, "uncertain": true, "select": 1, "candidates": [{"text": "Rój", "note": "Direct, concise.", "confidence": "medium"}, {"text": "The Swarm", "note": "Keep proper-name form.", "confidence": "medium"}], "evidence": [{"id": "ch0006 · B0001120", "text": "The Swarm answered in less than a millisecond."}]}, {"id": "T000010", "source": "ExoProtectorate Council", "category": "Organizations", "meaning": "A council governing or representing the ExoProtectorate.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "Rada Egzoprotektoratu", "note": "Natural institutional rendering.", "confidence": "high"}], "evidence": [{"id": "ch0007 · B0001299", "text": "The ExoProtectorate Council issued a formal objection."}]}, {"id": "T000011", "source": "Kazimir", "category": "People", "meaning": "A named person.", "aliases": [], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "Kazimir", "note": "Proper name retained.", "confidence": "high"}], "evidence": [{"id": "ch0007 · B0001322", "text": "Kazimir did not answer immediately."}]}, {"id": "T000012", "source": "Ocisen Empire", "category": "Organizations", "meaning": "The Ocisen political empire.", "aliases": ["Ocisen"], "reviewed": false, "uncertain": false, "select": 1, "candidates": [{"text": "Imperium Ocisen", "note": "Proper-name empire form.", "confidence": "high"}], "evidence": [{"id": "ch0008 · B0001410", "text": "The Ocisen Empire had closed the transit lane two days earlier."}]}];
+
+  const defaultState = {
+    theme:"dark",
+    mode:"work",
+    route:{kind:"home"},
+    settings:{tab:"paths", sourcePath:"/books/source", workspacePath:"/books/workspaces", outputPath:"/books/translations"},
+    profiles:["Astra High","Sol Medium","Sol High","Local Qwen 27B","Local Qwen Flash"],
+    library:[
+      {id:"glass",title:"The Glass Meridian",author:"Elian Mercer",words:148200,lang:"EN",cover:1,workspaceId:"glass-ws"},
+      {id:"clock",title:"The Clockmaker's Shore",author:"Rowan Vale",words:116840,lang:"EN",cover:2,workspaceId:null},
+      {id:"silent",title:"The Silent Mountain",author:"Nora Keene",words:98740,lang:"EN",cover:3,workspaceId:"silent-ws"},
+      {id:"bright",title:"A Bright Tomorrow",author:"M. K. Hale",words:173900,lang:"EN",cover:4,workspaceId:"bright-ws"},
+      {id:"orbital",title:"Orbital Ashes",author:"Simon Rook",words:205110,lang:"EN",cover:5,workspaceId:null}
+    ],
+    workspaces:[
+      {
+        id:"glass-ws",bookId:"glass",archived:false,prepared:true,analysisDone:true,reviewApproved:true,translationDone:false,publishing:false,published:false,running:false,error:null,lastUpdated:Date.now()-12*60*1000,
+        models:{1:"Astra High",2:"Sol Medium",3:"Sol Medium",4:"Sol Medium",5:"Sol Medium"},
+        sections:baseSections
+      },
+      {
+        id:"silent-ws",bookId:"silent",archived:false,prepared:true,analysisDone:true,reviewApproved:false,translationDone:false,publishing:false,published:false,running:false,error:null,lastUpdated:Date.now()-26*60*60*1000,
+        models:{1:"Astra High",2:"Sol Medium",3:"Sol Medium",4:"Sol Medium",5:"Sol Medium"},
+        sections:baseSections.map((s,i)=>({...s,passes:{1:s.mode==="Full"?"done":"skip",2:s.mode==="Excluded"?"skip":"pending",3:s.mode==="Excluded"?"skip":"pending",4:s.mode==="Excluded"?"skip":"pending",5:s.mode==="Excluded"?"skip":"pending"}}))
+      },
+      {
+        id:"bright-ws",bookId:"bright",archived:false,prepared:true,analysisDone:false,reviewApproved:false,translationDone:false,publishing:false,published:false,running:false,error:{sectionId:"s05",pass:1,message:"Provider timed out after 3 attempts"},lastUpdated:Date.now()-3*24*60*60*1000,
+        models:{1:"Local Qwen 27B",2:"Sol Medium",3:"Sol Medium",4:"Sol Medium",5:"Sol Medium"},
+        sections:baseSections.map((s,i)=>({...s,passes:{1:s.mode==="Full"?(i<4?"done":i===4?"error":"pending"):"skip",2:s.mode==="Excluded"?"skip":"pending",3:s.mode==="Excluded"?"skip":"pending",4:s.mode==="Excluded"?"skip":"pending",5:s.mode==="Excluded"?"skip":"pending"}}))
+      },
+      {
+        id:"archive-ws",bookId:"archive-book",archived:true,prepared:true,analysisDone:true,reviewApproved:true,translationDone:true,publishing:false,published:true,running:false,error:null,lastUpdated:Date.now()-14*24*60*60*1000,
+        models:{1:"Astra High",2:"Sol Medium",3:"Sol Medium",4:"Sol Medium",5:"Sol Medium"},
+        sections:[]
+      }
+    ],
+    archivedBooks:[
+      {id:"archive-book",title:"The Winter Index",author:"Cara Venn",words:131300,lang:"EN",cover:4,workspaceId:"archive-ws"}
+    ],
+    readerBookId:"glass"
+  };
+
+  let state = loadState();
+
+  const defaultActivityLines = [
+    {time:"12:14:03",kind:"waiting",message:"P2/5 | pass2/ch0016_c0004 | waiting for model; input 27,318 tokens"},
+    {time:"12:19:26",kind:"waiting",message:"P2/5 | pass2/ch0016_c0004 | waiting for model; input 27,412 tokens"},
+    {time:"12:23:41",kind:"waiting",message:"P3/5 | pass3/ch0016_c0004 | waiting for model; input 22,716 tokens"},
+    {time:"12:28:08",kind:"waiting",message:"P4/5 | pass4/ch0016_c0004 | waiting for model; input 35,486 tokens"},
+    {time:"12:33:52",kind:"waiting",message:"P5/5 | pass5/ch0016_c0004 | waiting for model; input 26,724 tokens"},
+    {time:"12:39:17",kind:"waiting",message:"P2/5 | pass2/ch0017_c0001 | waiting for model; input 48,294 tokens"}
+  ];
+
+  // Existing saved mock state may predate activity logging / the full-page review.
+  for(const ws of state.workspaces){
+    if(!Array.isArray(ws.reviewTerms)) ws.reviewTerms=deepClone(mockReviewTerms);
+    if(!Array.isArray(ws.activityLog)) ws.activityLog=deepClone(defaultActivityLines);
+    for(const sec of ws.sections||[]) ensureSectionModelOverrides(sec);
+  }
+  // Seed a few visual examples of per-section overrides in the mock.
+  const glassWs=state.workspaces.find(ws=>ws.id==="glass-ws");
+  if(glassWs){
+    const titlePage=glassWs.sections.find(sec=>sec.id==="s01");
+    const chapterOne=glassWs.sections.find(sec=>sec.id==="s04");
+    const glossary=glassWs.sections.find(sec=>sec.id==="s08");
+    if(titlePage && !sectionOverridePasses(titlePage).length) titlePage.modelOverrides={2:"Local Qwen Flash"};
+    if(chapterOne && !sectionOverridePasses(chapterOne).length) chapterOne.modelOverrides={4:"Astra High",5:"Sol High"};
+    if(glossary && !sectionOverridePasses(glossary).length) glossary.modelOverrides={2:"Local Qwen 27B",3:"Local Qwen 27B"};
+  }
+  let activeTimer = null;
+  let selectedSectionId = null;
+  let selectedSettingsTab = state.settings.tab || "paths";
+  let prepareTimer = null;
+  let toastTimer = null;
+
+  const main = document.getElementById("main");
+  const scrim = document.getElementById("scrim");
+  const previewDrawer = document.getElementById("previewDrawer");
+  const archiveDrawer = document.getElementById("archiveDrawer");
+  const settingsModal = document.getElementById("settingsModal");
+  const archiveConfirmModal = document.getElementById("archiveConfirmModal");
+
+  function deepClone(v){ return JSON.parse(JSON.stringify(v)); }
+  function loadState(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return deepClone(defaultState);
+      const loaded = JSON.parse(raw);
+      return {...deepClone(defaultState),...loaded};
+    } catch(e) { return deepClone(defaultState); }
+  }
+  function persist(){
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+  }
+  function bookById(id){
+    return [...state.library,...state.archivedBooks].find(b=>b.id===id);
+  }
+  function workspaceById(id){ return state.workspaces.find(w=>w.id===id); }
+  function activeWorkspace(){ return state.route.kind==="workspace" ? workspaceById(state.route.id) : null; }
+  function esc(s){
+    return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+  }
+
+  const contentTypes = [
+    {name:"Narrative", icon:"¶"},
+    {name:"Contents", icon:"☷"},
+    {name:"Glossary", icon:"≡"},
+    {name:"Footnotes", icon:"†"},
+    {name:"Front matter", icon:"◁"},
+    {name:"Back matter", icon:"▷"},
+    {name:"Advertisement", icon:"◇"},
+    {name:"Unclassified", icon:"?"}
+  ];
+  const modelColorPalette = [
+    "#5AA9FF","#7C5CFF","#2FD6A1","#F5B942","#FF7A59","#E56BCE",
+    "#4DD0E1","#9CCC65","#FF8A80","#B39DDB","#26C6DA","#D4A24C",
+    "#F06292","#64B5F6","#AED581","#FFB74D","#7986CB","#4DB6AC"
+  ];
+  function typeIcon(name){
+    return contentTypes.find(x=>x.name===name)?.icon || "?";
+  }
+  function profileColor(profile){
+    const idx=state.profiles.indexOf(profile);
+    return modelColorPalette[(idx>=0?idx:0)%modelColorPalette.length];
+  }
+  function ensureSectionModelOverrides(sec){
+    if(!sec.modelOverrides || typeof sec.modelOverrides!=="object") sec.modelOverrides={};
+    return sec.modelOverrides;
+  }
+  function sectionOverridePasses(sec){
+    const overrides=ensureSectionModelOverrides(sec);
+    return [1,2,3,4,5].filter(pass=>!!overrides[pass]);
+  }
+  function effectiveSectionModel(ws,sec,pass){
+    return ensureSectionModelOverrides(sec)[pass] || ws.models[pass];
+  }
+  function sectionModelIcons(ws,sec){
+    const passes=sectionOverridePasses(sec);
+    if(!passes.length) return `<span class="section-model-empty" title="Uses workspace defaults">—</span>`;
+    return `<div class="section-model-icons" title="${passes.map(pass=>`P${pass}: ${effectiveSectionModel(ws,sec,pass)}`).join(" • ")}">${passes.map(pass=>`<span class="model-chip" style="background:${profileColor(effectiveSectionModel(ws,sec,pass))}" title="P${pass}: ${effectiveSectionModel(ws,sec,pass)}"></span>`).join("")}</div>`;
+  }
+  function renderPreserveScroll(){
+    const y=window.scrollY;
+    render();
+    requestAnimationFrame(()=>window.scrollTo(0,y));
+  }
+  function bookInitials(title){
+    const words=String(title||"")
+      .replace(/[’']/g,"'")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const leadingArticles=new Set(["a","an","the"]);
+    while(words.length>1 && leadingArticles.has(words[0].toLowerCase())) words.shift();
+    const initials=words
+      .map(word=>{
+        const cleaned=word.replace(/^[^A-Za-z0-9À-ÖØ-öø-ÿ]+|[^A-Za-z0-9À-ÖØ-öø-ÿ]+$/g,"");
+        return cleaned ? cleaned[0].toUpperCase() : "";
+      })
+      .filter(Boolean)
+      .slice(0,3)
+      .join("");
+    if(initials) return initials;
+    return String(title||"?").trim().slice(0,3).toUpperCase();
+  }
+
+  function coverStyle(book){ return `var(--cover-${book.cover||1})`; }
+  function words(n){ return n >= 1000 ? `${Math.round(n/100)/10}k words` : `${n} words`; }
+  function relativeTime(ts){
+    const mins=Math.max(1,Math.round((Date.now()-ts)/60000));
+    if(mins<60) return `${mins} min ago`;
+    const h=Math.round(mins/60);
+    if(h<24) return `${h} h ago`;
+    const d=Math.round(h/24);
+    return `${d} d ago`;
+  }
+  function passCounts(ws){
+    const eligible=ws.sections.filter(s=>s.mode!=="Excluded");
+    const full=ws.sections.filter(s=>s.mode==="Full");
+    const p1done=full.filter(s=>s.passes[1]==="done").length;
+    const translated=eligible.filter(s=>s.passes[5]==="done").length;
+    return {eligible:eligible.length,full:full.length,p1done,translated};
+  }
+  function workspaceProgress(ws){
+    if(!ws.prepared) return 0;
+    const {eligible,full,p1done,translated}=passCounts(ws);
+    if(!ws.analysisDone) return Math.round(5 + (full ? (p1done/full)*25 : 25));
+    if(!ws.reviewApproved) return 32;
+    if(!ws.translationDone) return Math.round(35 + (eligible ? translated/eligible*58 : 58));
+    if(ws.publishing || !ws.published) return 98;
+    return 100;
+  }
+  function workspaceStatus(ws){
+    if(ws.error) return {label:`Error · P${ws.error.pass}`,detail:ws.error.message,kind:"error"};
+    if(ws.running) {
+      if(!ws.analysisDone) return {label:"Running · P1 analysis",detail:currentActive(ws),kind:"running"};
+      return {label:"Running · translation",detail:currentActive(ws),kind:"running"};
+    }
+    if(!ws.prepared) return {label:"Not prepared",detail:"Source has not been inspected",kind:"idle"};
+    if(!ws.analysisDone) return {label:"P1 analysis",detail:"Stopped",kind:"idle"};
+    if(!ws.reviewApproved) return {label:"P1 review",detail:"Review required",kind:"waiting"};
+    if(!ws.translationDone) return {label:"Translation",detail:"Stopped",kind:"idle"};
+    if(ws.publishing || !ws.published) return {label:"Publishing",detail:"Building EPUB",kind:"running"};
+    return {label:"Completed",detail:"Published",kind:"done"};
+  }
+  function currentActive(ws){
+    const sec=ws.sections.find(s=>Object.values(s.passes).includes("active"));
+    if(!sec) return "Waiting for next unit";
+    const pass=Object.entries(sec.passes).find(([,v])=>v==="active")?.[0];
+    return `${sec.name} · P${pass}`;
+  }
+
+  function activityNow(){
+    return new Date().toLocaleTimeString("en-GB",{hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  }
+
+  function pushActivity(ws,message,kind="waiting"){
+    if(!Array.isArray(ws.activityLog)) ws.activityLog=[];
+    ws.activityLog.push({time:activityNow(),message,kind});
+    if(ws.activityLog.length>120) ws.activityLog.splice(0,ws.activityLog.length-120);
+  }
+
+  function activityMarkup(ws){
+    const lines=(ws.activityLog||[]).slice(-80);
+    if(!lines.length) return `<div class="empty-note" style="border:0">No activity yet.</div>`;
+    return lines.map(line=>`
+      <div class="activity-line ${esc(line.kind||"")}">
+        <span class="activity-time">${esc(line.time||"")}</span>
+        <span class="activity-message">${esc(line.message||"")}</span>
+      </div>`).join("");
+  }
+
+  function render(){
+    document.documentElement.dataset.theme=state.theme;
+    document.getElementById("workModeBtn").classList.toggle("active",state.mode==="work");
+    document.getElementById("readerModeBtn").classList.toggle("active",state.mode==="reader");
+    if(state.mode==="reader") renderReader();
+    else if(state.route.kind==="review") renderReviewPage(state.route.id);
+    else if(state.route.kind==="phase") renderPhasePage(state.route.id,state.route.phase);
+    else if(state.route.kind==="workspace") renderWorkspace(state.route.id);
+    else renderHome();
+    persist();
+  }
+
+  function renderHome(){
+    const active=state.workspaces.filter(w=>!w.archived).sort((a,b)=>b.lastUpdated-a.lastUpdated);
+    main.className="main";
+    main.innerHTML=`
+      <div class="page-title-row">
+        <div>
+          <div class="eyebrow">Work</div>
+          <h1>Books in progress</h1>
+          <div class="subtitle">Open a workspace, continue the pipeline, or start working on a book from the library.</div>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title"><h2>Active workspaces</h2><span class="count-badge">${active.length}</span></div>
+          <button class="ghost-btn compact" id="archiveBtn" type="button">Archive →</button>
+        </div>
+        <div class="workspace-list">
+          ${active.map(workspaceRow).join("") || `<div class="empty-note">No active workspaces.</div>`}
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title"><h2>Library</h2><span class="count-badge">${state.library.length}</span></div>
+          <div class="subtitle" style="margin:0">Source directory: ${esc(state.settings.sourcePath)}</div>
+        </div>
+        <div class="library-grid">
+          ${state.library.map(bookCard).join("")}
+        </div>
+      </section>`;
+
+    main.querySelectorAll("[data-open-workspace]").forEach(el=>el.addEventListener("click",e=>{
+      if(e.target.closest("button,select")) return;
+      openWorkspace(el.dataset.openWorkspace);
+    }));
+    main.querySelectorAll("[data-ws-action]").forEach(btn=>btn.addEventListener("click",e=>{
+      e.stopPropagation();
+      const ws=workspaceById(btn.dataset.wsAction);
+      const status=workspaceStatus(ws);
+      if(status.kind==="running") stopWorkspace(ws);
+      else if(!ws.analysisDone && ws.error) { ws.error=null; runWorkspace(ws); }
+      else if(ws.analysisDone && !ws.reviewApproved) openReview(ws.id);
+      else if(ws.translationDone) openWorkspace(ws.id);
+      else runWorkspace(ws);
+    }));
+    main.querySelectorAll("[data-open-book]").forEach(el=>el.addEventListener("click",()=>openBook(el.dataset.openBook)));
+    document.getElementById("archiveBtn").addEventListener("click",openArchive);
+  }
+
+  function workspaceRow(ws){
+    const b=bookById(ws.bookId);
+    const st=workspaceStatus(ws);
+    const pct=workspaceProgress(ws);
+    const action=ws.publishing?"Publishing…":st.kind==="running"?"Stop":(!ws.analysisDone&&ws.error?"Retry":(!ws.analysisDone?"Run":(!ws.reviewApproved?"Review":(!ws.translationDone?"Run":"Open"))));
+    return `
+      <div class="workspace-row" data-open-workspace="${ws.id}">
+        <div class="mini-cover" style="background:${coverStyle(b)}" title="${esc(b.title)}">${bookInitials(b.title)}</div>
+        <div>
+          <div class="workspace-title">${esc(b.title)}</div>
+          <div class="workspace-author">${esc(b.author)} · ${b.lang} → PL</div>
+        </div>
+        <div class="workspace-state">
+          <span class="status-dot ${st.kind}"></span>${esc(st.label)}
+          <small>${esc(st.detail)}</small>
+        </div>
+        <div class="row-progress">
+          <div class="progress-wrap">
+            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+            <div class="progress-value">${pct}%</div>
+          </div>
+          <div class="workspace-author" style="margin-top:7px">Updated ${relativeTime(ws.lastUpdated)}</div>
+        </div>
+        <div class="row-actions">
+          <button class="${st.kind==="running"&&!ws.publishing?"danger-btn":"secondary-btn"}" data-ws-action="${ws.id}" type="button" ${ws.publishing?"disabled":""}>${action}</button>
+        </div>
+      </div>`;
+  }
+
+  function bookCard(book){
+    const hasWs=!!book.workspaceId;
+    return `
+      <article class="book-card" data-open-book="${book.id}">
+        <div class="cover" style="background:${coverStyle(book)}" title="${esc(book.title)}">
+          <span class="cover-initials">${bookInitials(book.title)}</span>
+        </div>
+        <div class="book-meta">
+          <div class="book-name">${esc(book.title)}</div>
+          <div class="book-detail">
+            <span>${esc(book.author)}</span><span>·</span><span>${words(book.words)}</span>
+            ${hasWs?`<span class="workspace-chip">workspace</span>`:""}
+          </div>
+        </div>
+      </article>`;
+  }
+
+  function openBook(bookId){
+    const b=bookById(bookId);
+    if(b.workspaceId && workspaceById(b.workspaceId)) return openWorkspace(b.workspaceId);
+    const id=`${bookId}-ws`;
+    const ws={
+      id,bookId,archived:false,prepared:false,analysisDone:false,reviewApproved:false,translationDone:false,publishing:false,published:false,running:false,error:null,lastUpdated:Date.now(),
+      models:{1:"Astra High",2:"Sol Medium",3:"Sol Medium",4:"Sol Medium",5:"Sol Medium"},
+      sections:deepClone(blankSections),
+      reviewTerms:deepClone(mockReviewTerms),
+      activityLog:[]
+    };
+    state.workspaces.push(ws); b.workspaceId=id;
+    openWorkspace(id);
+  }
+
+  function openWorkspace(id){
+    state.route={kind:"workspace",id};
+    render();
+  }
+
+  function renderWorkspace(id){
+    const ws=workspaceById(id);
+    if(!ws){ state.route={kind:"home"};return render(); }
+    const b=bookById(ws.bookId);
+    main.className="main workspace-page";
+    const st=workspaceStatus(ws);
+    const counts=passCounts(ws);
+    const phase=phaseState(ws);
+    main.innerHTML=`
+      <div class="back-row"><button class="back-link" id="backHome" type="button">← Library</button></div>
+
+      <div class="workspace-head">
+        <div class="workspace-heading">
+          <div class="mini-cover" style="background:${coverStyle(b)}" title="${esc(b.title)}">${bookInitials(b.title)}</div>
+          <div style="min-width:0">
+            <div class="eyebrow">Workspace</div>
+            <h1>${esc(b.title)}</h1>
+            <div class="workspace-meta-line">
+              <span>${esc(b.author)}</span><span>·</span><span>${b.lang} → PL</span><span>·</span><span>${words(b.words)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="workspace-head-actions">
+          ${workspaceMainAction(ws)}
+        </div>
+      </div>
+
+      <div class="phase-rail">
+        ${phaseCard("prepare","Prepare",phase.prepare,ws.prepared?"Source structure frozen":"Inspect source locally")}
+        ${phaseCard("p1","Analyse",phase.p1,ws.prepared?(ws.analysisDone?`${counts.full}/${counts.full} analysed`:`${counts.p1done}/${counts.full} analysed`):"Blocked")}
+        ${phaseCard("review","Review",phase.review,ws.analysisDone?(ws.reviewApproved?"Confirmed":"Human gate"):"Blocked")}
+        ${phaseCard("translation","Translate",phase.translation,ws.reviewApproved?(ws.translationDone?`${counts.eligible}/${counts.eligible} complete`:`${counts.translated}/${counts.eligible} complete`):"Blocked")}
+        ${phaseCard("publish","Publish",phase.publish,ws.translationDone?(ws.published?"Published":ws.publishing?"Publishing…":"Publishing…"):"Blocked")}
+      </div>
+
+      ${workspaceNotice(ws)}
+
+      ${ws.prepared ? workspacePreparedBody(ws) : workspacePrepareBody(ws)}
+    `;
+
+    document.getElementById("backHome").addEventListener("click",()=>{ state.route={kind:"home"};render(); });
+    const act=document.getElementById("workspaceMainAction");
+    if(act) act.addEventListener("click",()=>handleMainAction(ws));
+    const reviewBtn=document.getElementById("openReviewInline");
+    if(reviewBtn) reviewBtn.addEventListener("click",()=>openReview(ws.id));
+    const retryBtn=document.getElementById("retryInline");
+    if(retryBtn) retryBtn.addEventListener("click",()=>{ ws.error=null;runWorkspace(ws); });
+
+    main.querySelectorAll("[data-phase].clickable").forEach(card=>{
+      const key=card.dataset.phase;
+      card.title=key==="review" ? (ws.reviewApproved ? "Open review" : "Review terminology") : `Open ${phaseLabel(key)} details`;
+      card.addEventListener("click",()=>openPhase(ws.id,key));
+    });
+
+    if(!ws.prepared){
+      const prepare=document.getElementById("prepareBtn");
+      if(prepare) prepare.addEventListener("click",()=>prepareWorkspace(ws));
+    } else {
+      wirePreparedWorkspace(ws);
+    }
+  }
+
+  function workspaceMainAction(ws){
+    if(ws.running) return `<button class="danger-btn" id="workspaceMainAction" type="button">■ Stop</button>`;
+    if(!ws.prepared) return `<button class="primary-btn" id="workspaceMainAction" type="button">Prepare</button>`;
+    if(ws.analysisDone && !ws.reviewApproved) return `<button class="primary-btn" id="workspaceMainAction" type="button">Review</button>`;
+    if(ws.translationDone && !ws.published) return `<button class="secondary-btn" id="workspaceMainAction" type="button" disabled>Publishing…</button>`;
+    if(ws.published) return `<button class="secondary-btn" id="workspaceMainAction" type="button" disabled>Finished</button>`;
+    return `<button class="primary-btn" id="workspaceMainAction" type="button">▶ Run</button>`;
+  }
+
+  function phaseState(ws){
+    return {
+      prepare: ws.prepared?"done":"active",
+      p1: !ws.prepared?"blocked":ws.analysisDone?"done":ws.error&&ws.error.pass===1?"error":"active",
+      review: !ws.analysisDone?"blocked":ws.reviewApproved?"done":"active",
+      translation: !ws.reviewApproved?"blocked":ws.translationDone?"done":ws.error&&ws.error.pass>1?"error":"active",
+      publish: !ws.translationDone?"blocked":ws.published?"done":"active"
+    };
+  }
+
+  function phaseCard(key,name,status,sub){
+    const icon=status==="done"?"✓":status==="error"?"!":"";
+    const clickable=status!=="blocked";
+    return `<div class="phase ${status}${clickable?" clickable":""}" data-phase="${key}">
+      <div class="phase-top"><span class="phase-icon">${icon}</span><span class="phase-name">${name}</span></div>
+      <div class="phase-sub">${esc(sub)}</div>
+    </div>`;
+  }
+
+  function phaseLabel(key){
+    return ({prepare:"Prepare",p1:"Analyse",review:"Review",translation:"Translate",publish:"Publish"})[key] || key;
+  }
+
+  function openPhase(wsId,key){
+    if(key==="review") return openReview(wsId);
+    state.route={kind:"phase",id:wsId,phase:key};
+    render();
+  }
+
+  function phaseStatusText(ws,key){
+    const status=phaseState(ws)[key];
+    if(status==="done") return "Completed";
+    if(status==="error") return "Error";
+    if(status==="blocked") return "Blocked";
+    if(key==="publish" && ws.publishing) return "Publishing";
+    if(key==="prepare" && !ws.prepared) return "Not prepared";
+    return ws.running ? "Running" : "Available";
+  }
+
+  function tokenTotals(ws,passes){
+    const total={input:0,cached:0,reasoning:0,output:0,count:0};
+    for(const sec of ws.sections||[]){
+      for(const pass of passes){
+        if(sec.passes?.[pass]!=="done") continue;
+        const t=mockTokenStats(ws,sec,pass);
+        total.input+=t.input; total.cached+=t.cached; total.reasoning+=t.reasoning; total.output+=t.output; total.count++;
+      }
+    }
+    return total;
+  }
+
+  function compactTok(n){
+    if(!n) return "0 tok";
+    if(n>=1000000) return `${(n/1000000).toFixed(2).replace(/0+$/,'').replace(/\.$/,'')}M tok`;
+    if(n>=1000) return `${(n/1000).toFixed(n>=100000?0:1).replace(/\.0$/,'')}k tok`;
+    return `${n} tok`;
+  }
+
+  function metricCard(label,value){
+    return `<div class="phase-metric"><div class="phase-metric-label">${esc(label)}</div><div class="phase-metric-value" title="${esc(String(value))}">${esc(String(value))}</div></div>`;
+  }
+
+  function statusBadge(ws,key){
+    const raw=phaseState(ws)[key];
+    const cls=raw==="done"?"done":raw==="error"?"error":"active";
+    const icon=raw==="done"?"✓":raw==="error"?"✕":"○";
+    return `<span class="phase-status-badge ${cls}">${icon} ${esc(phaseStatusText(ws,key))}</span>`;
+  }
+
+  function phaseDetailShell(ws,key,metrics,body){
+    const book=bookById(ws.bookId);
+    return `
+      <div class="back-row"><button class="back-link" id="backToWorkspace" type="button">← Workspace</button></div>
+      <div class="phase-detail-head">
+        <div class="phase-detail-title">
+          <div class="eyebrow">${esc(phaseLabel(key))} · ${esc(book?.title||ws.bookId)}</div>
+          <h1>${esc(phaseLabel(key))}</h1>
+          <div class="phase-detail-meta">Phase details and execution diagnostics</div>
+        </div>
+        ${statusBadge(ws,key)}
+      </div>
+      <div class="phase-metrics">${metrics.join("")}</div>
+      ${body}`;
+  }
+
+  function prepareDetails(ws){
+    const book=bookById(ws.bookId);
+    const sections=ws.sections||[];
+    const excluded=sections.filter(s=>s.mode==="Excluded").length;
+    const processable=sections.length-excluded;
+    const metrics=[
+      metricCard("Format","EPUB"),
+      metricCard("Sections",ws.prepared?sections.length:"—"),
+      metricCard("Processable",ws.prepared?processable:"—"),
+      metricCard("Words",book?words(book.words):"—")
+    ];
+    const structure=ws.prepared ? `
+      <div class="phase-detail-card">
+        <div class="phase-detail-card-head"><h2>Source structure</h2><span class="subtitle" style="margin:0">Frozen plan</span></div>
+        <table class="phase-detail-table">
+          <thead><tr><th style="width:42%">Section</th><th style="width:24%">Content type</th><th style="width:22%">Processing</th><th style="width:12%">P1</th></tr></thead>
+          <tbody>${sections.map((s,i)=>`<tr><td>${String(i+1).padStart(2,"0")} · ${esc(sectionLabel(s).text)}</td><td>${esc(s.type||"Unclassified")}</td><td>${esc(s.mode)}</td><td>${s.mode==="Full"?"unit":"—"}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>` : `<div class="phase-detail-card"><div class="phase-empty">Source structure has not been inspected yet. Run Prepare from the workspace to create the frozen section and chunk plan.</div></div>`;
+    const body=`<div class="phase-detail-grid">
+      <div class="phase-detail-stack">${structure}</div>
+      <div class="phase-detail-stack">
+        <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Source metadata</h2></div><div class="phase-detail-card-body"><dl class="phase-kv">
+          <dt>Title</dt><dd>${esc(book?.title||"—")}</dd><dt>Author</dt><dd>${esc(book?.author||"—")}</dd><dt>Language</dt><dd>${esc(book?.lang||"—")}</dd><dt>Source</dt><dd class="phase-output-path">${esc(state.settings.sourcePath)}/${esc((book?.title||"book").replace(/\s+/g,"-"))}.epub</dd>
+        </dl></div></div>
+        <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Checks</h2></div><div class="phase-detail-card-body"><div class="phase-check-list">
+          ${ws.prepared?`<div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>EPUB package readable</strong><br><span class="subtitle">Container and package metadata resolved.</span></div></div><div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>Spine resolved</strong><br><span class="subtitle">Reading order available.</span></div></div><div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>Section plan frozen</strong><br><span class="subtitle">${sections.length} source sections detected.</span></div></div>`:`<div class="phase-empty" style="padding:4px">Checks will appear after Prepare.</div>`}
+        </div></div></div>
+      </div>
+    </div>`;
+    return phaseDetailShell(ws,"prepare",metrics,body);
+  }
+
+  function analyseDetails(ws){
+    const totals=tokenTotals(ws,[1]);
+    const full=(ws.sections||[]).filter(s=>s.mode==="Full");
+    const terms=(ws.reviewTerms||[]).length;
+    const metrics=[metricCard("Input",compactTok(totals.input)),metricCard("Cache",compactTok(totals.cached)),metricCard("Reason",compactTok(totals.reasoning)),metricCard("Output",compactTok(totals.output))];
+    const rows=full.map(sec=>{
+      const status=sec.passes?.[1]||"pending";
+      const done=status==="done";
+      const t=done?mockTokenStats(ws,sec,1):null;
+      const model=effectiveSectionModel(ws,sec,1);
+      return `<tr><td>${esc(sectionLabel(sec).text)}</td><td><span class="phase-model"><span class="phase-model-dot" style="background:${profileColor(model)}"></span>${esc(model)}</span></td><td>${done?"✓ completed":status==="active"?"○ running":status==="error"?"✕ error":"pending"}</td><td class="num">${t?compactTok(t.input):"—"}</td><td class="num">${t?compactTok(t.cached):"—"}</td><td class="num">${t?compactTok(t.reasoning):"—"}</td><td class="num">${t?compactTok(t.output):"—"}</td></tr>`;
+    }).join("");
+    const body=`<div class="phase-detail-grid"><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Analysis units</h2><span class="subtitle" style="margin:0">${totals.count}/${full.length} completed</span></div>
+        <div style="overflow:auto"><table class="phase-detail-table" style="min-width:820px"><thead><tr><th style="width:26%">Section</th><th style="width:18%">Model</th><th style="width:14%">Status</th><th class="num">In</th><th class="num">Cache</th><th class="num">Reason</th><th class="num">Out</th></tr></thead><tbody>${rows||`<tr><td colspan="7"><div class="phase-empty">No analysis units yet.</div></td></tr>`}</tbody></table></div>
+      </div>
+    </div><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Generated data</h2></div><div class="phase-detail-card-body"><dl class="phase-kv"><dt>Terms / entities</dt><dd>${terms}</dd><dt>Analysis units</dt><dd>${full.length}</dd><dt>Default model</dt><dd><span class="phase-model"><span class="phase-model-dot" style="background:${profileColor(ws.models[1])}"></span>${esc(ws.models[1])}</span></dd><dt>Review gate</dt><dd>${ws.analysisDone?(ws.reviewApproved?"Confirmed":"Ready for review"):"Not ready"}</dd></dl></div></div>
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Artifacts</h2></div><div class="phase-detail-card-body"><div class="phase-check-list"><div class="phase-check"><span class="phase-check-icon">${ws.analysisDone?"✓":"○"}</span><div><strong>Terminology candidates</strong><br><span class="subtitle">${ws.analysisDone?`${terms} review items generated.`:"Generated as analysis completes."}</span></div></div><div class="phase-check"><span class="phase-check-icon">${ws.analysisDone?"✓":"○"}</span><div><strong>Book memory</strong><br><span class="subtitle">Detailed artifact inspection can be added here later.</span></div></div></div></div></div>
+    </div></div>`;
+    return phaseDetailShell(ws,"p1",metrics,body);
+  }
+
+  function translateDetails(ws){
+    const totals=tokenTotals(ws,[2,3,4,5]);
+    const metrics=[metricCard("Input",compactTok(totals.input)),metricCard("Cache",compactTok(totals.cached)),metricCard("Reason",compactTok(totals.reasoning)),metricCard("Output",compactTok(totals.output))];
+    const eligible=(ws.sections||[]).filter(s=>s.mode!=="Excluded");
+    const passRows=[2,3,4,5].map(pass=>{
+      const done=eligible.filter(s=>s.passes?.[pass]==="done");
+      const agg={input:0,cached:0,reasoning:0,output:0};
+      for(const sec of done){ const t=mockTokenStats(ws,sec,pass); for(const k of Object.keys(agg)) agg[k]+=t[k]; }
+      const model=ws.models[pass];
+      return `<tr><td>P${pass}</td><td><span class="phase-model"><span class="phase-model-dot" style="background:${profileColor(model)}"></span>${esc(model)}</span></td><td>${done.length}/${eligible.length}</td><td class="num">${compactTok(agg.input)}</td><td class="num">${compactTok(agg.cached)}</td><td class="num">${compactTok(agg.reasoning)}</td><td class="num">${compactTok(agg.output)}</td></tr>`;
+    }).join("");
+    const body=`<div class="phase-detail-grid"><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Pass summary</h2><span class="subtitle" style="margin:0">P2–P5</span></div><div style="overflow:auto"><table class="phase-detail-table" style="min-width:760px"><thead><tr><th>Pass</th><th style="width:24%">Default model</th><th>Units</th><th class="num">In</th><th class="num">Cache</th><th class="num">Reason</th><th class="num">Out</th></tr></thead><tbody>${passRows}</tbody></table></div></div>
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Section progress</h2></div><table class="phase-detail-table"><thead><tr><th>Section</th><th>P2</th><th>P3</th><th>P4</th><th>P5</th></tr></thead><tbody>${eligible.map(s=>`<tr><td>${esc(sectionLabel(s).text)}</td>${[2,3,4,5].map(p=>`<td>${s.passes[p]==="done"?"✓":s.passes[p]==="active"?"○":s.passes[p]==="error"?"✕":"—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    </div><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Recent execution</h2></div><div class="phase-detail-card-body phase-activity-list">${activityMarkup(ws)}</div></div>
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Diagnostics</h2></div><div class="phase-empty">Detailed attempts, retries, latency and provider metadata can live here.</div></div>
+    </div></div>`;
+    return phaseDetailShell(ws,"translation",metrics,body);
+  }
+
+  function publishDetails(ws){
+    const book=bookById(ws.bookId);
+    const filename=`${book?.title||"translation"} [PL].epub`;
+    const output=`${state.settings.outputPath}/${filename}`;
+    const sourceSections=(ws.sections||[]).length;
+    const excluded=(ws.sections||[]).filter(s=>s.mode==="Excluded").length;
+    const estimatedMB=((book?.words||100000)/65000*1.7+1.1).toFixed(1);
+    const metrics=[metricCard("Status",ws.published?"Published":ws.publishing?"Publishing…":"Ready"),metricCard("Format","EPUB"),metricCard("Sections",sourceSections-excluded),metricCard("Size",ws.published?`${estimatedMB} MB`:"—")];
+    const validation=ws.published?`<div class="phase-check-list"><div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>EPUB package valid</strong><br><span class="subtitle">Container and package document validated.</span></div></div><div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>Manifest and spine valid</strong><br><span class="subtitle">Reading order and referenced resources resolved.</span></div></div><div class="phase-check"><span class="phase-check-icon">✓</span><div><strong>Output finalized atomically</strong><br><span class="subtitle">Published file is complete.</span></div></div></div>`:`<div class="phase-empty">Validation results will appear after publication completes.</div>`;
+    const body=`<div class="phase-detail-grid"><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Published output</h2></div><div class="phase-detail-card-body"><dl class="phase-kv"><dt>File</dt><dd>${esc(filename)}</dd><dt>Path</dt><dd class="phase-output-path">${esc(output)}</dd><dt>Language</dt><dd>pl</dd><dt>Edition</dt><dd>Intelitex translation</dd><dt>Source sections</dt><dd>${sourceSections}</dd><dt>Excluded</dt><dd>${excluded}</dd></dl></div></div>
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Package validation</h2></div><div class="phase-detail-card-body">${validation}</div></div>
+    </div><div class="phase-detail-stack">
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Metadata</h2></div><div class="phase-detail-card-body"><dl class="phase-kv"><dt>Title</dt><dd>${esc(book?.title||"—")}</dd><dt>Creator</dt><dd>${esc(book?.author||"—")}</dd><dt>Source language</dt><dd>${esc(book?.lang||"—")}</dd><dt>Output language</dt><dd>PL</dd><dt>Publisher marker</dt><dd>Intelitex translation</dd></dl></div></div>
+      <div class="phase-detail-card"><div class="phase-detail-card-head"><h2>Publication log</h2></div><div class="phase-detail-card-body phase-activity-list">${activityMarkup(ws)}</div></div>
+    </div></div>`;
+    return phaseDetailShell(ws,"publish",metrics,body);
+  }
+
+  function renderPhasePage(wsId,key){
+    const ws=workspaceById(wsId);
+    if(!ws){ state.route={kind:"home"}; return render(); }
+    if(key==="review") return renderReviewPage(wsId);
+    const available=phaseState(ws)[key]!=="blocked";
+    if(!available){ state.route={kind:"workspace",id:wsId}; return render(); }
+    main.className="main phase-detail-page";
+    if(key==="prepare") main.innerHTML=prepareDetails(ws);
+    else if(key==="p1") main.innerHTML=analyseDetails(ws);
+    else if(key==="translation") main.innerHTML=translateDetails(ws);
+    else if(key==="publish") main.innerHTML=publishDetails(ws);
+    else { state.route={kind:"workspace",id:wsId}; return render(); }
+    document.getElementById("backToWorkspace").addEventListener("click",()=>{ state.route={kind:"workspace",id:ws.id}; render(); });
+  }
+
+  function workspaceNotice(ws){
+    if(ws.error) {
+      const sec=ws.sections.find(s=>s.id===ws.error.sectionId);
+      return `<div class="notice error">
+        <div><strong>P${ws.error.pass} · ${esc(sec?.name||ws.error.sectionId)}</strong><p>${esc(ws.error.message)}</p></div>
+        <button class="secondary-btn" id="retryInline" type="button">Retry</button>
+      </div>`;
+    }
+    if(ws.analysisDone && !ws.reviewApproved) {
+      return `<div class="notice">
+        <div><strong>P1 analysis complete</strong><p>Translation is blocked until terminology review is confirmed.</p></div>
+        <button class="secondary-btn" id="openReviewInline" type="button">Open review</button>
+      </div>`;
+    }
+    return "";
+  }
+
+  function workspacePrepareBody(ws){
+    return `<div class="prepare-card">
+      <div class="prepare-inner">
+        <div class="prepare-icon">P</div>
+        <h2>Prepare this book</h2>
+        <p>This local step inspects the source structure and creates the frozen section/chunk plan. It does not call an LLM.</p>
+        <button class="primary-btn" id="prepareBtn" type="button">Prepare</button>
+        <div class="prepare-progress" id="prepareProgress" hidden>
+          <div class="progress-bar"><div class="progress-fill" id="prepareFill" style="width:0"></div></div>
+          <div class="prepare-progress-note" id="prepareNote">Reading source structure…</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function workspacePreparedBody(ws){
+    const visibleCount=ws.sections.length;
+    return `
+      <div class="workspace-toolbar">
+        <div class="toolbar-left">
+          <span class="toolbar-title">Sections</span>
+          <span class="toolbar-sub">${visibleCount} detected · ${ws.sections.filter(s=>s.mode==="Excluded").length} excluded</span>
+        </div>
+        <div class="filter-segment" id="sectionFilters">
+          <button class="active" data-filter="all" type="button">All</button>
+          <button data-filter="full" type="button">Full</button>
+          <button data-filter="translate" type="button">Translate only</button>
+          <button data-filter="excluded" type="button">Excluded</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table class="sections-table">
+          <colgroup>
+            <col class="section-col">
+            <col class="processing-col">
+            <col class="pass-col"><col class="pass-col"><col class="pass-col"><col class="pass-col"><col class="pass-col">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Processing</th>
+              <th style="text-align:center">P1</th>
+              <th style="text-align:center">P2</th>
+              <th style="text-align:center">P3</th>
+              <th style="text-align:center">P4</th>
+              <th style="text-align:center">P5</th>
+            </tr>
+          </thead>
+          <tbody id="sectionsBody">${ws.sections.map((s,i)=>sectionRow(ws,s,i)).join("")}</tbody>
+        </table>
+      </div>
+
+      <div class="accordion">
+        <button class="accordion-head" id="pipelineSettingsToggle" type="button">
+          <span><span class="accordion-title">Pipeline models</span><span class="accordion-sub">Assign configured profiles to P1–P5</span></span>
+          <span id="pipelineChevron">⌄</span>
+        </button>
+        <div class="accordion-body" id="pipelineSettingsBody" hidden>
+          <div class="model-grid">
+            ${[1,2,3,4,5].map(p=>`<div class="model-slot">
+              <label>Pass ${p}</label>
+              <select data-pass-model="${p}">${state.profiles.map(x=>`<option ${ws.models[p]===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
+            </div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion">
+        <button class="accordion-head" id="activityToggle" type="button">
+          <span>
+            <span class="accordion-title">Live activity</span>
+            <span class="activity-count">${(ws.activityLog||[]).length}</span>
+            <span class="accordion-sub">Pipeline events and model waits</span>
+          </span>
+          <span id="activityChevron">⌄</span>
+        </button>
+        <div class="accordion-body activity-body" id="activityBody" hidden>
+          <div class="activity-stream" id="activityStream">${activityMarkup(ws)}</div>
+        </div>
+      </div>
+
+      <div class="workspace-bottom-actions">
+        <button class="archive-workspace-btn" id="archiveWorkspaceBottom" type="button">Archive workspace</button>
+      </div>`;
+  }
+
+  function sectionRow(ws,s,i){
+    const modes = [
+      ["F","Full","Full"],
+      ["T","Translate only","Translate only"],
+      ["E","Excluded","Excluded"]
+    ];
+    const label=sectionLabel(s);
+    return `<tr class="${s.mode==="Excluded"?"excluded":""}" data-section-id="${s.id}" data-mode="${s.mode}">
+      <td title="${label.fallback?"No explicit section title — showing source text: ":""}${esc(label.text)}"><span class="section-number">${String(i+1).padStart(2,"0")}</span><span class="section-name ${label.fallback?"fallback":""}">${esc(label.text)}</span></td>
+      <td>
+        <div class="processing-switch" aria-label="Processing mode">
+          ${modes.map(([letter,value,label])=>`<button type="button"
+            class="${s.mode===value?"active":""}"
+            data-processing-id="${s.id}"
+            data-mode-value="${value}"
+            aria-pressed="${s.mode===value}"
+            title="${letter} — ${label}">${letter}</button>`).join("")}
+        </div>
+      </td>
+      ${[1,2,3,4,5].map(p=>`<td class="pass-cell">${passMark(ws,s,p)}</td>`).join("")}
+    </tr>`;
+  }
+
+  function sectionLabel(section){
+    const explicit=String(section.name||"").trim();
+    if(explicit) return {text:explicit, fallback:false};
+
+    const raw=String(section.text||"")
+      .replace(/\s+/g," ")
+      .trim();
+    if(!raw) return {text:"Untitled section", fallback:true};
+
+    const sentence=raw.match(/^(.+?[.!?…])(?:\s|$)/);
+    const text=(sentence ? sentence[1] : raw).trim();
+    return {text, fallback:true};
+  }
+
+  function formatTok(n){
+    if(n>=10000) return `${Math.round(n/1000)}k tok`;
+    if(n>=1000) return `${(n/1000).toFixed(1).replace(/\.0$/,"")}k tok`;
+    return `${n} tok`;
+  }
+
+  function mockTokenStats(ws,section,pass){
+    const idx=Math.max(1,ws.sections.findIndex(s=>s.id===section.id)+1);
+    const profileIndex=Math.max(0,state.profiles.indexOf(effectiveSectionModel(ws,section,pass)));
+    const baseIn={1:18600,2:27200,3:22800,4:35500,5:26600}[pass] || 20000;
+    const baseOut={1:1400,2:2100,3:1700,4:1850,5:1600}[pass] || 1200;
+    const input=baseIn + idx*173 + profileIndex*61;
+    const output=baseOut + idx*47 + pass*19 + profileIndex*13;
+    const cached=Math.round(input*(0.18 + ((idx+pass)%5)*0.04));
+    const reasoning=Math.round(output*(0.22 + ((idx+profileIndex)%4)*0.08));
+    return {input, output, cached, reasoning};
+  }
+
+  function passTooltip(ws,section,pass,status,model){
+    const base=`P${pass} · ${model} · ${status==="done"?"completed":status==="active"?"running":status==="error"?"error":status==="skip"?"not applicable":"not started"}`;
+    if(status!=="done") return base;
+    const t=mockTokenStats(ws,section,pass);
+    return `${base}\nin ${formatTok(t.input)} · cache ${formatTok(t.cached)}\nreason ${formatTok(t.reasoning)} · out ${formatTok(t.output)}`;
+  }
+
+  function passMark(ws,section,pass){
+    const status=section.passes[pass];
+    const model=effectiveSectionModel(ws,section,pass);
+    const color=profileColor(model);
+    const title=passTooltip(ws,section,pass,status,model);
+    if(status==="skip") return `<span class="pass-dash" title="${title}">—</span>`;
+    if(status==="done") return `<span class="pass-mark done has-model" style="--model-color:${color}" title="${title}">✓</span>`;
+    if(status==="active") return `<span class="pass-mark active has-model" style="--model-color:${color}" title="${title}"></span>`;
+    if(status==="error") return `<span class="pass-mark error has-model" style="--model-color:${color}" title="${title}">✕</span>`;
+    return `<span class="pass-mark has-model" style="--model-color:${color}" title="${title}"></span>`;
+  }
+
+  function wirePreparedWorkspace(ws){
+    main.querySelectorAll("[data-section-id]").forEach(row=>row.addEventListener("click",e=>{
+      if(e.target.closest("select")) return;
+      openSectionPreview(ws,row.dataset.sectionId);
+    }));
+    main.querySelectorAll("[data-processing-id]").forEach(btn=>btn.addEventListener("click",e=>{
+      e.stopPropagation();
+      const sec=ws.sections.find(s=>s.id===btn.dataset.processingId);
+      if(!sec || sec.mode===btn.dataset.modeValue) return;
+      setSectionMode(sec,btn.dataset.modeValue);
+      ws.lastUpdated=Date.now();
+      persist();
+      closeTypeMenu();
+      renderPreserveScroll();
+    }));
+
+
+    const toggle=document.getElementById("pipelineSettingsToggle");
+    if(toggle) toggle.addEventListener("click",()=>{
+      const body=document.getElementById("pipelineSettingsBody");
+      body.hidden=!body.hidden;
+      document.getElementById("pipelineChevron").textContent=body.hidden?"⌄":"⌃";
+    });
+    main.querySelectorAll("[data-pass-model]").forEach(sel=>sel.addEventListener("change",()=>{
+      ws.models[Number(sel.dataset.passModel)]=sel.value;
+      ws.lastUpdated=Date.now();
+      pushActivity(ws,`Model assignment changed: P${sel.dataset.passModel} → ${sel.value}`,"success");
+      persist();
+      toast(`P${sel.dataset.passModel} assigned to ${sel.value}`);
+    }));
+
+    const activityToggle=document.getElementById("activityToggle");
+    if(activityToggle) activityToggle.addEventListener("click",()=>{
+      const body=document.getElementById("activityBody");
+      body.hidden=!body.hidden;
+      document.getElementById("activityChevron").textContent=body.hidden?"⌄":"⌃";
+      if(!body.hidden){
+        const stream=document.getElementById("activityStream");
+        requestAnimationFrame(()=>{ if(stream) stream.scrollTop=stream.scrollHeight; });
+      }
+    });
+
+    const archiveBottom=document.getElementById("archiveWorkspaceBottom");
+    if(archiveBottom) archiveBottom.addEventListener("click",()=>openArchiveConfirm(ws.id));
+
+    const filters=document.querySelectorAll("#sectionFilters [data-filter]");
+    filters.forEach(btn=>btn.addEventListener("click",()=>{
+      filters.forEach(x=>x.classList.toggle("active",x===btn));
+      const f=btn.dataset.filter;
+      main.querySelectorAll("#sectionsBody tr").forEach(row=>{
+        const sec=ws.sections.find(s=>s.id===row.dataset.sectionId);
+        row.hidden = f==="full" ? sec.mode!=="Full" :
+                     f==="translate" ? sec.mode!=="Translate only" :
+                     f==="excluded" ? sec.mode!=="Excluded" : false;
+      });
+    }));
+  }
+
+  function openTypeMenu(ws,sec,anchor){
+    const menu=document.getElementById("typeMenu");
+    menu.innerHTML=contentTypes.map(type=>`<button type="button"
+      class="${type.name===sec.type?"active":""}"
+      data-type-choice="${type.name}">
+      <span class="type-menu-icon">${type.icon}</span>
+      <span>${type.name}</span>
+      <span class="type-menu-check">${type.name===sec.type?"✓":""}</span>
+    </button>`).join("");
+
+    menu.hidden=false;
+    anchor.classList.add("open");
+    const rect=anchor.getBoundingClientRect();
+    const menuWidth=210;
+    let left=Math.min(window.innerWidth-menuWidth-10,Math.max(10,rect.left + rect.width/2 - menuWidth/2));
+    let top=rect.bottom+6;
+    const estimatedHeight=Math.min(340, contentTypes.length*42+10);
+    if(top+estimatedHeight>window.innerHeight-10) top=Math.max(10,rect.top-estimatedHeight-6);
+    menu.style.left=left+"px";
+    menu.style.top=top+"px";
+    menu.dataset.anchorSection=sec.id;
+
+    menu.querySelectorAll("[data-type-choice]").forEach(choice=>choice.addEventListener("click",e=>{
+      e.stopPropagation();
+      sec.type=choice.dataset.typeChoice;
+      ws.lastUpdated=Date.now();
+      persist();
+      closeTypeMenu();
+      renderPreserveScroll();
+    }));
+  }
+
+  function closeTypeMenu(){
+    const menu=document.getElementById("typeMenu");
+    menu.hidden=true;
+    menu.innerHTML="";
+    document.querySelectorAll(".type-icon-btn.open").forEach(x=>x.classList.remove("open"));
+  }
+
+  function setSectionMode(sec,mode){
+    sec.mode=mode;
+    if(mode==="Excluded") {
+      for(let p=1;p<=5;p++) if(sec.passes[p]!=="done") sec.passes[p]="skip";
+    } else if(mode==="Translate only") {
+      if(sec.passes[1]!=="done") sec.passes[1]="skip";
+      for(let p=2;p<=5;p++) if(sec.passes[p]==="skip") sec.passes[p]="pending";
+    } else {
+      if(sec.passes[1]==="skip") sec.passes[1]="pending";
+      for(let p=2;p<=5;p++) if(sec.passes[p]==="skip") sec.passes[p]="pending";
+    }
+  }
+
+  function prepareWorkspace(ws){
+    const btn=document.getElementById("prepareBtn");
+    const wrap=document.getElementById("prepareProgress");
+    const fill=document.getElementById("prepareFill");
+    const note=document.getElementById("prepareNote");
+    btn.disabled=true; wrap.hidden=false;
+    let n=0;
+    clearInterval(prepareTimer);
+    prepareTimer=setInterval(()=>{
+      n+=12;
+      fill.style.width=Math.min(n,100)+"%";
+      note.textContent=n<40?"Reading source structure…":n<75?"Detecting sections and scenes…":"Freezing source plan…";
+      if(n>=100){
+        clearInterval(prepareTimer);
+        ws.prepared=true;ws.lastUpdated=Date.now();
+        toast("Book prepared. Review section modes before P1.");
+        render();
+      }
+    },120);
+  }
+
+  function handleMainAction(ws){
+    if(ws.running) return stopWorkspace(ws);
+    if(!ws.prepared) return prepareWorkspace(ws);
+    if(ws.analysisDone && !ws.reviewApproved) return openReview(ws.id);
+    if(ws.translationDone) return;
+    runWorkspace(ws);
+  }
+
+  function runWorkspace(ws){
+    if(ws.running) return;
+    ws.error=null;
+    ws.running=true;
+    pushActivity(ws,!ws.analysisDone?"P1/5 | analysis resumed":"Pipeline resumed","success");
+    ws.lastUpdated=Date.now();
+    if(!ws.analysisDone) normalizeForP1(ws);
+    else normalizeForTranslation(ws);
+    render();
+    tickPipeline(ws);
+  }
+
+  function stopWorkspace(ws){
+    ws.running=false;
+    pushActivity(ws,"Pipeline stopped by user","error");
+    if(activeTimer){ clearTimeout(activeTimer);activeTimer=null; }
+    for(const s of ws.sections) for(let p=1;p<=5;p++) if(s.passes[p]==="active") s.passes[p]="pending";
+    ws.lastUpdated=Date.now();
+    toast("Pipeline stopped after the current mock action.");
+    render();
+  }
+
+  function normalizeForP1(ws){
+    for(const s of ws.sections){
+      if(s.mode==="Excluded"||s.mode==="Translate only") s.passes[1]="skip";
+      else if(s.passes[1]!=="done") s.passes[1]="pending";
+    }
+  }
+  function normalizeForTranslation(ws){
+    for(const s of ws.sections){
+      if(s.mode==="Excluded") for(let p=2;p<=5;p++) s.passes[p]="skip";
+      else for(let p=2;p<=5;p++) if(!["done","active"].includes(s.passes[p])) s.passes[p]="pending";
+    }
+  }
+
+  function tickPipeline(ws){
+    if(!ws.running) return;
+    if(!ws.analysisDone){
+      const current=ws.sections.find(s=>s.passes[1]==="active");
+      if(current){ current.passes[1]="done"; }
+      const next=ws.sections.find(s=>s.mode==="Full"&&s.passes[1]==="pending");
+      if(next){
+        next.passes[1]="active";
+        const idx=ws.sections.indexOf(next)+1;
+        pushActivity(ws,`P1/5 | pass1/ch${String(idx).padStart(4,"0")}_a001 | waiting for model; input ${18_000+idx*1_731} tokens`);
+        ws.lastUpdated=Date.now();render();
+        activeTimer=setTimeout(()=>tickPipeline(ws),650);
+        return;
+      }
+      const active=ws.sections.find(s=>s.passes[1]==="active");
+      if(active){ active.passes[1]="done"; }
+      ws.analysisDone=true;ws.running=false;ws.reviewApproved=false;
+      for(const term of (ws.reviewTerms||[])) term.reviewed=false;
+      ws.lastUpdated=Date.now();
+      pushActivity(ws,"P1/5 | analysis complete; waiting for terminology review","success");
+      toast("P1 complete. Review is now required.");render();return;
+    }
+
+    const eligible=ws.sections.filter(s=>s.mode!=="Excluded");
+    let current=null;
+    for(const sec of eligible){
+      for(let p=2;p<=5;p++){
+        if(sec.passes[p]==="active"){ current={sec,p}; break; }
+      }
+      if(current) break;
+    }
+    if(current) current.sec.passes[current.p]="done";
+
+    let next=null;
+    for(const sec of eligible){
+      const firstPending=[2,3,4,5].find(p=>sec.passes[p]==="pending");
+      if(firstPending){ next={sec,p:firstPending};break; }
+    }
+    if(next){
+      next.sec.passes[next.p]="active";
+      const secIndex=ws.sections.indexOf(next.sec)+1;
+      const chunk=`ch${String(secIndex).padStart(4,"0")}_c0001`;
+      const tokenBase={2:27318,3:22716,4:35486,5:26724}[next.p] || 24000;
+      pushActivity(ws,`P${next.p}/5 | pass${next.p}/${chunk} | waiting for model; input ${tokenBase + secIndex*137} tokens`);
+      ws.lastUpdated=Date.now();render();
+      activeTimer=setTimeout(()=>tickPipeline(ws),520);
+      return;
+    }
+    ws.translationDone=true;ws.running=false;ws.publishing=true;ws.lastUpdated=Date.now();
+    pushActivity(ws,"P5/5 | translation complete","success");
+    pushActivity(ws,"Publish | building EPUB","waiting");
+    toast("Translation complete. Publishing EPUB…");
+    render();
+    activeTimer=setTimeout(()=>{
+      ws.publishing=false;
+      ws.published=true;
+      ws.lastUpdated=Date.now();
+      pushActivity(ws,"Publish | EPUB published","success");
+      toast("EPUB published.");
+      render();
+    },900);
+  }
+
+  function openReview(wsId){
+    const ws=workspaceById(wsId);
+    if(!ws || !ws.analysisDone) return;
+    state.route={kind:"review",id:wsId};
+    render();
+  }
+
+  function renderDrawerModelGrid(ws,sec){
+    const host=document.getElementById("drawerModelGrid");
+    const overrides=ensureSectionModelOverrides(sec);
+    host.innerHTML=[1,2,3,4,5].map(pass=>`
+      <div class="drawer-model-slot">
+        <div class="drawer-model-label"><span class="profile-swatch profile-swatch-lg" style="background:${profileColor(effectiveSectionModel(ws,sec,pass))}"></span><span>Pass ${pass}</span></div>
+        <select data-drawer-override="${pass}">
+          <option value="">${esc(ws.models[pass])}</option>
+          ${state.profiles
+            .filter(profile=>profile!==ws.models[pass])
+            .map(profile=>`<option value="${esc(profile)}" ${overrides[pass]===profile?"selected":""}>${esc(profile)}</option>`)
+            .join("")}
+        </select>
+      </div>`).join("");
+    host.querySelectorAll("[data-drawer-override]").forEach(sel=>sel.addEventListener("change",()=>{
+      const pass=Number(sel.dataset.drawerOverride);
+      const value=sel.value;
+      if(value) overrides[pass]=value;
+      else delete overrides[pass];
+      ws.lastUpdated=Date.now();
+      renderDrawerModelGrid(ws,sec);
+      persist();
+      renderPreserveScroll();
+    }));
+  }
+
+  function openSectionPreview(ws,id){
+    const sec=ws.sections.find(s=>s.id===id);
+    selectedSectionId=id;
+    previewDrawer.dataset.workspaceId=ws.id;
+    document.getElementById("previewTitle").textContent=sectionLabel(sec).text;
+    document.getElementById("previewMeta").textContent=`${sec.type} · ${sec.mode}`;
+    document.getElementById("drawerMode").value=sec.mode;
+    document.getElementById("drawerType").value=sec.type;
+    document.getElementById("previewText").textContent=sec.text;
+    renderDrawerModelGrid(ws,sec);
+    openDrawer(previewDrawer);
+  }
+  document.getElementById("drawerMode").addEventListener("change",()=>{
+    const ws=workspaceById(previewDrawer.dataset.workspaceId);
+    const sec=ws?.sections.find(s=>s.id===selectedSectionId);
+    if(!sec) return;
+    setSectionMode(sec,document.getElementById("drawerMode").value);
+    ws.lastUpdated=Date.now();
+    document.getElementById("previewMeta").textContent=`${sec.type} · ${sec.mode}`;
+    persist();
+    renderPreserveScroll();
+  });
+
+  document.getElementById("drawerType").addEventListener("change",()=>{
+    const ws=workspaceById(previewDrawer.dataset.workspaceId);
+    const sec=ws?.sections.find(s=>s.id===selectedSectionId);
+    if(!sec) return;
+    sec.type=document.getElementById("drawerType").value;
+    ws.lastUpdated=Date.now();
+    document.getElementById("previewMeta").textContent=`${sec.type} · ${sec.mode}`;
+    persist();
+    renderPreserveScroll();
+  });
+
+  function openArchiveConfirm(id){
+    const ws=workspaceById(id);
+    if(!ws) return;
+    if(ws.running){ toast("Stop the pipeline before archiving."); return; }
+    const b=bookById(ws.bookId);
+    archiveConfirmModal.dataset.workspaceId=id;
+    document.getElementById("archiveConfirmTitle").textContent=b?.title||"This workspace";
+    openModal(archiveConfirmModal);
+  }
+
+  document.getElementById("confirmArchiveBtn").addEventListener("click",()=>{
+    const id=archiveConfirmModal.dataset.workspaceId;
+    closeModal(archiveConfirmModal);
+    archiveWorkspace(id,true);
+  });
+
+  function archiveWorkspace(id,fromWorkspace=false){
+    const ws=workspaceById(id); if(!ws) return;
+    if(ws.running){ toast("Stop the pipeline before archiving.");return; }
+    ws.archived=true;ws.lastUpdated=Date.now();
+    const b=bookById(ws.bookId);
+    if(b && !state.archivedBooks.find(x=>x.id===b.id)){
+      state.archivedBooks.push({...b});
+      state.library=state.library.filter(x=>x.id!==b.id);
+    }
+    if(fromWorkspace||state.route.kind==="workspace") state.route={kind:"home"};
+    toast("Workspace moved to archive.");render();
+  }
+
+  function openArchive(){
+    renderArchive();
+    openDrawer(archiveDrawer);
+  }
+  function renderArchive(){
+    const archived=state.workspaces.filter(w=>w.archived);
+    const list=document.getElementById("archiveList");
+    list.innerHTML=archived.length?archived.map(ws=>{
+      const b=bookById(ws.bookId);
+      return `<div class="archive-item">
+        <div><strong>${esc(b?.title||ws.bookId)}</strong><div class="subtitle">Archived · ${workspaceProgress(ws)}%</div></div>
+        <button class="secondary-btn" data-restore="${ws.id}" type="button">Restore</button>
+      </div>`;
+    }).join(""):`<div class="empty-note">Archive is empty.</div>`;
+    list.querySelectorAll("[data-restore]").forEach(btn=>btn.addEventListener("click",()=>{
+      const ws=workspaceById(btn.dataset.restore);ws.archived=false;ws.lastUpdated=Date.now();
+      const b=state.archivedBooks.find(x=>x.id===ws.bookId);
+      if(b && !state.library.find(x=>x.id===b.id)) state.library.push({...b});
+      state.archivedBooks=state.archivedBooks.filter(x=>x.id!==ws.bookId);
+      closeDrawer(archiveDrawer);toast("Workspace restored.");render();
+    }));
+  }
+
+
+  function reviewSummaryFor(ws){
+    const terms=ws.reviewTerms||[];
+    const reviewed=terms.filter(t=>t.reviewed).length;
+    const uncertain=terms.filter(t=>t.uncertain).length;
+    return {total:terms.length,reviewed,remaining:terms.length-reviewed,uncertain};
+  }
+
+  function renderReviewPage(wsId){
+    const ws=workspaceById(wsId);
+    if(!ws){ state.route={kind:"home"}; return render(); }
+    const book=bookById(ws.bookId);
+    const summary=reviewSummaryFor(ws);
+    main.className="main review-page";
+
+    const query=String(state.reviewQuery||"");
+    const category=state.reviewCategory||"All";
+    const status=state.reviewStatus||"All";
+    const categories=["All",...Array.from(new Set((ws.reviewTerms||[]).map(t=>t.category)))];
+
+    let filtered=(ws.reviewTerms||[]).filter(term=>{
+      const text=(term.source+" "+term.category+" "+term.meaning+" "+(term.aliases||[]).join(" ")+" "+term.candidates.map(c=>c.text).join(" ")).toLowerCase();
+      const qok=!query || text.includes(query.toLowerCase());
+      const cok=category==="All" || term.category===category;
+      const sok=status==="All" || (status==="Reviewed" ? term.reviewed : !term.reviewed);
+      return qok && cok && sok;
+    });
+
+    let selectedId=state.reviewSelectedId;
+    if(!filtered.some(t=>t.id===selectedId)) selectedId=filtered[0]?.id || null;
+    state.reviewSelectedId=selectedId;
+    const selected=(ws.reviewTerms||[]).find(t=>t.id===selectedId) || filtered[0] || null;
+
+    main.innerHTML=`
+      <div class="back-row"><button class="back-link" id="backToWorkspace" type="button">← Workspace</button></div>
+
+      <div class="review-page-head">
+        <div class="review-page-title">
+          <div>
+            <div class="eyebrow">Review · ${esc(book.title)}</div>
+            <h1>Terminology Review</h1>
+            <div class="review-page-meta">${summary.reviewed}/${summary.total} reviewed · ${summary.remaining} remaining · ${summary.uncertain} uncertain</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          ${ws.reviewApproved?`<span class="review-confirmed-badge">✓ Glossary confirmed</span>`:""}
+          <button class="${ws.reviewApproved?"secondary-btn":"primary-btn"}" id="confirmGlossaryBtn" type="button" ${summary.remaining>0?"disabled":""}>
+            ${ws.reviewApproved?"Reconfirm glossary":"Confirm glossary"}
+          </button>
+        </div>
+      </div>
+
+      ${ws.reviewApproved?`<div class="review-warning">
+        This review remains available after confirmation. If you change a selected translation, the glossary becomes unconfirmed again and later translation must be approved before continuing.
+      </div>`:""}
+
+      <div class="review-toolbar">
+        <input class="review-search" id="reviewSearch" placeholder="Search source, alias, translation, meaning…" value="${esc(query)}">
+        <div class="review-filter-row">
+          ${["All","Unreviewed","Reviewed"].map(x=>`<button class="review-chip ${status===x?"active":""}" data-review-status="${x}" type="button">${x}</button>`).join("")}
+        </div>
+      </div>
+
+      <div class="review-filter-row" style="margin-bottom:12px">
+        ${categories.map(cat=>{
+          const count=cat==="All" ? (ws.reviewTerms||[]).length : (ws.reviewTerms||[]).filter(t=>t.category===cat).length;
+          return `<button class="review-chip ${category===cat?"active":""}" data-review-category="${esc(cat)}" type="button">${esc(cat)} ${count}</button>`;
+        }).join("")}
+      </div>
+
+      <div class="review-layout">
+        <div class="review-term-card">
+          <div class="review-term-scroll">
+            ${filtered.length ? filtered.map(term=>`
+              <div class="review-term-row ${selected?.id===term.id?"active":""}" data-review-term="${term.id}">
+                <div class="review-term-title">
+                  <span>${esc(term.source)}</span>
+                  <span class="review-term-status ${term.reviewed?"reviewed":""}">${term.reviewed?"✓ reviewed":"○ pending"}</span>
+                </div>
+                <div class="review-term-sub">${esc(term.category)} · ${esc(term.candidates[term.select-1]?.text || term.candidates[0]?.text || "")}</div>
+              </div>`).join("") : `<div class="empty-note" style="margin:14px">No terms match the current filters.</div>`}
+            <div class="review-term-list-tail"></div>
+          </div>
+        </div>
+        <div class="review-detail-wrap">
+          ${selected ? reviewDetailMarkup(selected) : `<div class="empty-note">Select a terminology item.</div>`}
+        </div>
+      </div>
+    `;
+
+    document.getElementById("backToWorkspace").addEventListener("click",()=>{
+      state.route={kind:"workspace",id:ws.id};
+      render();
+    });
+
+    const search=document.getElementById("reviewSearch");
+    search.addEventListener("input",()=>{
+      state.reviewQuery=search.value;
+      const cursor=search.selectionStart;
+      render();
+      requestAnimationFrame(()=>{
+        const next=document.getElementById("reviewSearch");
+        if(next){ next.focus(); next.setSelectionRange(cursor,cursor); }
+      });
+    });
+
+    main.querySelectorAll("[data-review-status]").forEach(btn=>btn.addEventListener("click",()=>{
+      state.reviewStatus=btn.dataset.reviewStatus;
+      render();
+    }));
+    main.querySelectorAll("[data-review-category]").forEach(btn=>btn.addEventListener("click",()=>{
+      state.reviewCategory=btn.dataset.reviewCategory;
+      render();
+    }));
+    main.querySelectorAll("[data-review-term]").forEach(row=>row.addEventListener("click",()=>{
+      state.reviewSelectedId=row.dataset.reviewTerm;
+      render();
+    }));
+
+    const confirm=document.getElementById("confirmGlossaryBtn");
+    confirm.addEventListener("click",()=>{
+      if(reviewSummaryFor(ws).remaining>0) return;
+      ws.reviewApproved=true;
+      ws.lastUpdated=Date.now();
+      toast("Glossary confirmed.");
+      render();
+    });
+
+    wireReviewDetail(ws,selected,filtered);
+  }
+
+  function reviewDetailMarkup(term){
+    return `<div class="review-detail-card">
+      <div class="review-detail-body">
+        <div class="review-detail-heading">
+          <div>
+            <h2>${esc(term.source)}</h2>
+            <div class="review-id">${esc(term.id)}</div>
+          </div>
+          <div class="review-tags">
+            <span class="review-tag">${esc(term.category)}</span>
+            <span class="review-tag">${term.uncertain?"uncertain":"high"}</span>
+          </div>
+        </div>
+
+        <div class="review-block">
+          <div class="review-label">Meaning</div>
+          <div class="review-copy">${esc(term.meaning)}</div>
+        </div>
+
+        <div class="review-block">
+          <div class="review-label">Aliases</div>
+          <div class="review-copy">${term.aliases?.length ? term.aliases.map(esc).join(" · ") : "—"}</div>
+        </div>
+
+        <div class="review-block">
+          <div class="review-label">Translation</div>
+          <div class="candidate-list">
+            ${term.candidates.map((c,i)=>`
+              <div class="candidate ${term.select===i+1?"selected":""}" data-candidate="${i+1}">
+                <span class="candidate-dot"></span>
+                <div><div class="candidate-title">${esc(c.text)}</div><div class="candidate-note">${esc(c.note)}</div></div>
+                <div class="candidate-confidence">${esc(c.confidence)}</div>
+              </div>`).join("")}
+          </div>
+          <div class="review-custom-row">
+            <input id="customPolishForm" placeholder="Custom Polish form" value="${esc(term.custom||"")}">
+            <button class="secondary-btn" id="keepSourceBtn" type="button">Keep source</button>
+            <button class="secondary-btn" id="useCandidateBtn" type="button">Use candidate</button>
+          </div>
+        </div>
+
+        <div class="review-block">
+          <div class="review-label">Evidence ${term.evidence.length}</div>
+          <div class="evidence-list">
+            ${term.evidence.map(ev=>`
+              <div class="evidence-item">
+                <div class="evidence-id">${esc(ev.id)}</div>
+                <div class="evidence-text">${esc(ev.text)}</div>
+              </div>`).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="review-detail-footer">
+        <div class="review-term-status ${term.reviewed?"reviewed":""}">${term.reviewed?"Reviewed":"Not reviewed"}</div>
+        <div class="review-footer-actions">
+          <button class="secondary-btn" id="reviewPrevBtn" type="button">← Previous</button>
+          <button class="primary-btn" id="reviewNextBtn" type="button">${term.reviewed?"Next →":"Review & next"}</button>
+          <button class="secondary-btn" id="reviewOnlyNextBtn" type="button">Next →</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function wireReviewDetail(ws,term,filtered){
+    if(!term) return;
+
+    const invalidateApproval=()=>{
+      if(ws.reviewApproved){
+        ws.reviewApproved=false;
+        toast("Glossary changed — confirmation is required again.");
+      }
+    };
+
+    main.querySelectorAll("[data-candidate]").forEach(card=>card.addEventListener("click",()=>{
+      const next=Number(card.dataset.candidate);
+      if(term.select!==next || term.custom){
+        term.select=next;
+        term.custom="";
+        term.reviewed=false;
+        invalidateApproval();
+        ws.lastUpdated=Date.now();
+        render();
+      }
+    }));
+
+    const custom=document.getElementById("customPolishForm");
+    custom.addEventListener("change",()=>{
+      const next=custom.value.trim();
+      if((term.custom||"")!==next){
+        term.custom=next;
+        if(next) term.reviewed=false;
+        invalidateApproval();
+        ws.lastUpdated=Date.now();
+        render();
+      }
+    });
+
+    document.getElementById("keepSourceBtn").addEventListener("click",()=>{
+      term.custom=term.source;
+      term.reviewed=false;
+      invalidateApproval();
+      ws.lastUpdated=Date.now();
+      render();
+    });
+
+    document.getElementById("useCandidateBtn").addEventListener("click",()=>{
+      term.custom="";
+      term.reviewed=false;
+      invalidateApproval();
+      ws.lastUpdated=Date.now();
+      render();
+    });
+
+    const move=(delta,reviewCurrent)=>{
+      if(reviewCurrent){
+        term.reviewed=true;
+        ws.lastUpdated=Date.now();
+      }
+      const idx=filtered.findIndex(t=>t.id===term.id);
+      const next=filtered[Math.max(0,Math.min(filtered.length-1,idx+delta))];
+      if(next) state.reviewSelectedId=next.id;
+      render();
+    };
+
+    document.getElementById("reviewPrevBtn").addEventListener("click",()=>move(-1,false));
+    document.getElementById("reviewNextBtn").addEventListener("click",()=>move(1,!term.reviewed));
+    document.getElementById("reviewOnlyNextBtn").addEventListener("click",()=>move(1,false));
+  }
+
+  function renderReader(){
+    main.className="main";
+    const books=[...state.library,...state.archivedBooks].filter(b=>b.workspaceId);
+    const current=bookById(state.readerBookId)||books[0];
+    state.readerBookId=current?.id;
+    main.innerHTML=`
+      <div class="page-title-row">
+        <div><div class="eyebrow">Reader</div><h1>Reading view</h1><div class="subtitle">A separate mode that can evolve independently from the work interface.</div></div>
+      </div>
+      <div class="reader-shell">
+        <div class="reader-books">
+          ${books.map(b=>`<div class="reader-book ${b.id===current?.id?"active":""}" data-reader-book="${b.id}">
+            <strong>${esc(b.title)}</strong><span>${esc(b.author)}</span>
+          </div>`).join("")}
+        </div>
+        <div class="reader-content">
+          <article class="reader-page">
+            <h2>${esc(current?.title||"No book selected")}</h2>
+            <p>The translated text would appear here. This mock keeps the Reader deliberately simple so the workspace flow can be designed first.</p>
+            <p>Reader state is independent from pipeline controls. Switching back to Work returns to the same workspace state.</p>
+            <p>Typography, margins, character/entity context and the richer reader features can be layered onto this mode later.</p>
+          </article>
+        </div>
+      </div>`;
+    main.querySelectorAll("[data-reader-book]").forEach(x=>x.addEventListener("click",()=>{state.readerBookId=x.dataset.readerBook;render();}));
+  }
+
+  document.getElementById("workModeBtn").addEventListener("click",()=>{ state.mode="work";render(); });
+  document.getElementById("readerModeBtn").addEventListener("click",()=>{ state.mode="reader";render(); });
+  document.getElementById("themeBtn").addEventListener("click",()=>{ state.theme=state.theme==="dark"?"light":"dark";render(); });
+  document.getElementById("settingsBtn").addEventListener("click",()=>{ renderSettings();openModal(settingsModal); });
+
+  function renderSettings(){
+    const body=document.getElementById("settingsBody");
+    document.querySelectorAll("[data-settings-tab]").forEach(b=>b.classList.toggle("active",b.dataset.settingsTab===selectedSettingsTab));
+    if(selectedSettingsTab==="paths"){
+      body.innerHTML=`
+        <div class="settings-section">
+          <h3>Workspace paths</h3>
+          <div class="field"><label>Source books directory</label><input id="setSourcePath" data-setting-path="sourcePath" value="${esc(state.settings.sourcePath)}"></div>
+          <div class="field"><label>Workspace directory</label><input id="setWorkspacePath" data-setting-path="workspacePath" value="${esc(state.settings.workspacePath)}"></div>
+          <div class="field"><label>Default output directory</label><input id="setOutputPath" data-setting-path="outputPath" value="${esc(state.settings.outputPath)}"></div>
+          <p class="subtitle">These are stable installation-level values and therefore stay out of the normal work screen.</p>
+        </div>`;
+    } else if(selectedSettingsTab==="models"){
+      body.innerHTML=`
+        <div class="settings-section">
+          <h3>Configured model profiles</h3>
+          <p class="subtitle">Profiles receive fixed colors in order. Those colors are reused in Sections when a segment has custom per-pass model overrides.</p>
+          <div class="icon-palette">${modelColorPalette.map(color=>`<span class="profile-swatch palette" style="background:${color}"></span>`).join("")}</div>
+          <div class="model-config-list">
+            ${state.profiles.map((p,i)=>`<div class="model-config-row">
+              <div class="model-config-main">
+                <span class="profile-swatch profile-swatch-lg" style="background:${profileColor(p)}"></span>
+                <div><div class="model-config-name">${esc(p)}</div><div class="model-config-desc">${i<3?"Codex transport":"Local provider"}</div></div>
+              </div>
+              <div class="health" id="health-${i}">Not tested</div>
+              <button class="secondary-btn" data-test-model="${i}" type="button">Test</button>
+            </div>`).join("")}
+          </div>
+          <button class="ghost-btn" style="margin-top:10px" id="addProfileBtn" type="button">+ Add model profile</button>
+        </div>`;
+      body.querySelectorAll("[data-test-model]").forEach(btn=>btn.addEventListener("click",()=>{
+        const i=btn.dataset.testModel,health=document.getElementById(`health-${i}`);
+        health.textContent="Testing…";health.className="health testing";btn.disabled=true;
+        setTimeout(()=>{health.textContent="Available";health.className="health ok";btn.disabled=false;},700);
+      }));
+      document.getElementById("addProfileBtn").addEventListener("click",()=>toast("Mock only: model profile editor would open here."));
+    } else {
+      body.innerHTML=`
+        <div class="settings-section">
+          <h3>Interface</h3>
+          <div class="field"><label>Theme</label><select id="setTheme" data-setting-theme><option value="dark" ${state.theme==="dark"?"selected":""}>Dark</option><option value="light" ${state.theme==="light"?"selected":""}>Light</option></select></div>
+          <button class="danger-btn" id="resetMockBtn" type="button">Reset mock data</button>
+          <p class="subtitle" style="margin-top:10px">Reset restores the original fake books and workspace states.</p>
+        </div>`;
+      document.getElementById("resetMockBtn").addEventListener("click",()=>{
+        localStorage.removeItem(STORAGE_KEY);
+        state=deepClone(defaultState);
+        selectedSettingsTab="paths";
+        closeModal(settingsModal);
+        toast("Mock data reset.");
+        render();
+      });
+    }
+
+    body.querySelectorAll("[data-setting-path]").forEach(input=>input.addEventListener("input",()=>{
+      state.settings[input.dataset.settingPath]=input.value;
+      persist();
+    }));
+
+    const themeSelect=body.querySelector("[data-setting-theme]");
+    if(themeSelect) themeSelect.addEventListener("change",()=>{
+      state.theme=themeSelect.value;
+      document.documentElement.dataset.theme=state.theme;
+      persist();
+    });
+  }
+
+  document.querySelectorAll("[data-settings-tab]").forEach(btn=>btn.addEventListener("click",()=>{
+    selectedSettingsTab=btn.dataset.settingsTab;state.settings.tab=selectedSettingsTab;renderSettings();
+  }));
+
+  function openDrawer(drawer){ closeTypeMenu();closeOverlays();scrim.classList.add("open");drawer.classList.add("open"); }
+  function closeDrawer(drawer){ drawer.classList.remove("open");if(!document.querySelector(".drawer.open,.modal.open"))scrim.classList.remove("open"); }
+  function openModal(modal){ closeTypeMenu();closeOverlays();scrim.classList.add("open");modal.classList.add("open"); }
+  function closeModal(modal){ modal.classList.remove("open");if(!document.querySelector(".drawer.open,.modal.open"))scrim.classList.remove("open"); }
+  function closeOverlays(){
+    document.querySelectorAll(".drawer.open").forEach(x=>x.classList.remove("open"));
+    document.querySelectorAll(".modal.open").forEach(x=>x.classList.remove("open"));
+    scrim.classList.remove("open");
+  }
+  document.querySelectorAll("[data-close-drawer]").forEach(x=>x.addEventListener("click",()=>closeDrawer(x.closest(".drawer"))));
+  document.querySelectorAll("[data-close-modal]").forEach(x=>x.addEventListener("click",()=>closeModal(x.closest(".modal"))));
+  scrim.addEventListener("click",closeOverlays);
+  document.addEventListener("click",e=>{
+    if(!e.target.closest("#typeMenu")) closeTypeMenu();
+  });
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){ closeTypeMenu(); closeOverlays(); }
+  });
+
+  function toast(msg){
+    const t=document.getElementById("toast");
+    t.textContent=msg;t.classList.add("show");
+    clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),1800);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
