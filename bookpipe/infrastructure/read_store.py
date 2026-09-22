@@ -26,3 +26,10 @@ class ReadStore:
         except BaseException:
             self.db.close()
             raise
+
+    def checkpoint_inventory(self) -> dict[str, list[str]]:
+        """Retained identities, not a claim that old fingerprints remain current."""
+        result = {}
+        for row in self.db.execute("SELECT key,fingerprint FROM jobs"):
+            result.setdefault(row['key'], []).append(row['fingerprint'])
+        return result

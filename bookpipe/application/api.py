@@ -9,6 +9,7 @@ from .publishing import PublishingService
 from .projects import ProjectsService
 from .review import ReviewService
 from .reader import ReaderService
+from .workflow import WorkflowQueries
 
 
 class Application:
@@ -23,3 +24,4 @@ class Application:
         self.reader = ReaderService(dependencies, sink)
         self.exports = ExportsService(dependencies, sink)
         self.operations = OperationsService(dependencies, sink)
+        self.workflow = WorkflowQueries(dependencies, self.publishing)

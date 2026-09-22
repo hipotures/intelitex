@@ -10,7 +10,7 @@ from .http import IntelitexHTTPServer
 from .service import ServerService
 
 
-def serve(workspace_root: Path, bind: str = "127.0.0.1", port: int = 8780):
+def serve(workspace_root: Path, bind: str = "127.0.0.1", port: int = 8780, *, import_root: Path | None = None):
     application = create_application()
     workspaces = WorkspaceQueries(application.projects, workspace_root)
     registry = JobRegistry(default_registry_path())
@@ -23,7 +23,7 @@ def serve(workspace_root: Path, bind: str = "127.0.0.1", port: int = 8780):
 
     signal.signal(signal.SIGTERM, interrupt)
     try:
-        server = IntelitexHTTPServer((bind, port), ServerService(application, workspaces, supervisor))
+        server = IntelitexHTTPServer((bind, port), ServerService(application, workspaces, supervisor, import_root=import_root))
         print(f"Intelitex serving http://{bind}:{server.server_port} (workspace root: {workspaces.root})", flush=True)
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:

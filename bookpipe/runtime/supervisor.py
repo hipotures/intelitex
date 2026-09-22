@@ -8,7 +8,7 @@ import threading
 import uuid
 
 from .events import EventBroker
-from .models import ACTIVE, Job, JobSpec, now
+from .models import ACTIVE, Job, JobSpec, ImportJobSpec, parse_spec, now
 from .processes import descendants, enable_child_reaping, reap_descendants, signal_descendants, signal_worker
 from .protocol import MAX_FRAME, decode, encode
 from .registry import JobRegistry
@@ -25,7 +25,7 @@ class OwnedWorker:
     stopper: threading.Thread | None = None
 
 
-def worker_command(spec: JobSpec) -> list[str]:
+def worker_command(spec: JobSpec | ImportJobSpec) -> list[str]:
     return [sys.executable, '-m', 'bookpipe.runtime.worker']
 
 
@@ -67,9 +67,9 @@ class JobSupervisor:
         self.broker.publish(job_id, {"kind": "job_state", "values": {"state": changes["state"]}})
         return self.get(job_id)
 
-    def start(self, spec: JobSpec) -> Job:
+    def start(self, spec: JobSpec | ImportJobSpec) -> Job:
         # Revalidate at launch too, including symlink containment.
-        spec = JobSpec(**asdict(spec))
+        spec = parse_spec(asdict(spec))
         if spec.workspace_root != self.workspace_root:
             raise ValueError("Wrong workspace root.")
         with self.lock:

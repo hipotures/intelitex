@@ -4,7 +4,8 @@ Start from the repository using the existing environment:
 
 ```bash
 uv run translate.py serve \
-  --workspace-root /home/user/translations \
+  --workspace-root ./workspaces \
+  --import-root ./sources \
   --bind 127.0.0.1 --port 8780
 ```
 
@@ -44,10 +45,11 @@ translation worker when its final chunk completes. An automatic publication
 failure retains completed translation checkpoints and remains independently
 retryable with an explicit `publish` job, as in the existing application semantics.
 
-The worker dispatch currently supports `analyze`, `translate`, and `publish`.
-Import/preparation remains a CLI operation in this version. Adding it requires a
-validated operation input and worker dispatch branch, without changing process
-supervision. No browser-supplied source or arbitrary output paths are accepted.
+The worker dispatch supports `analyze`, `translate`, `publish`, and a separate
+validated `ImportJobSpec`. Review preparation, edits, confirmation and approval
+are short application requests. No browser-supplied absolute source or arbitrary
+output paths are accepted. See [the API contract](server-api.md) for every route
+and input schema.
 
 ## Persistence and queries
 
@@ -112,20 +114,11 @@ isolated HOME/CODEX_HOME/CODEX_SQLITE_HOME and app-server creation are unchanged
 
 ## HTTP API
 
-Responses are JSON except SSE. Errors use HTTP status codes and a safe `error`
-message. No provider exception body or credential-bearing file is served.
-
-| Method | Route | Result |
-| --- | --- | --- |
-| GET | `/api/health` | Health status |
-| GET | `/api/workspaces` | Imported workspace IDs and active jobs |
-| GET | `/api/workspaces/{id}` | Checkpoint-derived status, publication state, active job |
-| GET | `/api/workspaces/{id}/usage` | Structured retained usage by unit |
-| GET | `/api/jobs` | Jobs and global event cursor |
-| GET | `/api/jobs/{job_id}` | Job state, PID, timestamps, exit code, last event and error |
-| POST | `/api/workspaces/{id}/jobs` | Start one job; `202 Accepted` |
-| POST | `/api/jobs/{job_id}/stop` | Request cancellation; `202 Accepted`, body `{}` |
-| GET | `/api/events` | Current job snapshot followed by SSE events |
+Responses are JSON except SSE. Errors have a stable envelope:
+`{"error":{"code":"review_revision_conflict","message":"Review state changed.","details":{}}}`.
+No provider exception body or credential-bearing file is served. The complete
+[API contract](server-api.md) covers pipeline, Review, Reader, import, settings,
+capabilities, jobs, usage, and errors.
 
 Example requests (existing saved project profiles supply provider configuration):
 
@@ -167,9 +160,8 @@ publication events retain their meaning; UTF-8 bytes are never relabelled tokens
 The metadata allowlist in `runtime/protocol.py` deliberately excludes free-form
 messages, provider error bodies, and filesystem path fields (`project`,
 `output_path`, `recovery_path`, `review_path`). Job snapshots and event replay also
-strip path fields from history written by earlier versions. Publication output is
-available as a workspace-relative path through workspace status. Extend the
-allowlist explicitly when adding new fields.
+strip path fields from history written by earlier versions. Publication status
+exposes identity and readiness without output paths. Extend the allowlist explicitly when adding new fields.
 
 `/api/events` accepts `workspace_id`, `job_id`, and `after` query parameters.
 Reconnects can send `Last-Event-ID` (which takes precedence over `after`). Every
@@ -192,13 +184,15 @@ disconnected subscribers never cancel jobs or block worker event ingestion.
 - `server/service.py`, `http.py`, `__init__.py`: control/query adaptation, HTTP/SSE,
   and server lifetime composition.
 
-The main server is the target host for future Review/Reader routes and the final
-web UI. This change provides the runtime/API only. Existing `review` and `reader`
-CLI commands remain standalone compatibility servers; the supervisor never
-launches or manages extra HTTP-server jobs. Review now acquires the project lock
-for initial draft preparation and individual draft operations, not for the lifetime
-of an open page/session. Reader retains its separate marker-file lock. Human review
-and `approve` remain available through the existing workflow.
+The main server exposes Review and Reader APIs without serving their old HTML or
+JavaScript. Existing `review` and `reader` CLI commands remain standalone compatibility
+servers; the supervisor never launches extra HTTP-server jobs. Review acquires the
+project lock for preparation and individual operations. Main-server Reader reads
+hold no writer or Reader lock; each marker mutation holds the same `.reader.lock`
+used by the standalone Reader. A running standalone Reader can therefore temporarily
+exclude API marker writes while its lifetime lock is held. Ordinary API reads still
+work. There is no browser-lifetime Store, application session, or project lock.
+All existing CLI commands remain supported; no frontend was added by this API work.
 
 Tests use real subprocesses with injected offline workers and the existing mock
 provider, covering supervision, isolation, escalation, restart recovery, WAL

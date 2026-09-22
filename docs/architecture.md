@@ -112,9 +112,16 @@ app.pipeline.analyze(...)
 app.pipeline.translate(...)
 
 app.review.open_session(...)
+app.review.prepare(...)
+app.review.repository(...)
 app.review.approve(...)
 
 app.reader.open_session(...)
+app.reader.query(...)
+app.reader.mutate_marker(...)
+
+app.workflow.pipeline(...)
+app.workflow.settings(...)
 
 app.exports.export_text(...)
 
@@ -379,6 +386,8 @@ independent of workers, and automatic publication remains inside translation.
 Supervision records and bounded structured events use a separate XDG WAL registry;
 project checkpoints remain domain truth. Graceful shutdown interrupts owned
 workers; restart marks stale jobs abandoned without re-adoption. The new server
-is the target host for future Review/Reader routes; their compatibility servers
-are never supervised jobs. See [server runtime and API](server-runtime.md) for
+exposes request-scoped Review/Reader APIs; their compatibility servers
+are never supervised jobs. Workflow queries derive pipeline actions and state
+from project snapshots. A separate confined import specification uses the same
+supervisor and worker lifecycle. See [server runtime and API](server-runtime.md) for
 module boundaries, read snapshots, SSE replay, exact stop behavior, and endpoints.

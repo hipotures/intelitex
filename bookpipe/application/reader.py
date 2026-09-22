@@ -192,3 +192,26 @@ class ReaderService:
         if isinstance(command, Path):
             command = ReaderSessionCommand(command)
         return ReaderSession(self.dependencies, command, self.progress)
+
+    def query(self, project: Path, operation: str, *args) -> dict:
+        """One request, no lifetime lock, mutable Store or retained context."""
+        project = project.resolve()
+        load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files)
+        context = ReaderContext(project)
+        if operation == "markers":
+            return MarkerRepository(project, context, self.dependencies.files).load()
+        methods = {"metadata": context.metadata, "progress": context.progress,
+                   "chapter": context.chapter, "context": context.context}
+        return copy.deepcopy(methods[operation](*args))
+
+    def mutate_marker(self, project: Path, operation: str, value, revision: str) -> dict:
+        # Same lock as the compatibility Reader, held only for this mutation.
+        project = project.resolve()
+        with self.dependencies.reader_lock(project):
+            load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files)
+            repository = MarkerRepository(project, files=self.dependencies.files)
+            if operation == "create":
+                return repository.create(value, revision)
+            if operation == "delete":
+                return repository.delete(value, revision)
+            raise ValueError("Unknown marker operation.")

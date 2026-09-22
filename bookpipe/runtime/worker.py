@@ -5,17 +5,33 @@ import signal
 import sys
 from pathlib import Path
 
-from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand
+from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand
 from ..bootstrap import create_application
-from .models import JobSpec
+from .models import JobSpec, ImportJobSpec, parse_spec
 from .protocol import JsonlProgressSink, MAX_FRAME
 
 
-def execute(spec: JobSpec, sink: JsonlProgressSink, application_factory=create_application) -> int:
+def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_factory=create_application) -> int:
     try:
         app = application_factory(sink)
         project = Path(spec.project)
-        if spec.operation == "analyze":
+        if spec.operation == "import":
+            from ..application.imports import confined_source, workspace_destination, validate_source_tree
+            source = confined_source(Path(spec.import_root), spec.source_id)
+            validate_source_tree(source)
+            # Atomic reservation also rejects races with local creation/another server.
+            project.mkdir(exist_ok=False)
+            app.projects.import_book(ImportBookCommand(
+                project, source,
+                previous_volume=workspace_destination(Path(spec.workspace_root), spec.previous_volume) if spec.previous_volume else None,
+                opf=confined_source(source, spec.opf) if spec.opf else None,
+                input_encoding=spec.input_encoding, chapter_mode=spec.chapter_mode,
+                chapter_selector=spec.chapter_selector, include_glob=spec.include_glob,
+                sidecar_txt=spec.sidecar_txt, whole_section_limit=spec.whole_section_limit,
+                profile=spec.profile, pass_profiles={int(k): v for k, v in (spec.pass_profiles or {}).items()},
+                model=spec.model, context_size=spec.context_size, thinking=spec.thinking,
+            ))
+        elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile))
         elif spec.operation == "translate":
             app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit))
@@ -44,7 +60,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, interrupt)
     sink = JsonlProgressSink(sys.stdout)
     try:
-        spec = JobSpec(**json.loads(sys.stdin.readline(MAX_FRAME + 1)))
+        spec = parse_spec(json.loads(sys.stdin.readline(MAX_FRAME + 1)))
         with contextlib.redirect_stdout(sys.stderr):
             return execute(spec, sink)
     except KeyboardInterrupt:

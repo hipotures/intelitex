@@ -1,5 +1,5 @@
 """Validated runtime inputs and detached supervision snapshots."""
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -59,9 +59,88 @@ class Job:
     error: dict | None = None
 
     def public(self) -> dict:
-        value = asdict(self)
-        value.pop("project")
-        value.pop("workspace_root")
-        if value["last_event"] is not None:
-            value["last_event"] = public_envelope(value["last_event"])
+        value = {key: getattr(self, key) for key in (
+            'job_id', 'workspace_id', 'operation', 'state', 'pid', 'started_at',
+            'finished_at', 'exit_code', 'sequence',
+        )}
+        value['last_event'] = public_envelope(self.last_event) if self.last_event is not None else None
+        error_type = self.error.get('type') if self.error else None
+        if not isinstance(error_type, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,127}', error_type):
+            error_type = 'WorkerError'
+        value['error'] = ({'type': error_type, 'message': 'Operation failed; inspect locally.'}
+                          if self.error else None)
         return value
+
+
+@dataclass(frozen=True)
+class ImportJobSpec:
+    """Import has no existing project; do not relax pipeline JobSpec invariants."""
+    workspace_root: str
+    workspace_id: str
+    project: str
+    import_root: str
+    source_id: str
+    operation: str = 'import'
+    previous_volume: str | None = None
+    opf: str | None = None
+    input_encoding: str | None = None
+    chapter_mode: str = 'auto'
+    chapter_selector: str | None = None
+    include_glob: str | None = None
+    sidecar_txt: bool = False
+    whole_section_limit: int | None = None
+    profile: str | None = None
+    pass_profiles: dict | None = None
+    model: str | None = None
+    context_size: int | None = None
+    thinking: str | None = None
+
+    def __post_init__(self):
+        from ..application.imports import (DestinationConflict, confined_source,
+                                           validate_source_tree, workspace_destination)
+        root = Path(self.workspace_root).resolve(strict=True)
+        destination = workspace_destination(root, self.workspace_id)
+        if self.operation != 'import' or str(destination) != self.project:
+            raise ValueError('Invalid import specification.')
+        if destination.exists():
+            raise DestinationConflict('Destination already exists.')
+        source_root = Path(self.import_root).resolve(strict=True)
+        source = confined_source(source_root, self.source_id)
+        if not source.is_dir() or destination.is_relative_to(source):
+            raise ValueError('Invalid source folder.')
+        validate_source_tree(source)
+        if self.opf is not None and not confined_source(source, self.opf).is_file():
+            raise ValueError('Invalid OPF selection.')
+        if self.previous_volume is not None:
+            previous = workspace_destination(root, self.previous_volume)
+            if not (previous / 'book.json').is_file():
+                raise ValueError('Previous volume is not imported.')
+        if self.chapter_mode not in {'auto', 'file', 'headings'} or type(self.sidecar_txt) is not bool:
+            raise ValueError('Invalid import options.')
+        for value in (self.whole_section_limit, self.context_size):
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError('Expected a positive integer.')
+        if self.pass_profiles is not None and not isinstance(self.pass_profiles, dict):
+            raise ValueError('Invalid pass profiles.')
+        if any(not isinstance(value, str) for value in (self.pass_profiles or {}).values()):
+            raise ValueError('Invalid pass profile name.')
+        for value in (self.profile, *(self.pass_profiles or {}).values()):
+            if value is not None and (not isinstance(value, str) or not re.fullmatch(r'[\w.-]{1,128}', value)):
+                raise ValueError('Invalid profile.')
+        if self.pass_profiles is not None and any(k not in {'1', '2', '3', '4', '5'} for k in self.pass_profiles):
+            raise ValueError('Invalid pass profiles.')
+        for value in (self.model, self.input_encoding, self.chapter_selector, self.include_glob):
+            if value is not None and (not isinstance(value, str) or not value or len(value) > 1024):
+                raise ValueError('Invalid import option.')
+        if self.model is not None and ('\\' in self.model or self.model.startswith('/') or '..' in self.model):
+            raise ValueError('Model must be an identifier.')
+        if self.include_glob is not None and (self.include_glob.startswith('/') or '..' in self.include_glob or '\\' in self.include_glob):
+            raise ValueError('Invalid include glob.')
+        if self.thinking not in {None, 'on', 'off'}:
+            raise ValueError('Invalid thinking setting.')
+        object.__setattr__(self, 'workspace_root', str(root))
+        object.__setattr__(self, 'import_root', str(source_root))
+
+
+def parse_spec(value: dict) -> JobSpec | ImportJobSpec:
+    return (ImportJobSpec if value.get('operation') == 'import' else JobSpec)(**value)

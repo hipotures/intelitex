@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory() as temporary:
             expect(page.locator('[data-filter=uncertain]')).to_have_text('Uncertain 2')
             expect(page.locator('#detail h2')).to_have_text('Entity 1')
             page.locator('#saveNext').click()
-            expect(page.locator('[data-cat=people]')).to_have_text('People 2')
+            expect(page.locator('[data-cat=people]')).to_have_text('✓ People 2')
             expect(page.locator('[data-cat=people]')).to_have_class('chip active complete ')
             expect(page.locator('#saveNext')).to_be_disabled()
             # Switch back to All: one high-confidence person is still pending.
@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory() as temporary:
             expect(page.locator('[data-filter=notes]')).to_have_text('Notes 1')
             page.on('dialog',lambda d:d.accept())
             page.locator('#bulkBtn').click()
-            expect(page.locator('[data-cat=people]')).to_have_text('People 1')
+            expect(page.locator('[data-cat=people]')).to_have_text('✓ People 1')
             stored=read_json(root/'terms.review.json')
             assert stored['terms'][2]['custom']=='Custom name'
             assert stored['terms'][2]['user_notes']=='Check this after translation.'
@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert stored['confirmed'] is False
             assert list(root.glob('history/review_before_bulk_*.json'))
             page.locator('[data-filter=unreviewed]').click()
-            expect(page.locator('[data-cat=people]')).to_have_text('People 0')
+            expect(page.locator('[data-cat=people]')).to_have_text('✓ People 0')
             assert 'complete' in page.locator('[data-cat=people]').get_attribute('class')
             expect(page.locator('#detail .empty')).to_be_visible()
             page.locator('[data-cat=all]').click()

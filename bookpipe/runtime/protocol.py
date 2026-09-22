@@ -30,9 +30,15 @@ PATH_FIELDS = frozenset({"project", "output_path", "recovery_path", "review_path
 
 def public_envelope(envelope: dict) -> dict:
     event = envelope["event"]
-    return {**envelope, "event": {**event, "values": {
-        key: value for key, value in event.get("values", {}).items() if key not in PATH_FIELDS
-    }}}
+    public = {key: envelope[key] for key in ('id', 'job_id', 'workspace_id', 'sequence', 'timestamp') if key in envelope}
+    public['event'] = {key: event[key] for key in ('kind', 'current', 'total') if key in event}
+    public['event']['message'] = ''
+    public['event']['values'] = {
+        key: ('Operation failed; inspect locally.' if key == 'error' else value)
+        for key, value in event.get('values', {}).items()
+        if key in PROGRESS_FIELDS and (value is None or type(value) in {str, int, float, bool})
+    }
+    return public
 
 
 def progress_value(event: ProgressEvent) -> dict:

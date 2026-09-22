@@ -29,6 +29,7 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
     server = sub.add_parser("serve", help="Host the workspace API and supervise independent worker processes.")
     server.add_argument("--workspace-root", type=Path, required=True)
+    server.add_argument("--import-root", type=Path, help="Optional confined source folders for web import.")
     server.add_argument("--bind", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8780)
     pipeline_commands = (
@@ -181,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         from .server import serve
         try:
-            serve(args.workspace_root, args.bind, args.port)
+            serve(args.workspace_root, args.bind, args.port, import_root=args.import_root)
             return 0
         except (PipelineError, OSError, ValueError, sqlite3.Error) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)

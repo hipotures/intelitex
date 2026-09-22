@@ -10,7 +10,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from bookpipe.progress import ProgressEvent
-from bookpipe.runtime.models import JobSpec
+from bookpipe.runtime.models import parse_spec
 from bookpipe.runtime.protocol import JsonlProgressSink
 from bookpipe.runtime.worker import execute
 from bookpipe.util import project_lock
@@ -19,7 +19,7 @@ mode = sys.argv[1]
 if mode in {"stubborn", "stubborn_child"}:
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-spec = JobSpec(**json.loads(sys.stdin.readline()))
+spec = parse_spec(json.loads(sys.stdin.readline()))
 sink = JsonlProgressSink(sys.stdout)
 if mode == "malformed":
     print('{"type":"failure","error":[]}', flush=True)
@@ -52,5 +52,6 @@ def operation(command):
 
 
 app = SimpleNamespace(pipeline=SimpleNamespace(analyze=operation, translate=operation),
-                      publishing=SimpleNamespace(publish=operation))
+                      publishing=SimpleNamespace(publish=operation),
+                      projects=SimpleNamespace(import_book=operation))
 raise SystemExit(execute(spec, sink, lambda progress: app))

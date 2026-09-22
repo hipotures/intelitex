@@ -65,6 +65,7 @@ class ReaderSessionCommand:
 class ApproveCommand:
     project: Path
     accept_defaults: bool = False
+    expected_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

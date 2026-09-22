@@ -302,6 +302,19 @@ class ReviewService:
             command = ReviewSessionCommand(command)
         return ReviewSession(self.dependencies, command, self.progress)
 
+    def prepare(self, project: Path) -> dict:
+        with self.open_session(project) as session:
+            return session.load()
+
+    def repository(self, project: Path) -> ReviewRepository:
+        """Detached facade: each call locks, checks revision and releases resources."""
+        root = project.resolve()
+        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        if not self.dependencies.files.is_file(root / "terms.review.json"):
+            raise PipelineError("Prepare review first.")
+        return ReviewRepository(root / "terms.review.json", self.dependencies.files,
+                                lambda: self.dependencies.project_lock(root))
+
     def approve(self, command: ApproveCommand) -> ApprovalResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
@@ -310,16 +323,17 @@ class ReviewService:
                 raise PipelineError("Finish analysis before approving terminology.")
             return execute_approval(
                 scope.store, book["source_fingerprint"], command.accept_defaults,
-                self.dependencies.files,
+                self.dependencies.files, expected_revision=command.expected_revision,
             )
 
 
-def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None) -> ApprovalResult:
+def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None, *, expected_revision=None) -> ApprovalResult:
     """Validate and commit the existing draft without merging draft and DB state."""
     path = store.root / "terms.review.json"
     if not (files.exists(path) if files else path.exists()):
         raise PipelineError("Run analyze first; no terms.review.json exists.")
     review = files.read_json(path) if files else read_json(path)
+    ReviewRepository._check_revision(review, expected_revision)
     stored = store.terms()
     if review.get("book_fingerprint") != fingerprint:
         raise PipelineError("Review belongs to another imported book.")

@@ -84,6 +84,10 @@ def inside(root: Path, path: Path) -> Path:
     return path
 
 
+class LockConflict(PipelineError):
+    """An authoritative filesystem lock is already held."""
+
+
 @contextmanager
 def file_lock(root: Path, name: str, conflict_message: str) -> Iterator[None]:
     """Exclusive named lock released by the kernel after crashes."""
@@ -93,7 +97,7 @@ def file_lock(root: Path, name: str, conflict_message: str) -> Iterator[None]:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise PipelineError(conflict_message) from exc
+            raise LockConflict(conflict_message) from exc
         try:
             yield
         finally:
