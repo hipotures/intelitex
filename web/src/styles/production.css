@@ -97,3 +97,28 @@ body:has(dialog.drawer[open])::before { display:none; }
 .phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }
 .execution-diagnostics { max-height:320px;overflow:auto;font-size:12px;overflow-wrap:anywhere; }.execution-diagnostics details { padding:8px 0;border-bottom:1px solid var(--line); }.execution-diagnostics p { margin-top:7px;color:var(--text-dim); }
 .activity-card-head { width:100%;background:transparent;cursor:pointer;font-size:14px; }
+
+/* Debug badges are a presentation-only overlay. The DOM ID stays available when off. */
+.debug-setting { display:flex;align-items:center;gap:10px; }
+.debug-setting input { width:16px;height:16px;accent-color:var(--accent); }
+html[data-ui-debug="on"] [data-ui-debug-id]:not(.topbar):not(.reader-selection):not(dialog) { position:relative; }
+html[data-ui-debug="on"] [data-ui-debug-id]::after {
+  content:attr(data-ui-debug-id);
+  position:absolute;
+  top:4px;
+  right:4px;
+  z-index:100;
+  display:block;
+  padding:2px 5px;
+  border:1px solid #f6d365;
+  border-radius:4px;
+  background:#121826;
+  color:#fff8db;
+  font:700 10px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:.06em;
+  white-space:nowrap;
+  pointer-events:none;
+  box-shadow:0 1px 4px #0008;
+}
+/* The list and its first row share a top edge; keep both badges readable. */
+html[data-ui-debug="on"] [data-ui-debug-id="WRC"]::after { right:40px; }

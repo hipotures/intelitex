@@ -87,6 +87,27 @@ entire product. Read supporting references only when relevant. Do not load the
   sanitization and post-cleanup worker release.
 - Use `uv`; never direct `pip`. Do not make live model calls in implementation tests.
 
+## UI debug identifiers (GitHub issue #1, TODO 0)
+
+For every new major UI container, panel, card, accordion, drawer, modal or independently
+discussable section group, assign a stable ID through `web/src/debug/regions.ts` and
+`debugTag` (or the typed `debugId` prop on `Panel`/`Overlay`). IDs are exactly three
+uppercase ASCII letters. Prefer mnemonic two-letter families for repeated sibling
+panels; their third letters identify the semantic instance, never visual order. Keep
+an assigned ID with the conceptual component through refactors. Do not tag individual
+buttons, icons, progress bars, text nodes, table cells or other minor controls.
+
+The registry is the single source for ID, description, semantic pass instance and
+source file. Repeated book/workspace/term/profile components reuse a type ID and expose
+their stable backend entity key separately as `data-entity-id`. The ID remains in the
+DOM as `data-ui-debug-id` even with Debug mode off; the opaque badge appears only when
+the local Settings Debug preference is on. Keep badge rendering in the dedicated CSS
+overlay layer so it never changes layout or application/API/pipeline state. Update the
+checked [ID reference table](../../../docs/web/debug-ids.md) and registry test when
+adding IDs. Test badge toggle, persistence, layout stability, console and network
+behavior in a real browser. Do not create absent UI solely to assign it an ID; the
+workspace setup modal receives an ID when its separate product work is authorized.
+
 ## Deterministic checks
 
 Run from the repository root:

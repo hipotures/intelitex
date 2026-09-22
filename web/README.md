@@ -3,6 +3,8 @@
 React, strict TypeScript, Vite, Tailwind CSS 4, source-owned UI primitives, TanStack
 Router/Query and one shared EventSource. The Python application owns all durable state.
 The immutable original v33 supplies visual tokens and interaction structure.
+Settings → Debug shows stable panel IDs; [the ID map](../docs/web/debug-ids.md) links
+each ID to its source component. This preference stays in the local browser.
 
 From the repository root (Node 22.12+ and `uv`):
 

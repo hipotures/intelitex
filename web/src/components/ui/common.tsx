@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { cva } from 'class-variance-authority'
 import { ArrowLeft, X } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { debugTag, type DebugId } from '../../debug/regions'
 const button = cva('', { variants: { variant: { primary: 'primary-btn', secondary: 'secondary-btn', ghost: 'ghost-btn', danger: 'danger-btn', icon: 'icon-btn' } }, defaultVariants: { variant: 'secondary' } })
 export function Button({ variant, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary'|'secondary'|'ghost'|'danger'|'icon' }) {
   return <button type="button" className={button({ variant, className })} {...props} />
@@ -23,7 +24,7 @@ export function initials(title: string) {
 export function Cover({ title, large = false }: { title: string; large?: boolean }) {
   return <div className={large ? 'cover' : 'mini-cover'} title={title}><span className={large ? 'cover-initials' : undefined}>{initials(title)}</span></div>
 }
-export function Overlay({ title, eyebrow, children, close, drawer = false, compact = false }: { title: string; eyebrow?: string; children: ReactNode; close: () => void; drawer?: boolean; compact?: boolean }) {
+export function Overlay({ title, eyebrow, children, close, drawer = false, compact = false, debugId }: { title: string; eyebrow?: string; children: ReactNode; close: () => void; drawer?: boolean; compact?: boolean; debugId?: DebugId }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const trigger = document.activeElement as HTMLElement | null
@@ -31,10 +32,10 @@ export function Overlay({ title, eyebrow, children, close, drawer = false, compa
     const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden'
     return () => { dialog.close(); document.body.style.overflow = overflow; trigger?.focus() }
   }, [])
-  return createPortal(<dialog ref={ref} className={drawer ? 'drawer open overlay-dialog' : `modal-card overlay-dialog ${compact ? 'compact-modal' : ''}`} onCancel={e => { e.preventDefault(); close() }} onClick={e => { if (e.target === e.currentTarget && (e.clientX < e.currentTarget.getBoundingClientRect().left || e.clientX > e.currentTarget.getBoundingClientRect().right || e.clientY < e.currentTarget.getBoundingClientRect().top || e.clientY > e.currentTarget.getBoundingClientRect().bottom)) close() }} aria-label={title}>
+  return createPortal(<dialog ref={ref} className={drawer ? 'drawer open overlay-dialog' : `modal-card overlay-dialog ${compact ? 'compact-modal' : ''}`} {...(debugId ? debugTag(debugId) : {})} onCancel={e => { e.preventDefault(); close() }} onClick={e => { if (e.target === e.currentTarget && (e.clientX < e.currentTarget.getBoundingClientRect().left || e.clientX > e.currentTarget.getBoundingClientRect().right || e.clientY < e.currentTarget.getBoundingClientRect().top || e.clientY > e.currentTarget.getBoundingClientRect().bottom)) close() }} aria-label={title}>
     <div className={drawer ? 'drawer-head' : 'modal-head'}><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h2>{title}</h2></div><Button variant="icon" onClick={close} aria-label="Close"><X size={18} /></Button></div>{children}
   </dialog>, document.body)
 }
-export function Panel({ title, children }: { title: string; children: ReactNode }) { return <section className="phase-detail-card"><div className="phase-detail-card-head"><h2>{title}</h2></div><div className="phase-detail-card-body">{children}</div></section> }
+export function Panel({ title, children, debugId }: { title: string; children: ReactNode; debugId: DebugId }) { return <section className="phase-detail-card" {...debugTag(debugId)}><div className="phase-detail-card-head"><h2>{title}</h2></div><div className="phase-detail-card-body">{children}</div></section> }
 
 export function ProfileSwatch({ index, name }: { index: number | null | undefined; name: string }) { return <span className="profile-swatch" data-palette={index == null ? undefined : index % 18} title={name} aria-label={name} /> }
