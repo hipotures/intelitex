@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { request, useApi } from '../../api/client'
 import { compatibilitySchema, draftSchema, preflightSchema, profilesSchema, type LibraryPage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
+import { useConnection } from '../../realtime/coordinator'
 import { Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
 import { debugTag } from '../../debug/regions'
 
@@ -63,6 +64,7 @@ function SetupForm({ source, preflight, profiles, close }: {
   const [unknownOutcome, setUnknownOutcome] = useState(!!restored)
   const attempt = useRef<{ key: string; body: Record<string, unknown> } | null>(restored)
   const command = useCommand()
+  const connection = useConnection()
   const navigate = useNavigate()
   const languagesValid = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(sourceLanguage) && /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(targetLanguage)
   const selection = JSON.stringify([sourceLanguage, targetLanguage, assignments])
@@ -99,8 +101,10 @@ function SetupForm({ source, preflight, profiles, close }: {
     <div className="setup-profile-list" {...debugTag('WMP')}><h3>Pipeline models</h3><p className="subtitle">Saved assignments for P1–P5. You can change models later under the workspace rules.</p>{[1, 2, 3, 4, 5].map(number => <div className="setup-profile-row" key={number}><label htmlFor={`setup-pass-${number}`}><ProfileSwatch index={profiles.profiles.find(profile => profile.name === assignments[String(number)])?.stable_palette_index} name={assignments[String(number)] ?? 'Unknown profile'} /> Pass {number}</label><select id={`setup-pass-${number}`} value={assignments[String(number)]} disabled={locked} onChange={event => { edit(); setAssignments(old => ({ ...old, [String(number)]: event.target.value })) }}>{profiles.profiles.map(profile => <option key={profile.name} value={profile.name} disabled={!profile.enabled}>{profile.name}</option>)}</select></div>)}</div>
     {!languagesValid && <div className="notice">Enter valid source and target language codes.</div>}
     {currentCompatibility?.warnings.map(message => <div className="setup-warning" key={message}>{message}</div>)}
+    {currentCompatibility?.compatible && currentCompatibility.warnings.length > 0 && <div className="setup-warning">Missing language declarations are profile metadata, not setup fields. They do not prevent saving this supported language pair.</div>}
     {currentCompatibility && !currentCompatibility.compatible && <div className="notice error">This language pair is unavailable with the current pipeline or selected profiles.</div>}
+    {connection !== 'Live' && <div className="notice" role="status">Save is waiting for live synchronization ({connection}). It will be available when the connection recovers.</div>}
     {unknownOutcome && <div className="notice">Save may have succeeded. Retry the same request to resolve its result; no second workspace will be created.</div>}
     <ErrorNote error={compatibilityError ?? command.error} />
-  </div><div className="modal-foot"><Button onClick={close} disabled={command.pending}>{unknownOutcome ? 'Close' : 'Cancel'}</Button><Button variant="primary" onClick={() => void save()} disabled={command.disabled || (!unknownOutcome && (!languagesValid || !currentCompatibility?.compatible || !!compatibilityError))}>{unknownOutcome ? 'Retry Save' : command.pending ? 'Saving…' : 'Save'}</Button></div></>
+  </div><div className="modal-foot"><Button onClick={close} disabled={command.pending}>{unknownOutcome ? 'Close' : 'Cancel'}</Button><Button variant="primary" onClick={() => void save()} disabled={command.disabled || (!unknownOutcome && (!languagesValid || !currentCompatibility?.compatible || !!compatibilityError))}>{unknownOutcome ? 'Retry Save' : command.pending ? 'Saving…' : connection !== 'Live' ? 'Waiting for sync…' : 'Save'}</Button></div></>
 }

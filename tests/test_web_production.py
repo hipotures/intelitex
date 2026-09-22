@@ -96,6 +96,30 @@ def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):
     assert detect_language(['Ada.'])[0] is None
 
 
+def test_setup_accepts_builtin_profile_with_undeclared_language_capabilities(api):
+    _, root, service, server = api
+    source = service.imports.root / 'unknown-profile-language'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<p>The reader travels through the valley.</p>')
+    code, preflight = request(server, 'GET', '/api/library/sources/unknown-profile-language/preflight')
+    assert code == 200
+    assignments = {str(number): 'codex-luna-low' for number in range(1, 6)}
+    code, compatibility = request(server, 'POST', '/api/library/compatibility', {
+        'source_language': 'en', 'target_language': 'pl', 'pass_profiles': assignments})
+    assert code == 200
+    assert compatibility['compatible'] is True
+    assert len(compatibility['warnings']) == 2
+    code, saved = request(server, 'POST', '/api/workspaces/setup', {
+        'source_id': 'unknown-profile-language', 'source_fingerprint': preflight['source_fingerprint'],
+        'source_language': 'en', 'target_language': 'pl', 'label': 'Language metadata unknown',
+        'pass_profiles': assignments, 'request_key': 'unknown-profile-language-012345'})
+    assert code == 200
+    destination = root.parent / saved['workspace_id']
+    assert (destination / 'settings.json').is_file()
+    assert not (destination / 'book.json').exists()
+    assert service.settings(saved['workspace_id'])['assignments'] == assignments
+
+
 def test_source_inspection_reports_bounded_real_excerpts_not_chapter_filenames(api, tmp_path):
     _, root, service, server = api
     source = make_epub_source(tmp_path)

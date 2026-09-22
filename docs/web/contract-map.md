@@ -126,6 +126,11 @@ application catalog, then navigates to its unprepared workspace. A source remain
 in Library and may have multiple workspaces. Cancel creates no draft. Prepare is
 the next explicit mutation and stops before P1. New source setup and existing
 workspace/profile queries are reconciled without rescanning Library pages.
+The setup form keeps profiles with undeclared language capabilities selectable and
+explains that these are profile-metadata warnings, not a Save gate. While the
+shared SSE connection is not live, Save names the waiting state and shows the
+recovery reason instead of appearing to do nothing; an `en` → `pl` selection with
+unknown profile capabilities can be saved once synchronization completes.
 
 ## Acceptance traceability
 

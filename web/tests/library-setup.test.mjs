@@ -6,9 +6,9 @@ import { chromium } from 'playwright'
 
 const dist = resolve('dist')
 const output = '/tmp/intelitex-library-setup-evidence'
-const profile = { name: 'local', stable_palette_index: 0, provider: 'llamacpp', model: 'offline', enabled: true,
-  source_languages: ['en'], target_languages: ['pl'] }
-const profiles = { source: 'defaults', revision: 'defaults', default_profile: 'local', assignments: {},
+const profile = { name: 'codex-luna-low', stable_palette_index: 0, provider: 'codex', model: 'gpt-5.6-luna', enabled: true,
+  source_languages: null, target_languages: null }
+const profiles = { source: 'defaults', revision: 'defaults', default_profile: 'codex-luna-low', assignments: {},
   profiles: [profile], resolved_passes: Object.fromEntries([1, 2, 3, 4, 5].map(number => [String(number), profile])) }
 const source = { source_id: 'book.epub', title: 'Relay Book', creators: ['Test Author'], language: 'en', word_count: null, workspace_id: null }
 const preflight = { source_id: source.source_id, title: source.title, creators: source.creators, declared_language: 'en',
@@ -27,9 +27,10 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
     page.on('console', message => { if (message.type() === 'error' && !(message.text().includes('503') && message.location().url.includes('/api/workspaces/setup'))) errors.push(message.text()) })
     page.on('requestfailed', request => failed.push(request.url()))
     await page.addInitScript(() => {
-      window.EventSource = class { static OPEN = 1; readyState = 1; addEventListener(type, callback) {
-        if (type === 'snapshot') queueMicrotask(() => callback({ data: '{"jobs":[],"cursor":0}' }))
-      } close() {} }
+      window.EventSource = class { static OPEN = 1; readyState = 1; listeners = {}; constructor() { window.testStream = this }
+        addEventListener(type, callback) { this.listeners[type] = callback }
+        emitSnapshot() { this.listeners.snapshot?.({ data: '{"jobs":[],"cursor":0}' }) }
+        close() {} }
     })
     await page.route('http://localhost/**', async route => {
       const request = route.request(), url = new URL(request.url())
@@ -44,7 +45,8 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       else if (url.pathname.endsWith('/inspect')) body = { ...preflight, sample_word_count: 126, sampled_documents: 2,
         document_count: 8, sample_previews: [{ position: 1, heading: 'Opening', excerpt: 'The relay moved through the valley.' },
           { position: 8, heading: null, excerpt: 'The reader found the next signal.' }] }
-      else if (url.pathname === '/api/library/compatibility') body = { compatible: true, warnings: [], target_choices: ['pl'] }
+      else if (url.pathname === '/api/library/compatibility') body = { compatible: true,
+        warnings: ['Source languages are not declared for codex-luna-low.', 'Target languages are not declared for codex-luna-low.'], target_choices: ['pl'] }
       else if (url.pathname === '/api/workspaces/setup') {
         const payload = request.postDataJSON()
         saves.push(payload)
@@ -88,6 +90,14 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.getByRole('button', { name: 'Add to workspace' }).click()
       await page.locator('[data-ui-debug-id="WCM"]').waitFor()
       await page.getByRole('combobox', { name: 'Target language' }).waitFor()
+      await page.getByText('Source languages are not declared for codex-luna-low.').waitFor()
+      await page.getByText('Missing language declarations are profile metadata').waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Waiting for sync…' }).isDisabled(), true)
+      await page.getByText('Save is waiting for live synchronization').waitFor()
+      await page.screenshot({ path: `${output}/setup-waiting-dark-1440.png`, animations: 'disabled' })
+      await page.evaluate(() => window.testStream.emitSnapshot())
+      await page.getByRole('button', { name: 'Save', exact: true }).waitFor({ state: 'visible' })
+      assert.equal(await page.getByRole('button', { name: 'Save', exact: true }).isEnabled(), true)
       await page.screenshot({ path: `${output}/setup-dark-1440.png`, animations: 'disabled' })
       await page.getByRole('button', { name: 'Cancel' }).click()
       assert.equal(saves.length, 0, 'Cancel must leave no draft')
@@ -132,6 +142,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.reload()
       await page.locator('[data-source-id="book.epub"]').click()
       await page.getByRole('button', { name: 'Add to workspace' }).click()
+      await page.evaluate(() => window.testStream.emitSnapshot())
       await page.getByRole('button', { name: 'Retry Save' }).click()
       await page.getByRole('heading', { name: 'Prepare this workspace' }).waitFor()
       assert.equal(new URL(page.url()).pathname, '/work/workspaces/w-3')
