@@ -9,6 +9,14 @@ import { Button, Cover, Empty, ErrorNote, Overlay } from '../../components/ui/co
 import { announce } from '../../app/notifications'
 import { Action } from '../pipeline/Action'
 import { debugTag } from '../../debug/regions'
+
+function libraryPageLimit(grid: HTMLDivElement | null, loaded = 0) {
+  const tracks = grid && getComputedStyle(grid).gridTemplateColumns.match(/\d+(?:\.\d+)?px/g)
+  const columns = Math.max(1, tracks?.length ?? 1)
+  const fullRows = Math.ceil(12 / columns) * columns
+  return Math.min(40, fullRows + (columns - loaded % columns) % columns)
+}
+
 export function WorkspaceRow({ workspace }: { workspace: Workspace }) {
   const p = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared)
   return <div className="workspace-row" {...debugTag('WRC', workspace.workspace_id)} onClick={e => { if (!(e.target as HTMLElement).closest('button,a')) e.currentTarget.querySelector<HTMLAnchorElement>('a')?.click() }}>
@@ -24,8 +32,9 @@ export function Home() {
   const command = useCommand()
   const navigate = useNavigate()
   const scope = useContext(Scope)
+  const libraryGrid = useRef<HTMLDivElement>(null)
   const library = useInfiniteQuery({ queryKey: [scope, '/api/library'],
-    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=12${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
+    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.childElementCount : 0)}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
     initialPageParam: null as string | null, getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: false, staleTime: Infinity })
   const [archive, setArchive] = useState(false)
@@ -42,7 +51,7 @@ export function Home() {
   }, [libraryData, loadingLibrary, libraryFailed, refreshingLibrary, fetchNextPage])
   useEffect(() => {
     if (!hasNextPage || loadingLibrary || libraryFailed || refreshingLibrary || !moreSources.current) return
-    const observer = new IntersectionObserver(entries => { if (entries[0]?.isIntersecting) { observer.disconnect(); void fetchNextPage() } }, { rootMargin: '0px 0px 250px 0px' })
+    const observer = new IntersectionObserver(entries => { if (entries[0]?.isIntersecting) { observer.disconnect(); void fetchNextPage() } })
     observer.observe(moreSources.current)
     return () => observer.disconnect()
   }, [hasNextPage, loadingLibrary, libraryFailed, refreshingLibrary, fetchNextPage, libraryData])
@@ -67,7 +76,7 @@ export function Home() {
     setRefreshError(null)
     announce('Refreshing Library…')
     try {
-      const first = await request('/api/library?limit=12', libraryPageSchema)
+      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}`, libraryPageSchema)
       queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library'], { pages: [first], pageParams: [null] })
       announce('Library refreshed.')
     } catch (error) { setRefreshError(error) }
@@ -79,7 +88,7 @@ export function Home() {
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
     <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions"><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
       {libraryError && <div className="notice error" role="alert"><span>{libraryError instanceof Error ? libraryError.message : 'Unable to load Library.'} {libraryData && 'Showing the last successful Library contents.'}</span><Button onClick={() => { if (libraryFailed && libraryData && hasNextPage) void fetchNextPage(); else void refreshLibrary() }} disabled={refreshingLibrary || loadingLibrary}>Retry Library refresh</Button></div>}
-      <div className="library-grid">{sources.map(source => <button className="book-card" data-source-id={source.source_id} {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => void openSource(source)} disabled={command.disabled} aria-label={`Open ${source.title}`}><Cover title={source.title} large /><div className="book-meta"><div className="book-name">{source.title}</div><div className="book-detail"><span>{source.creators.join(', ') || '—'}</span>{source.word_count != null && <><span>·</span><span>{source.word_count.toLocaleString()} words</span></>}{source.workspace_id && <span className="workspace-chip">workspace</span>}</div></div></button>)}</div>
+      <div className="library-grid" ref={libraryGrid}>{sources.map(source => <button className="book-card" data-source-id={source.source_id} {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => void openSource(source)} disabled={command.disabled} aria-label={`Open ${source.title}`}><Cover title={source.title} large /><div className="book-meta"><div className="book-name">{source.title}</div><div className="book-detail"><span>{source.creators.join(', ') || '—'}</span>{source.word_count != null && <><span>·</span><span>{source.word_count.toLocaleString()} words</span></>}{source.workspace_id && <span className="workspace-chip">workspace</span>}</div></div></button>)}</div>
       <div ref={moreSources} className="library-load-more" aria-hidden="true" />
       {!sources.length && !libraryData && !loadingLibrary && !refreshingLibrary && !libraryError && <Empty>Scroll here to discover source books, or select Refresh.</Empty>}
       {!sources.length && libraryData && !libraryError && <Empty>{!configured ? 'Source library is not configured' : 'No source books found'}</Empty>}</section>

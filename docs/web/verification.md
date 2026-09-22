@@ -18,6 +18,7 @@ The Browser plugin was unavailable; Playwright used its installed headless Chrom
 | `npm --prefix web run test:unit` | 13 passed in 4 files; stream ordering/isolation, Unicode ranges, UI primitives |
 | `npm --prefix web run build` | Passed; production assets emitted into ignored `web/dist` |
 | `npm --prefix web run test:e2e` | 5 passed; full offline workflow, real Vite proxy/origin/SSE, bounded Library pagination/Refresh/packed EPUB Prepare, 1,000 sections and 2,000 terms at 100 events/s |
+| `(cd web && node --test tests/library-rows.test.mjs)` | 1 passed; offline Chromium verified complete initial rows at 7/5/2 columns, row completion after resizing and scrolling, bounded Refresh, and zero console errors; no server process |
 | `npm --prefix web run test:visual` | 12 unmasked Work comparisons passed; 6 widths × dark/light, maximum differing pixels 0.3282% at pixelmatch threshold 0.15 |
 | `CHROMIUM_PATH=/home/user/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell uv run --with playwright python tests/browser_review_smoke.py` | Passed legacy Review browser regression |
 | `uv run --with playwright python .agents/skills/intelitex-web/scripts/web-smoke-test.py --base-url http://127.0.0.1:40203 --ui-path /work --ready-selector '.book-card' --fixture --browser-executable /home/user/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell --output-dir /tmp/intelitex-guarded-smoke-final-2` | Passed read-only API/browser smoke, zero browser/HTTP/console errors |

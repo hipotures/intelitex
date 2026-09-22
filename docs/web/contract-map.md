@@ -102,11 +102,12 @@ contains UI preferences/location only; sessionStorage contains pending request k
 Entering Reader without an explicit book reuses the last valid Reader route or checks
 backend Reader progress for the first workspace with verified translated text.
 
-The Work Library loads its first bounded `GET /api/library?limit=12` page only when
-the section enters the viewport. An intersection sentinel requests the next page
-when scrolling reaches it. Each page reads metadata only for its source slice,
-including packed EPUB files. The dedicated Refresh control reloads page one;
-commands, SSE, focus/reconnect and route remounts do not rescan sources. The
+The Work Library loads its first bounded page only when the section enters the
+viewport. The request asks for at least 12 books, rounded up to complete rows at
+the current grid width (14 books for seven columns). An intersection sentinel
+requests the next page when scrolling reaches it. Each page reads metadata only for
+its source slice, including packed EPUB files. The dedicated Refresh control
+reloads page one; commands, SSE, focus/reconnect and route remounts do not rescan sources. The
 successful pages remain in the tab's query cache. Refresh uses the shared floating
 toast and button spinner without moving cards. TanStack Query retains the last
 successful list when a request fails.
