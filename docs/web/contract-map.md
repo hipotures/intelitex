@@ -135,6 +135,8 @@ Setup and job commands generate 128-bit random request keys with
 `crypto.getRandomValues`, which is available on plain-HTTP LAN origins where
 `crypto.randomUUID` is absent. Key generation failures are surfaced in the UI
 before any mutation is sent.
+An unprepared draft presents one Prepare command in the dedicated card; the
+workspace header starts showing its primary pipeline action after Prepare completes.
 
 ## Acceptance traceability
 
