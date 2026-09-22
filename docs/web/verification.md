@@ -1,5 +1,28 @@
 # Executed production web verification
 
+## Source inspection correction (2026-09-22)
+
+Inspect now displays bounded real excerpts from distributed reading-order files.
+The interface identifies file counts, sampled words, and local language detection
+as limited observations. It no longer presents package filenames as chapter titles
+or the stopword-score margin as a probability. No model or user workspace was used.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q tests/test_web_production.py -x` | 47 passed, 1 deliberate duplicate-ZIP warning. |
+| `uv run --group dev python -m pytest -q tests/test_server_api.py` | 504 passed. An earlier combined run was interrupted by SIGTERM without a test-failure report; both suites passed separately. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm run typecheck && npm run lint && npm run test:unit && npm run build` (from `web/`) | Passed; 13 frontend unit tests. Vite retained its >500 kB uncompressed chunk warning. |
+| `FONTCONFIG_FILE=/tmp/intelitex-playwright-libs/fonts.conf LD_LIBRARY_PATH=/tmp/intelitex-playwright-libs/root/usr/lib/x86_64-linux-gnu node --test tests/library-setup.test.mjs tests/library-rows.test.mjs` (from `web/`) | 2 passed; no unexpected console/page or network errors, no mobile horizontal overflow. The Save-retry scenario intentionally injects HTTP 503. |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual inspection and source-hash update. |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and contract untouched. |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed. |
+
+The original v33 has no Library Inspect drawer. The production drawer was compared
+against v33's right-drawer width, spacing and mobile behavior. Captures at
+`/tmp/intelitex-library-setup-evidence/inspect-dark-1440.png`,
+`inspect-dark-390.png`, and `inspect-light-390.png` were visually reviewed.
+
 ## Library setup/Prepare change (2026-09-22)
 
 This focused follow-up used disposable pytest sources/workspaces and a fully

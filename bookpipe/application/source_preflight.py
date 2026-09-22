@@ -41,14 +41,21 @@ def source_signature(root: Path, source_id: str) -> str:
     return h.hexdigest()
 
 
-def _visible(raw: bytes) -> str:
+def _visible(raw: bytes) -> tuple[str, str | None]:
     soup = BeautifulSoup(raw, 'html.parser')
     for node in soup(['script', 'style', 'nav']):
         node.decompose()
-    return soup.get_text(' ', strip=True)
+    heading = soup.find(['h1', 'h2', 'h3'])
+    title = heading.get_text(' ', strip=True)[:160] if heading else None
+    return soup.get_text(' ', strip=True), title or None
 
 
-def _epub_samples(source: Path) -> tuple[list[str], list[str]]:
+def _sample_indices(total: int) -> list[int]:
+    count = min(5, total)
+    return [0] if count == 1 else sorted({round(i * (total - 1) / (count - 1)) for i in range(count)})
+
+
+def _epub_samples(source: Path) -> tuple[list[tuple[str, str | None]], list[str]]:
     with zipfile.ZipFile(source) as archive:
         container = ET.fromstring(_small_member(archive, 'META-INF/container.xml', 256 * 1024))
         rootfile = container.find('.//{*}rootfile')
@@ -67,22 +74,20 @@ def _epub_samples(source: Path) -> tuple[list[str], list[str]]:
                     names.append(name)
         if not names:
             raise PipelineError('EPUB has no readable spine documents.')
-        indices = sorted({round(i * (len(names) - 1) / min(4, len(names) - 1)) for i in range(min(5, len(names)))}) if len(names) > 1 else [0]
         samples = []
-        for index in indices:
+        for index in _sample_indices(len(names)):
             with archive.open(names[index]) as stream:
                 samples.append(_visible(stream.read(512 * 1024)))
         return samples, names
 
 
-def _folder_samples(source: Path) -> tuple[list[str], list[str]]:
+def _folder_samples(source: Path) -> tuple[list[tuple[str, str | None]], list[str]]:
     validate_source_tree(source)
     names = sorted(p for p in source.rglob('*') if p.is_file() and p.suffix.lower() in {'.html', '.htm', '.xhtml'})
     if not names:
         raise PipelineError('Source has no readable HTML documents.')
-    indices = sorted({round(i * (len(names) - 1) / min(4, len(names) - 1)) for i in range(min(5, len(names)))}) if len(names) > 1 else [0]
     samples = []
-    for index in indices:
+    for index in _sample_indices(len(names)):
         with names[index].open('rb') as stream:
             samples.append(_visible(stream.read(512 * 1024)))
     return samples, [p.relative_to(source).as_posix() for p in names]
@@ -117,7 +122,9 @@ def _folder_metadata(source: Path) -> dict:
 
 
 def detect_language(samples: list[str]) -> tuple[str | None, float]:
-    words = re.findall(r"[^\W\d_]+", ' '.join(samples).casefold())[:6000]
+    # Give each sampled document a comparable vote, including long spine files.
+    per_document = max(1, 6000 // max(len(samples), 1))
+    words = [word for sample in samples for word in re.findall(r"[^\W\d_]+", sample.casefold())[:per_document]]
     if len(words) < 40:
         return None, 0.0
     scores = sorted(((sum(word in stops for word in words), lang) for lang, stops in LANGUAGES.items()), reverse=True)
@@ -142,7 +149,8 @@ def inspect_source(root: Path, source_id: str, *, detailed: bool = False) -> dic
         samples, names = _folder_samples(source)
     else:
         raise ValueError('Unsupported source.')
-    detected, confidence = detect_language(samples)
+    prose = [text for text, _ in samples]
+    detected, confidence = detect_language(prose)
     declared = metadata.get('language')
     language = detected or (declared if isinstance(declared, str) and re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', declared) else None)
     result = {'source_id': source_id, 'title': metadata['title'], 'creators': metadata.get('creators', []),
@@ -150,8 +158,11 @@ def inspect_source(root: Path, source_id: str, *, detailed: bool = False) -> dic
               'source_language': language, 'source_fingerprint': source_signature(root, source_id),
               'language_warning': 'Metadata and prose disagree; verify source language.' if detected and declared and detected != declared.lower().split('-')[0] else None}
     if detailed:
-        result['sample_word_count'] = sum(len(re.findall(r"[^\W\d_]+", sample)) for sample in samples)
+        result['sample_word_count'] = sum(len(re.findall(r"[^\W\d_]+", sample)) for sample in prose)
         result['sampled_documents'] = len(samples)
         result['document_count'] = len(names)
-        result['section_preview'] = names[:12]
+        result['sample_previews'] = [
+            {'position': position + 1, 'heading': heading, 'excerpt': text[:320]}
+            for position, (text, heading) in zip(_sample_indices(len(names)), samples) if text
+        ]
     return result

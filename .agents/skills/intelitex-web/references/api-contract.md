@@ -125,7 +125,10 @@ is shared with the compatibility HTTP adapter.
   the refined D05 setup flow.
 - GET `/api/library/sources/{source_id}/preflight` and `/inspect`: selected-source
   read-only metadata, local language sample and fingerprint; Inspect adds bounded
-  structural details. Neither starts P1 or writes project state.
+  structural details and short excerpts from up to five distributed reading-order
+  files. Its document count is not a chapter count, its sampled-word count is not a
+  book total, and its detector score is not calibrated language certainty. Neither
+  route starts P1 or writes project state.
 - POST `/api/library/compatibility`: checks the selected language pair and P1–P5
   profile capabilities. Unknown capability metadata warns; the current application
   language pair remains English source and Polish target.

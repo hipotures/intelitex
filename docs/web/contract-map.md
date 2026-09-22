@@ -118,7 +118,10 @@ successful pages remain in the tab's query cache. Refresh uses the shared floati
 toast and button spinner without moving cards. TanStack Query retains the last
 successful list when a request fails.
 Library cards now open read-only source details. Inspect and setup preflight query
-the selected source only. Save creates a configured, persisted draft through the
+the selected source only. Inspect reads up to five distributed reading-order files,
+shows bounded real text excerpts, and labels its word count and language detector
+as sample-only; it does not infer chapter count from EPUB filenames. Save creates
+a configured, persisted draft through the
 application catalog, then navigates to its unprepared workspace. A source remains
 in Library and may have multiple workspaces. Cancel creates no draft. Prepare is
 the next explicit mutation and stops before P1. New source setup and existing

@@ -79,7 +79,7 @@ export const draftSchema = z.object({ workspace_id: text, source_id: text })
 export const preflightSchema = z.object({ source_id: text, title: text, creators: z.array(text), declared_language: nullableText,
   detected_language: nullableText, detection_confidence: count, source_language: nullableText, source_fingerprint: text,
   language_warning: nullableText, sample_word_count: count.optional(), sampled_documents: count.optional(),
-  document_count: count.optional(), section_preview: z.array(text).optional() })
+  document_count: count.optional(), sample_previews: z.array(z.object({ position: count, heading: nullableText, excerpt: text })).optional() })
 export const compatibilitySchema = z.object({ compatible: z.boolean(), warnings: z.array(text), target_choices: z.array(text) })
 export const lifecycleSchema = lifecycle
 export type Job = z.infer<typeof jobSchema>

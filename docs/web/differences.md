@@ -22,7 +22,9 @@ and responsive breakpoints. The following differences carry real application sem
 - Publishing is disabled while the worker automatically publishes; terminal failure
   offers publish-only retry. EPUB bytes, size and checks are validated by the backend.
 - Library card selection opens source details without creating a workspace. Inspect
-  and setup preflight read the selected source without a model call. Add to workspace
+  and setup preflight read the selected source without a model call. Inspect shows
+  bounded source excerpts and explicitly distinguishes sampled words, reading-order
+  files and heuristic language detection from whole-book facts. Add to workspace
   opens one-time setup; Save persists a draft with label, language pair and P1–P5
   profiles. Cancel leaves no draft. A source stays in Library and may produce several
   workspaces. Draft archive/restore preserves its setup; Prepare performs the real

@@ -42,7 +42,8 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       else if (url.pathname === '/api/profiles') body = profiles
       else if (url.pathname.endsWith('/preflight')) body = preflight
       else if (url.pathname.endsWith('/inspect')) body = { ...preflight, sample_word_count: 126, sampled_documents: 2,
-        document_count: 8, section_preview: ['chapter1.xhtml', 'chapter2.xhtml'] }
+        document_count: 8, sample_previews: [{ position: 1, heading: 'Opening', excerpt: 'The relay moved through the valley.' },
+          { position: 8, heading: null, excerpt: 'The reader found the next signal.' }] }
       else if (url.pathname === '/api/library/compatibility') body = { compatible: true, warnings: [], target_choices: ['pl'] }
       else if (url.pathname === '/api/workspaces/setup') {
         const payload = request.postDataJSON()
@@ -75,7 +76,15 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       assert.equal(saves.length, 0, 'opening a card must not create a workspace')
       assert.equal(libraryRequests, 1, 'opening a card must not refresh Library')
       await page.getByRole('button', { name: 'Inspect source' }).click()
-      await page.getByText('8 spine documents').waitFor()
+      await page.getByText('reading-order files, not necessarily chapters').waitFor()
+      await page.getByText('The relay moved through the valley.').waitFor()
+      assert.equal(await page.getByText('chapter1.xhtml').count(), 0)
+      assert.equal(await page.getByText('100% separation').count(), 0)
+      await page.screenshot({ path: `${output}/inspect-dark-1440.png`, animations: 'disabled' })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.screenshot({ path: `${output}/inspect-dark-390.png`, animations: 'disabled' })
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+      await page.setViewportSize({ width: 1440, height: 1000 })
       await page.getByRole('button', { name: 'Add to workspace' }).click()
       await page.locator('[data-ui-debug-id="WCM"]').waitFor()
       await page.getByRole('combobox', { name: 'Target language' }).waitFor()
@@ -129,6 +138,13 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       assert.equal(saves.at(-1).request_key, pendingKey)
       assert.equal(workspaces.length, 3, 'lost Save acknowledgement must not create another draft')
       assert.deepEqual(failed, [])
+      assert.deepEqual(errors, [])
+      await page.getByRole('link', { name: 'Library', exact: true }).click()
+      await page.locator('[data-source-id="book.epub"]').click()
+      await page.getByRole('button', { name: 'Inspect source' }).click()
+      await page.getByText('The relay moved through the valley.').waitFor()
+      await page.screenshot({ path: `${output}/inspect-light-390.png`, animations: 'disabled' })
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.deepEqual(errors, [])
     } finally { await page.close() }
   } finally { await browser.close() }

@@ -27,7 +27,7 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/library` | Legacy complete `{configured,sources}` response |
 | GET | `/api/library?limit=12&after={cursor}` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page |
 | GET | `/api/library/sources/{source_id}/preflight` | Read-only selected-source fingerprint, metadata and local language sample for setup |
-| GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, document count and preview names |
+| GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, reading-order file count and bounded real text excerpts |
 | POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
 | POST | `/api/workspaces/setup` | Setup payload below → `{workspace_id,source_id}`; creates a durable unprepared draft |
 | POST | `/api/imports` | Import input below → job |
@@ -72,6 +72,14 @@ English sources and Polish output only; broader language support is a separate
 issue item. Profile metadata declares `source_languages` and `target_languages` as
 `all`, an explicit list, or unknown; unknown support produces a warning rather than
 an invented rejection. Legacy projects without `workspace.json` remain valid.
+
+Inspect reads at most five distributed reading-order files (up to 512 KiB from
+each). `document_count` counts reading-order files, not inferred chapters;
+`sample_word_count` counts only the text read from those files, not the book.
+`sample_previews` contains bounded heading/excerpt pairs and one-based reading-order
+positions without exposing package filenames. `detection_confidence` is a local
+stopword-score separation, not a calibrated probability. The UI labels detection
+as a heuristic and requires the user to verify the language before Save.
 
 ## Jobs and current state
 

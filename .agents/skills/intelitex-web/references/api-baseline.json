@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "58cc5e7aa03da7e793b302d19e46acd12f56148d",
+  "inspected_commit": "8d93ebeca83505e0459d642a379932566cc456f9",
   "audit_date": "2026-09-22",
-  "audit_basis": "Current working tree manually re-audited for read-only selected-source inspection, language/profile compatibility, configured multi-workspace Save, draft destination checks, explicit Prepare import, and affected offline Python/browser regressions. Source hashes are a drift guard, not runtime certification.",
+  "audit_basis": "Current working tree manually re-audited for bounded source inspection: up to five distributed reading-order samples, text-only heading/excerpt DTOs, and explicit sample-only counts. Existing setup/import and API boundaries remain as recorded. Source hashes are a drift guard, not runtime certification.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -140,7 +140,9 @@
     "bookpipe/application/source_preflight.py": [
       "inspect_source",
       "source_signature",
-      "detect_language"
+      "detect_language",
+      "_sample_indices",
+      "_visible"
     ],
     "bookpipe/application/workspace_setup.py": [
       "read_workspace_setup",
@@ -184,7 +186,7 @@
     "bookpipe/runtime/models.py": "b9a7624785207e648640dc8637048f22119fc9e4",
     "bookpipe/runtime/worker.py": "c400ba008d75447d6ed9483e681c6b851305826c",
     "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
-    "bookpipe/application/source_preflight.py": "8ae31941361a9a0fea89b32309bd8c56c7a0bf73",
+    "bookpipe/application/source_preflight.py": "38fe9386c077b78f1dfe112d3fe2629910d82178",
     "bookpipe/application/workspace_setup.py": "ff65b524c7d90e3d85e81edad901168a423146b4"
   }
 }

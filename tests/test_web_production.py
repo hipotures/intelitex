@@ -96,6 +96,34 @@ def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):
     assert detect_language(['Ada.'])[0] is None
 
 
+def test_source_inspection_reports_bounded_real_excerpts_not_chapter_filenames(api, tmp_path):
+    _, root, service, server = api
+    source = make_epub_source(tmp_path)
+    chapter = source / 'EPUB' / 'text' / 'one.xhtml'
+    chapter.write_text(chapter.read_text().replace('</body>',
+        '<p>' + 'The reader followed the signal through the valley. ' * 30 + '</p>'
+        '<script>window.alert("unsafe")</script></body>'))
+    packed = service.imports.root / 'inspect.epub'
+    with zipfile.ZipFile(packed, 'w') as archive:
+        for path in source.rglob('*'):
+            if path.is_file():
+                archive.write(path, path.relative_to(source).as_posix())
+    code, result = request(server, 'GET', '/api/library/sources/inspect.epub/inspect')
+    assert code == 200
+    assert result['document_count'] == result['sampled_documents'] == 2
+    assert result['sample_word_count'] > 0
+    assert [sample['position'] for sample in result['sample_previews']] == [1, 2]
+    assert result['sample_previews'][0]['heading'] == 'Chapter 1'
+    assert 'Relay moved steadily' in result['sample_previews'][0]['excerpt']
+    assert len(result['sample_previews'][0]['excerpt']) == 320
+    assert 'window.alert' not in result['sample_previews'][0]['excerpt']
+    assert all('xhtml' not in sample['excerpt'] for sample in result['sample_previews'])
+    assert 'section_preview' not in result
+    assert not (root.parent / 'inspect.epub' / 'book.json').exists()
+    assert detect_language(['się nie jest jak dla przez ' * 1000,
+                            *(['the and that with from this ' * 1000] * 4)])[0] == 'en'
+
+
 def test_setup_concurrent_saves_reuse_only_their_own_request_key(api):
     _, root, service, _ = api
     source = service.imports.root / 'parallel-book'
