@@ -95,6 +95,8 @@ class ReaderContext:
         if not path.is_file():
             raise PipelineError("Reader project has no book.json.")
         book = read_json(path)
+        from .processing import effective_book
+        book = effective_book(book, self.root, include_dormant=True)
         if not isinstance(book.get("chapters"), list) or not isinstance(book.get("chunks"), list):
             raise PipelineError("book.json has no valid chapter/chunk manifest.")
         if not isinstance(book.get("source_fingerprint"), str) or not book["source_fingerprint"]:

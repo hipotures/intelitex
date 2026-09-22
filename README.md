@@ -889,7 +889,7 @@ separate XDG state database; restarting the server marks unfinished records
 
 ## Tests and limitations
 
-For the separate React/Vite scaffold, FastAPI smoke adapter, and frontend
+For the production React/Vite interface, same-origin Python delivery, and frontend
 installation/build/browser checks, see [web development](web/README.md).
 
 Run:

@@ -1,5 +1,7 @@
 # Terminology Review
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: current main-server Review API, application ReviewRepository/ReviewService,
 ApproveCommand.expected_revision and existing execute_approval. R: v33 full-page
 2-panel Review. For detailed geometry/actions read supplied contract section 11.
@@ -43,11 +45,13 @@ The visible Confirm glossary action must not show committed success if only conf
 succeeded. If approval fails, keep the distinct draft-confirmed/not-committed state.
 Never auto-start translation after confirmation or after P1 finishes.
 
-Current `approved` can remain true after editing an already committed draft, while
-`review.current` refers to source/analysis compatibility. Do not assert that either
-proves all current choices are committed. The target stronger reapproval gate is D08:
-change/test the application policy explicitly if authorized; don't silently implement
-it only in a React boolean. Existing dependent-chunk staleness belongs to approval logic.
+D08 is approved: public `approved` is approval freshness, validated in Python against
+the saved Review digest. Historical committed terms/checkpoints remain available.
+The production Confirm glossary control calls the atomic
+`POST /api/workspaces/{id}/review/confirm-and-approve` with the loaded revision.
+The older separate confirmation and approval commands remain compatible.
+Web GET Review/evidence use detached read-only queries, without a project writer lock
+or legacy hydration writes. Explicit prepare remains the migration command.
 
 On 409 busy or revision conflict, preserve draft and reload before explicit reapply.
 Do not silently replace user's custom value or auto-approve a newer revision. Concurrent

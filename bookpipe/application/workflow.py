@@ -5,7 +5,8 @@ from ..profiles import resolve_profile, with_builtin_profiles, with_profiles
 from ..util import PipelineError, digest
 from ..usage import usage_by_unit_report
 from .projects import load_valid_book
-from .review import review_summary
+from .review import review_summary, approval_current
+from ..processing import effective_book, configuration
 from .sessions import ProjectReadScope
 
 
@@ -19,6 +20,9 @@ class WorkflowQueries:
         # Read-only legacy adaptation: effective_settings would migrate on disk.
         raw = files.read_json(root / 'settings.json' if local else self.dependencies.bundle / 'settings.default.json')
         settings, _ = with_profiles(raw)
+        config = configuration(root) if root else {'pass_profiles': {}, 'sections': {}}
+        settings['pass_profiles'] = {**settings.get('pass_profiles', {}),
+                                     **{k: v for k, v in config.get('pass_profiles', {}).items() if v}}
         effective = with_builtin_profiles(settings)
         fields = ('provider', 'model', 'enabled', 'context_size', 'reasoning_effort',
                   'planning_output_reserve', 'max_output_tokens')
@@ -31,7 +35,8 @@ class WorkflowQueries:
         for number in range(1, 6):
             name, value, provenance = resolve_profile(settings, number, project=root)
             resolved[str(number)] = {'name': name, 'provenance': provenance['profile'], **profile(value)}
-        return {'source': 'project' if local else 'defaults',
+        return {'source': 'project' if local else 'defaults', 'revision': digest(config),
+                'assignments': config.get('pass_profiles', {}),
                 'default_profile': settings['default_profile'],
                 'pass_profiles': dict(settings.get('pass_profiles', {})),
                 'profiles': [{'name': name, 'source': 'configured' if name in settings['profiles'] else 'builtin',
@@ -45,7 +50,8 @@ class WorkflowQueries:
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
             book = load_valid_book(root, self.dependencies.plan_fingerprint, files)
-            analyzed, approved = bool(store.get('analysis_done')), bool(store.get('approved'))
+            book = effective_book(book, root)
+            analyzed, approved = bool(store.get('analysis_done')), approval_current(store, files)
             plan = files.read_json(root / 'analysis_plan.json') if files.is_file(root / 'analysis_plan.json') else []
             usage = {unit.unit_id: unit for unit in usage_by_unit_report(root).units}
             analysis = []
@@ -88,7 +94,7 @@ class WorkflowQueries:
             review_current = bool(review is not None and review.get('book_fingerprint') == book['source_fingerprint']
                                   and review.get('analysis_revision') == digest(store.terms()))
             confirmed = bool(review_current and review.get('confirmed') is True)
-            complete = bool(chunks) and all(c['status'] == 'done' for c in chunks)
+            complete = bool(chunks) and all(c['passes']['5']['checkpoint_state'] == 'completed' for c in chunks)
             publication = self.publishing.query_snapshot(root, book, store)
             stage = ('analysis' if not analyzed else 'review' if not approved else
                      'translation' if not complete else 'complete' if publication.current else 'publication')
@@ -106,7 +112,19 @@ class WorkflowQueries:
                 'publish': action('translation_required' if not complete else 'publication_current' if publication.current
                                   else 'publication_not_ready' if publication.state == 'not_ready' else None),
             }
-            return {'stage': stage, 'analysis': {'complete': analyzed, 'planned': bool(plan), 'units': analysis},
+            analysis_done = sum(u['state'] == 'completed' for u in analysis)
+            translated = sum(all(p['checkpoint_state'] == 'completed' for n, p in u['passes'].items() if n == '5') for u in chunks)
+            percent = (100 if publication.current else 32 if analyzed and not approved else 98 if complete else
+                       int(35 + 58 * translated / len(chunks) + .5) if approved and chunks else
+                       32 if analyzed else int(5 + 25 * analysis_done / len(analysis) + .5) if analysis else None)
+            return {'stage': stage, 'progress': {'percent': percent, 'basis': 'Workflow progress — not an ETA',
+                        'analysis': {'completed': analysis_done, 'required': len(analysis),
+                                     'denominator': 'required P1 analysis units'},
+                        'translation': {'completed': translated, 'required': len(chunks),
+                                        'denominator': 'required P5 translation units'}},
+                    'analysis': {'complete': analyzed, 'planned': bool(plan), 'units': analysis,
+                                 'membership_locked': any(k.startswith('pass1/') for k in checkpoints) or
+                                 any(p.pass_no == 1 for u in usage.values() for p in u.passes)},
                     'review': {'prepared': review is not None, 'current': review_current,
                                'revision': digest(review) if review is not None else None,
                                'summary': review_summary(review) if review is not None else None},

@@ -1,5 +1,7 @@
 # Architecture and source map
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: inspected at `2bb9aa2df178355502a7529e460fca12804ef377`. The primary code/doc sources are:
 `bookpipe/server/http.py`, `server/service.py`, `server/serialization.py`,
 `application/workflow.py`, `runtime/`, `docs/server-api.md`, `docs/server-runtime.md`.
@@ -45,11 +47,11 @@ Use deliberate public serializers, not arbitrary dataclass dumps exposing paths.
 
 ## Current versus intended stack
 
-The inspected adapter is `IntelitexHTTPServer(ThreadingHTTPServer)` with JSON/SSE;
-no production SPA is served. FastAPI/Starlette is an intended adapter migration,
-not an accomplished fact. If authorized, migrate behind the same `serve` entrypoint
-with route/security/runtime tests and a single supervisor owner. Never run multiple
-ASGI workers/reload owners against the same registry.
+Production `serve` now uses `server/asgi.py::ASGIServer` (FastAPI/Starlette + Uvicorn),
+serving vetted `web/dist` assets and deep SPA routes alongside the existing API/SSE.
+`server/http.py` remains a compatibility adapter for regression coverage, not a
+second production server. Both use `server/routes.py::dispatch`. One supervisor,
+one ASGI worker, no reload owner. See `docs/web/contract-map.md` for current evidence.
 
 Agreed frontend: React + strict TypeScript + Vite + Tailwind 4 + shadcn primitives
 + TanStack Router/Query under `web/`. Reuse the actual package manager/lockfile.

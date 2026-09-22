@@ -1,5 +1,7 @@
 # Original v33 visual contract
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 Canonical file: `../assets/intelitex_workspace_mockup_v33.html`.
 Run verify-mockup.py first. It must remain exactly 143,061 bytes with SHA-256
 c50fe95eb761ae332171759cfb2ba95fcc996baaa98d9a1471a570f6f54a26a5.
@@ -66,5 +68,5 @@ Unused helper functions in the HTML do not establish an extra visible table colu
 
 F/T/E invalidation after starting P1, the meaning of weighted progress, publication
 Stop availability, draft-workspace persistence and complete Reader/profile editors
-are not solved by copying click handlers. Read D02-D07. No success-shaped placeholder
+are not solved by copying click handlers. D02–D05 are explicitly approved in the decision register; D06–D07 retain their bounded Reader/Settings scope. No success-shaped placeholder
 for absent backend behavior. Any intentional production departure must be documented.

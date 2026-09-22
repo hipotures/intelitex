@@ -479,6 +479,15 @@ def test_malformed_protocol_and_launch_failure_do_not_leave_active_jobs(runtime)
     supervisor.command_factory = lambda spec: [sys.executable, "-u", str(HELPER), "malformed"]
     failed = terminal(supervisor, supervisor.start(spec(root)))
     assert failed.state == "failed" and failed.error["type"] == "WorkerProtocolError"
+    # Terminal state is visible before supervised process/descendant cleanup can
+    # release ownership. A new mutating job must wait for that release.
+    if supervisor.owns_project(root / "a"):
+        with pytest.raises(JobConflict):
+            supervisor.start(spec(root))
+    for owned in list(supervisor.owned.values()):
+        if owned.monitor:
+            owned.monitor.join(timeout=5)
+    assert not supervisor.owns_project(root / "a")
     supervisor.command_factory = lambda spec: [str(root / "nonexistent-executable")]
     failed = supervisor.start(spec(root))
     assert failed.state == "failed" and failed.error["type"] == "WorkerLaunchError"

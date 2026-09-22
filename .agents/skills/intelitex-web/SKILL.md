@@ -13,7 +13,7 @@ entire product. Read supporting references only when relevant. Do not load the
 
 1. Read repository instructions, `git status`, current HEAD, and the relevant code.
    Preserve unrelated work. Never reset to this skill's recorded baseline.
-2. Read [authority and unresolved decisions](references/decisions-and-provenance.md),
+2. Read [authority and product decisions](references/decisions-and-provenance.md),
    [architecture](references/architecture.md), and [state model](references/pipeline-state-model.md).
 3. Read the references selected below. Inspect actual request/response serializers
    before wiring a control. A target contract is not an existing endpoint.
@@ -48,7 +48,7 @@ entire product. Read supporting references only when relevant. Do not load the
   within authorized scope, through tested application logic, or report it blocked.
 - Use React, strict TypeScript, Vite, Tailwind 4, source-owned shadcn primitives,
   TanStack Router and Query for the agreed frontend. Reuse existing scaffold and
-  lockfile. FastAPI is the intended delivery adapter, not proof of current migration.
+  lockfile. FastAPI is now the production delivery adapter; verify current code and shared route dispatch.
 - Maintain one production HTTP/supervisor process with independent worker processes.
   No per-book HTTP server, second supervisor, browser-owned execution, or Node backend.
 - P1 analyzes the eligible book globally, then stops for human Review and approval.

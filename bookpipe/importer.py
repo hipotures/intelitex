@@ -147,6 +147,9 @@ def reading_order(root: Path, opf_path: Path | None = None) -> tuple[list[Path],
         meta["opf"] = str(opf_path.relative_to(root))
         title = doc.find(".//{*}metadata/{*}title")
         meta["title"] = title.text if title is not None else root.name
+        meta['creators'] = [(node.text or '').strip() for node in doc.findall('.//{*}metadata/{*}creator') if (node.text or '').strip()]
+        language = doc.find('.//{*}metadata/{*}language')
+        meta['language'] = (language.text or '').strip() or None if language is not None else None
         # NCX and EPUB3 navigation links retain fragment targets for section splits.
         for item in manifest.values():
             is_ncx = item.get("media-type") == "application/x-dtbncx+xml"

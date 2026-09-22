@@ -1,10 +1,10 @@
 # Authority, provenance, and unresolved decisions
 
-## Verified baseline
+## Audited baseline and current implementation
 
 Inspected repository: `hipotures/intelitex`, main commit `2bb9aa2df178355502a7529e460fca12804ef377`, titled
 `Complete single-server workspace workflow API`. Re-read actual HEAD before work.
-The live code is newer than the `1f85da8` baseline in the supplied implementation
+The implementation task began at `b0c40dfaf90add7340da2b992d4e18f7b473383e`; current additions are audited in `api-baseline.json` and `docs/web/contract-map.md`. The live code is newer than the `1f85da8` baseline in the supplied implementation
 prompt. Do not resurrect that older route inventory or undo newer work.
 
 The initial skill is documentation/tooling only. It does not install the frontend,
@@ -41,19 +41,23 @@ and the current API has cancellation plus new resumable jobs.
 | ID | Topic | What is supported | What must not be silently decided |
 | --- | --- | --- | --- |
 | D01 | P1/review/translation | Global eligible-book P1, human approval, then P2-P5 per chunk | No auto-approval or per-section P1-to-P5 loop |
-| D02 | F/T/E | Three modes and immediate acknowledged saves are required by v33; no mode-edit API in baseline | Earlier proposals conflict: freeze all edits after start vs allow stopped T/E changes. Do not choose a new invalidation/deletion policy. Implement only an explicitly approved backend plan-edit contract; otherwise report this control blocked |
-| D03 | Progress | The mock uses weighted workflow values; one brief preserves backend-calculated weights, another proposes phase-only percentage | Choose neither as an unlabelled universal truth. Use actual backend counters, explicit denominator and unknown/indeterminate fallback until a product decision authorizes a percentage model |
-| D04 | Publishing control | Runtime cancellation exists; automatic publish remains in the translation worker | One draft disables Publishing, another exposes Stop. Do not introduce a conflicting primary-action policy without approval; do not submit duplicate publish |
-| D05 | Draft library | Mock opens a draft before Prepare | Real API creates a new destination during POST /api/imports and refuses preexisting directories. Do not precreate it in React or invent draft persistence |
+| D02 | F/T/E — approved | Before the first persisted P1 attempt, modes may change freely. Afterwards Full membership is frozen (`analysis_membership_locked`); idle T↔E remains allowed. | Reject mutations during jobs/cleanup; recompute required work/readiness and publication currency. Retain dormant evidence and validate reuse. |
+| D03 | Workflow progress — approved | Backend calculates the implementation contract’s weighted percentage and returns its counts and denominator. | Label as workflow progress, never ETA; unknown is null. Detail screens retain actual counts. |
+| D04 | Publishing control — approved | Automatic publication keeps the primary action disabled as `Publishing…`. | No Pause or duplicate publish; terminal failure exposes backend publication retry without repeating translation. |
+| D05 | Draft library — approved | Opening an unassociated source atomically creates/resolves one backend persisted draft before Prepare, idempotent across tabs. | Draft metadata must not import, invoke models, or fabricate book.json, sections or checkpoints. Prepare performs real import. |
 | D06 | Reader expansion | Real Reader/context/markers exist; v33 shows a placeholder shell | Preserve existing behavior; do not invent annotation types, comment lists, AI tools or a complete Reader redesign |
 | D07 | Settings | Read-only safe profile queries exist; mock Test/Add profile are simulations | Do not invent an editor, live diagnostic contract, credentials or automatic model request |
-| D08 | Approval freshness | `approved` is a committed flag; `review.current` means source/analysis revision matches | It is not proof the newest edited choices were approved. A target requiring reapproval before further translation needs explicit backend validation, not a fabricated client boolean |
-| D09 | Intended HTTP framework | FastAPI/Starlette was chosen for future delivery; baseline still uses http.server | Do not pretend the migration is installed or start two supervisors. Migration is a separate tested, authorized step |
+| D08 | Approval freshness — approved | Terminology edits after approval invalidate freshness; Python blocks translation until latest revision is confirmed and committed again. | Historical approved flag is insufficient. Retain checkpoints; application validation decides downstream staleness. |
+| D09 | HTTP framework | Authorized production migration now uses FastAPI/Starlette behind the existing serve entrypoint. | One supervisor/ASGI worker; compatibility HTTP remains for regression coverage. |
 
 For a task touching a U entry: inspect for a newer accepted implementation/decision,
 record the concrete source, then proceed. If none exists, state the exact decision
 needed and continue unrelated safe work. A disabled control with an explanation is
 an honest temporary state, not completion of that required feature.
+
+## Approved product decision provenance
+
+On 2026-09-22 the task owner explicitly resolved D02, D03, D04, D05 and D08 in the implementation conversation, including the exact lifecycle, progress, publishing, draft and approval requirements above. These are approved policies, not unresolved proposals. They take precedence over historical contradictory wording in the immutable supplied handoff. The handoff and original v33 bytes remain unchanged. `tests/test_web_production.py` exercises these boundaries; implementation and verification evidence is recorded in `docs/web/contract-map.md`.
 
 ## Updating the skill
 

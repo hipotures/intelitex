@@ -1,5 +1,7 @@
 # Verified API contract and remaining UI gaps
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: `2bb9aa2df178355502a7529e460fca12804ef377`. Inspected actual Handler dispatch and WorkflowQueries, with the
 repository's `docs/server-api.md` and `docs/server-runtime.md`. The current repository
 document is the canonical detailed schema. This is a task-oriented index, not a
@@ -86,10 +88,9 @@ Settings return source,default_profile,pass_profiles,profiles,resolved_passes,
 whole_section_char_limit,memory_tokens. Allowlisted profile fields expose identity,
 provider/model, enabled/context/reasoning/thinking/planning/output settings and
 provenance. Endpoints, credentials, executable paths and local model paths are not public.
-Configuration is **read-only** except existing per-job selection/import options.
-Publication reports readiness/currentness/metadata, not an output filesystem path
-or a downloadable URL. A download link is a missing backend capability, not string
-concatenation. Do not restore the prior path exposure.
+Profile definitions remain read-only. Workspace/pass assignments use revision-controlled
+PATCH routes below. Publication reports safe metadata, never an output filesystem path;
+the dedicated download route revalidates currency and exact EPUB bytes.
 
 ### Error envelope
 
@@ -110,22 +111,41 @@ concatenation. Do not restore the prior path exposure.
 Do not replace these with invented validation_error/forbidden_origin codes without
 an explicit compatibility mapping. Messages are safe static text; no raw traceback.
 
-## Required v33 capabilities NOT established by this baseline
+## Current production additions (audited working tree)
 
-Rich library/cover metadata; persisted drafts; source section preview/edit; F/T/E
-mutation and plan revision/invalidation; default/per-section profile mutation;
-archive/restore; artifact download; full current P2-P4 checkpoint projection;
-server/registry identity epochs; persisted idempotency receipts; richer settings
-editing/testing. Existing capabilities booleans do not imply any of these.
+The source hashes/symbols and verification are maintained in `api-baseline.json` and
+`docs/web/contract-map.md`. `server/asgi.py` is the production adapter; `routes.dispatch`
+is shared with the compatibility HTTP adapter.
 
-Some older prompts list `/api/library`, POST `/api/workspaces`, PATCH section/settings,
-`?archived=true`, and download paths as targets. They are **not current endpoints**;
-non-event query parameters are currently rejected. Do not pretend they work.
+- GET `/api/library`: configured flag, safe source metadata and workspace linkage.
+- POST `/api/workspaces`: source_id, optional request_key; durable idempotent draft.
+- POST `/api/workspaces/{id}/prepare`: optional request_key/profile/pass_profiles; supervised real import.
+- PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
+  allow_model_change:true only after explicit user confirmation.
+- PATCH `/api/workspaces/{id}/settings`: revision, pass_profiles, allow_model_change.
+- GET `/api/workspaces/{id}/sections/{section}/{page}`: bounded text-only preview.
+- POST `/api/workspaces/{id}/archive` or `/restore`: lifecycle revision.
+- POST `/api/workspaces/{id}/review/confirm-and-approve`: exact Review revision, atomic confirmation/approval.
+- GET `/api/workspaces/{id}/preparation`: actual frozen-manifest and source-package checks.
+- GET `/api/workspaces/{id}/activity`: bounded sanitized durable history.
+- GET `/api/workspaces/{id}/publication/download`: verified current EPUB bytes only.
+- GET `/api/requests/{key}`: accepted job receipt in this server scope.
+- Job/import creation supports persisted request_key matching; mismatched reuse is 409.
 
-For each gap, record UI requirement, actual service/schema, proposed narrow backend
-addition, permissions/revisions, tests and decision status. Implement only with scope
-authorization. No fake fallback. Never duplicate a route when newer code already has
-an equivalent. API-gap work is not permission to redesign pipeline semantics.
+Pipeline adds weighted progress/basis/counts, section aggregates, membership lock,
+configuration revision, metadata, actual artifact availability, busy/cleanup and
+publishing projections, latest job, and historical model provenance. Profiles add a
+persistent palette index. Runtime projections remain separate from checkpoint truth.
+
+New 409 codes: analysis_membership_locked, config_revision_conflict,
+lifecycle_revision_conflict, model_change_confirmation_required, workspace_archived,
+request_key_conflict. Existing codes and mutation revisions are retained.
+
+P2–P4 retained receipts remain explicitly unverified; they are never relabeled current
+complete. Profile-definition editing and model diagnostics have no public production
+capability and remain unavailable. No arbitrary paths, uploads, credentials, source
+HTML rendering or generic artifact browser were added. Non-event query parameters
+remain rejected.
 
 `check-api-contract.py` guards the inspected source files by Git blob SHA. It does
 not verify every route/payload, running service, application symbol, or current CI.

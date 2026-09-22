@@ -10,6 +10,7 @@ from .projects import ProjectsService
 from .review import ReviewService
 from .reader import ReaderService
 from .workflow import WorkflowQueries
+from .web import WebWorkspaceService
 
 
 class Application:
@@ -25,3 +26,4 @@ class Application:
         self.exports = ExportsService(dependencies, sink)
         self.operations = OperationsService(dependencies, sink)
         self.workflow = WorkflowQueries(dependencies, self.publishing)
+        self.web = WebWorkspaceService(dependencies)

@@ -11,6 +11,8 @@ from ..util import PipelineError, atomic_json, digest, read_json
 from .commands import AnalyzeCommand, TranslateCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .projects import effective_settings, load_valid_book, validate_pass_profiles
+from .review import approval_current
+from ..processing import effective_book, accepts_web_model_change
 from .results import PipelineResult
 from .sessions import OperationScope
 
@@ -36,6 +38,8 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
     runner = Runner(store, client, settings, progress)
     done = sum(bool(store.get("analysis:" + unit["id"])) for unit in plan)
     for unit_index, unit in enumerate(plan, 1):
+        if hasattr(client, 'select_section'):
+            client.select_section(unit['chapter_id'])
         progress.emit(ProgressEvent(
             kind="analysis_progress", current=done, total=len(plan), values={"pass_no": 1},
         ))
@@ -101,7 +105,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
                       progress: ProgressSink, limit: int) -> PipelineResult:
     if not store.get("analysis_done"):
         raise PipelineError("Run analyze to completion first. Translation does not trigger analysis implicitly.")
-    if not store.get("approved"):
+    if not approval_current(store):
         raise PipelineError("Review terms.review.json and run approve before translation.")
     if type(limit) is not int or limit < 0:
         raise PipelineError("--continue must be 0 (all) or a positive number of unfinished chunks.")
@@ -111,6 +115,8 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
     done = len(book["chunks"]) - len(pending)
     by_chapter = {chapter["id"]: chapter for chapter in book["chapters"]}
     for run_index, chunk in enumerate(todo, 1):
+        if hasattr(client, 'select_section'):
+            client.select_section(chunk['chapter_id'])
         chapter = by_chapter[chunk["chapter_id"]]
         progress.emit(ProgressEvent(
             kind="translation_progress", current=done, total=len(book["chunks"]),
@@ -211,6 +217,7 @@ class PipelineService:
         root, scope = self._resources(command)
         with scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            book = effective_book(book, root, phase='analysis')
             settings = effective_settings(
                 self.dependencies.bundle, root, command, files=self.dependencies.files,
             )
@@ -227,7 +234,7 @@ class PipelineService:
                     "provider": selected.provider, "requested_model": selected.model,
                     "profile": selected.profile_name,
                 }
-            check_model(client, book, command.allow_model_change, self.progress)
+            check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
             return execute_analyze(
                 scope.store, book, client, settings, self.progress, self.dependencies.files,
             )
@@ -237,6 +244,10 @@ class PipelineService:
         became_complete = False
         with scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            if not approval_current(scope.store, self.dependencies.files):
+                raise PipelineError('Confirm and approve the latest terminology before translation.')
+            book = effective_book(book, root)
+            scope.store.register_chunks(book)
             settings = effective_settings(
                 self.dependencies.bundle, root, command, files=self.dependencies.files,
             )
@@ -253,7 +264,7 @@ class PipelineService:
                     "provider": selected.provider, "requested_model": selected.model,
                     "profile": selected.profile_name,
                 }
-            check_model(client, book, command.allow_model_change, self.progress)
+            check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
             result = execute_translate(
                 scope.store, book, client, settings, self.progress, command.chunk_limit,
             )

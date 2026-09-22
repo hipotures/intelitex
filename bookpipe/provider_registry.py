@@ -8,6 +8,7 @@ from .codex_transport import CodexAppServerClient
 from .openai_transport import OpenAIResponsesClient
 from .profiles import resolve_profile
 from .util import PipelineError, digest
+from .processing import configuration
 
 
 class ProviderPool:
@@ -31,6 +32,13 @@ class ProviderPool:
         self.pass_clients: dict[int, Any] = {}
         self.identity: dict[str, Any] = {}
         self.planning_pass = 1
+        self.web_config = configuration(project)
+        self.section_profiles = {}
+
+    def select_section(self, section_id):
+        self.section_profiles = {int(k): v for k, v in self.web_config.get('sections', {}).get(
+            section_id, {}).get('profiles', {}).items() if v is not None}
+        self.pass_clients.clear()
 
     def _llama_settings(self, profile: dict[str, Any], name: str) -> dict[str, Any]:
         options = profile.get("options", {})
@@ -55,7 +63,8 @@ class ProviderPool:
             return self.pass_clients[pass_no]
         name, profile, provenance = resolve_profile(
             self.settings, pass_no, command_profile=self.command_profile,
-            command_pass_profiles=self.command_pass_profiles, project=self.project,
+            command_pass_profiles={**{int(k): v for k, v in self.web_config.get('pass_profiles', {}).items() if v},
+                                   **self.command_pass_profiles, **self.section_profiles}, project=self.project,
         )
         profile.update({"profile_name": name, "resolved_profile": {**profile, "selection_provenance": provenance},
                         "project_root": str(self.project)})

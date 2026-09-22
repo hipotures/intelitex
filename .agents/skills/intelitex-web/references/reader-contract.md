@@ -1,5 +1,7 @@
 # Reader integration
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: ReaderService/ReaderContext/MarkerRepository and real main-server Reader routes.
 R: v33 Reader shell is a deliberately incomplete visual placeholder, not a spec to
 replace existing Reader functionality with three fake paragraphs.

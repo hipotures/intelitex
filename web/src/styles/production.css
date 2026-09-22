@@ -1,0 +1,99 @@
+/* Production semantics and accessible native elements added to v33 geometry. */
+body { line-height: normal; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; text-decoration: none; }
+button { text-align: left; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.connection-status { font-size: 11px; color:var(--amber); white-space:nowrap; }
+.connection-status.live { color:var(--green); }
+.cover,.mini-cover { background: var(--cover-1); }
+.book-card:nth-child(5n+2) .cover { background:var(--cover-2); }
+.book-card:nth-child(5n+3) .cover { background:var(--cover-3); }
+.book-card:nth-child(5n+4) .cover { background:var(--cover-4); }
+.book-card:nth-child(5n+5) .cover { background:var(--cover-5); }
+.command > button { display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap; }
+.row-actions .command,.row-actions .command > button { width:100%; }
+.command .notice { font-size:12px;white-space:normal; }
+progress { appearance:none; width:100%; height:6px; border:0; border-radius:20px; overflow:hidden; background:var(--panel-3); }
+progress::-webkit-progress-bar { background:var(--panel-3); }
+progress::-webkit-progress-value { background:var(--accent); border-radius:20px; }
+progress::-moz-progress-bar { background:var(--accent); }
+progress:indeterminate { opacity:.4; }
+.phase-sub { display:block; }
+.section-open { background:transparent;border:0;cursor:pointer;padding:0;text-align:left; }
+.section-open.fallback { color:var(--text-dim);font-style:italic; }
+.pass-mark.done:not(.has-model) { color:var(--green);background:var(--green-soft);border-color:var(--green); }
+.pass-mark.na { border-color:transparent; }
+.pass-mark.retained,.pass-mark.stale,.pass-mark.partial { color:var(--amber);border-color:var(--amber); }
+.pass-mark.error { color:var(--red);border-color:var(--red); }
+.model-grid { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px; }
+.model-slot { min-width:0; }
+.model-slot label { display:block;font-size:12px;color:var(--text-dim);margin-bottom:8px; }
+select,input,textarea { background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px;max-width:100%; }
+.model-slot select { width:100%;font-size:12px; }
+.overlay-dialog { color:var(--text);padding:0; }
+.overlay-dialog::backdrop { background:rgba(0,0,0,.5);backdrop-filter:blur(2px); }
+dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
+dialog.compact-modal { width:min(520px,94vw); }
+dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw;right:0;left:auto;transform:none; }
+.drawer-model-grid { display:flex;flex-direction:column;gap:8px; }
+.preview-pagination { display:flex;gap:10px;align-items:center;margin-top:16px;font-size:12px; }
+.activity-stream { max-height:250px;overflow:auto; }
+.activity-line { display:flex;gap:15px;font-size:12px;line-height:1.8; }
+.activity-line time { color:var(--text-dim);flex-shrink:0; }
+.phase-kv { display:grid;grid-template-columns:minmax(95px,1fr) 2fr;gap:10px;font-size:13px; }
+.phase-kv dt { color:var(--text-dim); }
+.phase-kv dd { margin:0;overflow-wrap:anywhere; }
+.diagnostic-scroll { overflow:auto; }
+.download { display:inline-flex;margin-top:16px; }
+.reader-book { display:block; }
+.reader-controls { display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;margin-bottom:24px; }
+.reader-selection { position:sticky;bottom:12px;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:12px;padding:12px;display:flex;gap:8px;flex-wrap:wrap;box-shadow:var(--shadow); }
+.reader-selection > span { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.reader-heading { font-weight:700; }
+.reader-markers { margin-top:24px;font-size:13px; }
+.reader-markers > div { display:flex;justify-content:space-between;gap:10px;margin:10px 0; }
+.settings-section > .subtitle { margin:14px 0; }
+@media (max-width:820px) { .connection-status { display:none; }.model-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.phase-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.reader-content { padding:24px; }.workspace-heading > div { min-width:0; } }
+@media (max-width:720px) { .model-config-row { grid-template-columns:1fr; }.notice { flex-wrap:wrap; }.reader-page { font-size:17px; } }
+h1,h2,h3 { font-weight:700; }
+.processing-switch button { text-align:center; }
+.review-term-row { display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line); }
+.review-term-sub,.candidate-title,.candidate-note { display:block; }
+.pass-cell { text-align:center; }
+
+[data-palette="0"] { --model-color:#5AA9FF; }
+[data-palette="1"] { --model-color:#7C5CFF; }
+[data-palette="2"] { --model-color:#2FD6A1; }
+[data-palette="3"] { --model-color:#F5B942; }
+[data-palette="4"] { --model-color:#FF7A59; }
+[data-palette="5"] { --model-color:#E56BCE; }
+[data-palette="6"] { --model-color:#4DD0E1; }
+[data-palette="7"] { --model-color:#9CCC65; }
+[data-palette="8"] { --model-color:#FF8A80; }
+[data-palette="9"] { --model-color:#B39DDB; }
+[data-palette="10"] { --model-color:#26C6DA; }
+[data-palette="11"] { --model-color:#D4A24C; }
+[data-palette="12"] { --model-color:#F06292; }
+[data-palette="13"] { --model-color:#64B5F6; }
+[data-palette="14"] { --model-color:#AED581; }
+[data-palette="15"] { --model-color:#FFB74D; }
+[data-palette="16"] { --model-color:#7986CB; }
+[data-palette="17"] { --model-color:#4DB6AC; }
+.categories { margin-bottom:12px; }
+
+.profile-swatch { background:var(--model-color,var(--text-dim));vertical-align:middle; }
+
+.section-header > .subtitle { margin:0; }
+.book-card { display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start; }
+/* v33's two off-canvas drawers cast this edge shadow even while closed. Native
+   dialogs are unmounted, so preserve that decoration without hidden focus targets. */
+body::before,body::after { content:"";position:fixed;top:0;right:0;height:100vh;width:min(520px,94vw);transform:translateX(105%);box-shadow:-18px 0 50px rgba(0,0,0,.28);pointer-events:none;z-index:70; }
+body:has(dialog.drawer[open])::before { display:none; }
+.usage-table { min-width:820px; }.usage-table th:first-child { width:26%; }.usage-table th:nth-child(2) { width:18%; }.usage-table th:nth-child(3) { width:14%; }
+.pass-summary { min-width:760px; }.pass-summary th:nth-child(2) { width:24%; }
+.prepare-structure th:nth-child(1) { width:42%; }.prepare-structure th:nth-child(2) { width:24%; }.prepare-structure th:nth-child(3) { width:22%; }
+.phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }
+.execution-diagnostics { max-height:320px;overflow:auto;font-size:12px;overflow-wrap:anywhere; }.execution-diagnostics details { padding:8px 0;border-bottom:1px solid var(--line); }.execution-diagnostics p { margin-top:7px;color:var(--text-dim); }
+.activity-card-head { width:100%;background:transparent;cursor:pointer;font-size:14px; }

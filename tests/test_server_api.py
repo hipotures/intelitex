@@ -26,8 +26,8 @@ from test_runtime import HELPER, read_sse, request, running, terminal
 from test_pipeline import server as provider_server, make_epub_source
 
 
-@pytest.fixture
-def api(tmp_path):
+@pytest.fixture(params=['compat', 'production'])
+def api(tmp_path, request):
     sources, root = tmp_path / 'sources', tmp_path / 'workspaces'
     sources.mkdir(); root.mkdir()
     source = sources / 'book'
@@ -40,7 +40,9 @@ def api(tmp_path):
     supervisor = JobSupervisor(registry, root, command_factory=lambda spec: [sys.executable, '-u', str(HELPER), 'hold'],
                                interrupt_grace=.3, terminate_grace=.2)
     service = ServerService(app, WorkspaceQueries(app.projects, root), supervisor, import_root=sources)
-    server = IntelitexHTTPServer(('127.0.0.1', 0), service)
+    from bookpipe.server.asgi import ASGIServer
+    adapter = ASGIServer if request.param == 'production' else IntelitexHTTPServer
+    server = adapter(('127.0.0.1', 0), service)
     thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': .01})
     thread.start()
     try:
@@ -240,13 +242,17 @@ def test_settings_are_read_only_and_allowlisted(api):
 
 
 MUTATIONS = [
+    ('POST', '/api/workspaces'), ('POST', '/api/workspaces/book/prepare'),
+    ('PATCH', '/api/workspaces/book/settings'), ('PATCH', '/api/workspaces/book/sections/ch0001'),
+    ('POST', '/api/workspaces/book/archive'), ('POST', '/api/workspaces/book/restore'),
+    ('POST', '/api/workspaces/book/review/confirm-and-approve'),
     ('POST', '/api/imports'), ('POST', '/api/workspaces/book/review/prepare'),
     ('PATCH', '/api/workspaces/book/review/terms/T000001'),
     ('POST', '/api/workspaces/book/review/bulk-review'), ('POST', '/api/workspaces/book/review/confirmation'),
     ('POST', '/api/workspaces/book/approve'), ('POST', '/api/workspaces/book/reader/context'),
     ('POST', '/api/workspaces/book/reader/markers'), ('DELETE', '/api/workspaces/book/reader/markers/M000001'),
 ]
-READS = ['/api/profiles', '/api/capabilities', '/api/import-sources', '/api/workspaces/book/pipeline',
+READS = ['/api/library', '/api/requests/unknown', '/api/workspaces/book/preparation', '/api/workspaces/book/activity', '/api/workspaces/book/sections/ch0001/0', '/api/workspaces/book/publication/download', '/api/profiles', '/api/capabilities', '/api/import-sources', '/api/workspaces/book/pipeline',
          '/api/workspaces/book/review', '/api/workspaces/book/review/terms/T000001/evidence',
          '/api/workspaces/book/reader', '/api/workspaces/book/reader/progress',
          '/api/workspaces/book/reader/markers', '/api/workspaces/book/reader/chapters/ch0001',

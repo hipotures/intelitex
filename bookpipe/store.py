@@ -46,6 +46,19 @@ class Store:
         with self.db:
             self.set("analysis_done", True)
 
+    def save_approval_revision(self, revision):
+        with self.db:
+            self.set('approval_review_digest', revision)
+
+    def mark_chunks_stale(self, identifiers):
+        with self.db:
+            self.db.executemany("UPDATE chunks SET status='stale' WHERE id=? AND status='done'", [(i,) for i in identifiers])
+
+    def reset_unattempted_analysis(self):
+        with self.db:
+            self.set('analysis_done', False)
+            self.set('approved', False)
+
     def get(self, key: str, default=None):
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else default

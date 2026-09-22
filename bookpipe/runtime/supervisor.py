@@ -7,6 +7,7 @@ import sys
 import threading
 import uuid
 
+from ..application.imports import RequestConflict
 from .events import EventBroker
 from .models import ACTIVE, Job, JobSpec, ImportJobSpec, parse_spec, now
 from .processes import descendants, enable_child_reaping, reap_descendants, signal_descendants, signal_worker
@@ -55,6 +56,10 @@ class JobSupervisor:
         with self.lock:
             return next((j for j in self.list() if j.project == str(project.resolve()) and j.state in ACTIVE), None)
 
+    def owns_project(self, project: Path) -> bool:
+        with self.lock:
+            return any(self.get(ident).project == str(project.resolve()) for ident in self.owned)
+
     def snapshot(self, *, workspace_id: str | None = None, job_id: str | None = None) -> dict:
         with self.lock:
             jobs = [j.public() for j in self.list()
@@ -67,19 +72,25 @@ class JobSupervisor:
         self.broker.publish(job_id, {"kind": "job_state", "values": {"state": changes["state"]}})
         return self.get(job_id)
 
-    def start(self, spec: JobSpec | ImportJobSpec) -> Job:
+    def start(self, spec: JobSpec | ImportJobSpec, *, request_key=None, request_fingerprint=None) -> Job:
         # Revalidate at launch too, including symlink containment.
         spec = parse_spec(asdict(spec))
         if spec.workspace_root != self.workspace_root:
             raise ValueError("Wrong workspace root.")
         with self.lock:
+            from ..util import digest
+            fingerprint = request_fingerprint or digest(asdict(spec))
+            if request_key is not None:
+                previous = self.registry.request(self.workspace_root, request_key, fingerprint)
+                if previous is not None:
+                    return previous
             if self.closing:
                 raise JobConflict("Server is shutting down.")
-            if self.active_for_project(Path(spec.project)):
+            if self.active_for_project(Path(spec.project)) or self.owns_project(Path(spec.project)):
                 raise JobConflict("Workspace already has an active mutating job.")
             job = Job(uuid.uuid4().hex, spec.workspace_root, spec.workspace_id,
                       spec.project, spec.operation, started_at=now())
-            self.registry.save(job)
+            self.registry.reserve(job, request_key, fingerprint)
             self.broker.publish(job.job_id, {"kind": "job_state", "values": {"state": "starting"}})
             try:
                 proc = subprocess.Popen(self.command_factory(spec), stdin=subprocess.PIPE, stdout=subprocess.PIPE,

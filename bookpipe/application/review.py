@@ -102,6 +102,28 @@ class ReviewConflict(PipelineError):
     """The draft changed since the caller loaded it."""
 
 
+def approval_current(store, files=None):
+    if not store.get('approved'):
+        return False
+    path = store.root / 'terms.review.json'
+    if not (files.is_file(path) if files else path.is_file()):
+        return store.get('approval_review_digest') is None
+    review = files.read_json(path) if files else read_json(path)
+    committed = store.get('approval_review_digest')
+    if committed is not None:
+        return digest(review) == committed
+    # Legacy approvals have no receipt. Validate actual decisions against committed terms.
+    terms = {t['id']: t for t in store.terms()}
+    if not review.get('confirmed') or len(terms) != len(review.get('terms', [])):
+        return False
+    for entry in review.get('terms', []):
+        choice = str(entry.get('custom', '')).strip() or next(
+            (c['text'] for c in entry.get('candidates', []) if c.get('number') == entry.get('select')), None)
+        if entry.get('id') not in terms or choice != terms[entry['id']]['choice']:
+            return False
+    return True
+
+
 class ReviewRepository:
     """Session-confined draft service; mutations hold one mutex end to end."""
 
@@ -306,6 +328,20 @@ class ReviewService:
         with self.open_session(project) as session:
             return session.load()
 
+    def query(self, project: Path, term_id=None):
+        """Detached atomic-file/read-only evidence query; never takes a writer lock."""
+        root = project.resolve()
+        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        review = self.dependencies.files.read_json(root / 'terms.review.json')
+        if not isinstance(review.get('terms'), list):
+            raise PipelineError('Invalid review terms.')
+        if term_id is None:
+            return {**review, '_revision': digest(review)}
+        term = next((t for t in review['terms'] if t.get('id') == term_id), None)
+        if term is None:
+            raise KeyError(term_id)
+        return EvidenceReader(root).for_term(term)
+
     def repository(self, project: Path) -> ReviewRepository:
         """Detached facade: each call locks, checks revision and releases resources."""
         root = project.resolve()
@@ -315,7 +351,7 @@ class ReviewService:
         return ReviewRepository(root / "terms.review.json", self.dependencies.files,
                                 lambda: self.dependencies.project_lock(root))
 
-    def approve(self, command: ApproveCommand) -> ApprovalResult:
+    def approve(self, command: ApproveCommand, *, confirm_review=False) -> ApprovalResult:
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
@@ -323,17 +359,23 @@ class ReviewService:
                 raise PipelineError("Finish analysis before approving terminology.")
             return execute_approval(
                 scope.store, book["source_fingerprint"], command.accept_defaults,
-                self.dependencies.files, expected_revision=command.expected_revision,
+                self.dependencies.files, expected_revision=command.expected_revision, confirm_review=confirm_review,
             )
 
 
-def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None, *, expected_revision=None) -> ApprovalResult:
+def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None, *, expected_revision=None, confirm_review=False) -> ApprovalResult:
     """Validate and commit the existing draft without merging draft and DB state."""
     path = store.root / "terms.review.json"
     if not (files.exists(path) if files else path.exists()):
         raise PipelineError("Run analyze first; no terms.review.json exists.")
     review = files.read_json(path) if files else read_json(path)
     ReviewRepository._check_revision(review, expected_revision)
+    if confirm_review:
+        for term in review.get('terms', []):
+            ReviewRepository._check_choice(term)
+            if term.get('reviewed') is not True:
+                raise PipelineError('Review every term before confirming.')
+        review['confirmed'] = True
     stored = store.terms()
     if review.get("book_fingerprint") != fingerprint:
         raise PipelineError("Review belongs to another imported book.")
@@ -372,4 +414,6 @@ def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None,
          "polish": term["choice"]}
         for term in store.terms()
     ]})
+    # Written last: a crash during approval leaves freshness false, never false success.
+    store.save_approval_revision(digest(review))
     return ApprovalResult(len(decisions), stale)

@@ -1,2 +1,4 @@
-@import "tailwindcss" source(".");
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import './styles/v33.css';
+@import './styles/production.css';

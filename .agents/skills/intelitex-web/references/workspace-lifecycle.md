@@ -1,5 +1,7 @@
 # Workspace lifecycle and operations
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: `server/service.py`, `application/imports.py`, `runtime/models.py`,
 `runtime/worker.py`, `docs/server-api.md`. R: v33 Work/Library/Prepare/Archive controls.
 
@@ -37,27 +39,31 @@ terminal/reconciled state; never remove activity or successful checkpoints on cl
 
 Multiple workspaces can run independently. Stop, errors and browser navigation in
 A must not change B. Busy in one workspace does not disable every page globally.
-If a start response is lost, query active jobs before retransmitting. Existing API
-has no persisted idempotency-key contract; adding one is a backend target, not an
-unsupported extra JSON field. Mutations are not automatically retried.
+If a start response is lost, query active jobs before retransmitting. Job/import payloads accept `request_key`; the runtime registry persists matching payload receipts. GET `/api/requests/{key}` resolves unknown job acknowledgements. Keys cannot be reused for a different payload. Mutations are not automatically retried.
 
 Publication is automatic inside final translation. Explicit publish retries an
 eligible output build without retranslating or contacting a model. Publication
 readiness/currentness, not job success alone, determines completion.
 
-## Target UI lifecycle not fully backed by current routes
+## Implemented web lifecycle
 
-v33 needs a rich source-card library, open/create draft before Prepare, source preview,
-processing modes, model overrides, archive/restore, safe artifact download. These are
-not already provided by import/jobs/capabilities. See API gaps and D02-D07.
+GET `/api/library` returns confined sources and existing workspace links. POST
+`/api/workspaces` accepts source_id and optional request_key, atomically resolving one
+persisted draft/source link. D05 creates no project directory, manifest, checkpoint or
+model request. POST `/api/workspaces/{id}/prepare` performs real supervised import.
+An incomplete failed import is not automatically deleted or overwritten.
 
-Archive means reversible membership, not deleting or moving a book directory. Its
-target must reject active writers, retain checkpoints/settings/markers/publication,
-and restore the same workspace ID. No archived-query parameter or archive endpoint
-exists at the recorded baseline. Do not simulate archive in localStorage or submit
-a made-up POST. Mark this milestone incomplete until authorized backend work lands.
+PATCH sections/settings use current config revision and explicit model-change
+confirmation. D02 rules are documented in the decision register and enforced in the
+application. GET section preview returns bounded escaped-text pages.
 
-Primary actions use backend gates and the source's Prepare/Run/Review/Stop/Retry/
-Publish/Finished/Open labels. UI availability must never widen a false server gate.
-When API facts are missing, show an explicit unavailable/unknown state. Don't silently
-choose the contradictory publishing/progress/mode policies in the earlier drafts.
+POST archive/restore take lifecycle revision. Archive is reversible metadata, rejects
+active imports as well as other active/cleanup ownership, and supports persisted drafts
+without creating a project directory. Draft archive state and revision live in the
+root-owned catalog; prepared projects retain `web.lifecycle.json`. Archive preserves
+all project evidence. Restore does not Run. Reader includes archived books. Drafts
+are not automatically imported by opening them.
+
+D04 is resolved: automatic publication displays disabled Publishing…; no Pause and
+no duplicate publish. Terminal publication failure enables the backend’s publication-only
+retry. Primary actions never infer complete publication from job success.

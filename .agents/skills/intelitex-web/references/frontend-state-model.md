@@ -1,5 +1,7 @@
 # Frontend state and mutation contract
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 Use TanStack Query for authoritative server snapshots; Router/search params for
 navigation/filter identity; local React state for open panels, focus and unsaved input.
 LocalStorage may hold presentation preferences/bookmark offsets, never approval,
@@ -26,8 +28,8 @@ Serialize mutations sharing a whole-review/config revision. Every accepted respo
 updates the token used by the next write. Do not fire independent optimistic writes
 with the same digest or silently retry a conflict with a new digest. Candidate/custom
 input remains local while typing; flush before review/navigation actions. An unknown
-outcome must be reconciled before any retry. Current API has no idempotency receipts;
-required idempotency is a tested backend addition, not an extra unrecognized field.
+outcome must be reconciled before any retry. Current API persists accepted job receipts keyed by request_key; GET /api/requests/{key}
+reconciles an unknown outcome. Keys are scoped to the server/workspace/operation.
 
 On conflict: retain user's input, fetch current server value, explain conflict, require
 explicit reapplication. On validation: field-level message. On network failure: preserve

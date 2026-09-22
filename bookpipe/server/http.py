@@ -3,7 +3,9 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from ..runtime.supervisor import JobConflict
+from ..runtime.supervisor import JobConflict, RequestConflict
+from ..application.web import LifecycleConflict, WorkspaceArchived
+from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired
 from ..util import PipelineError, LockConflict
 from ..application.review import ReviewConflict
 from ..application.reader import MarkerConflict
@@ -102,78 +104,24 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             parts = [unquote(part) for part in parsed.path.split('/')[1:]]
             service = self.server.service
-            supervisor = service.supervisor
             if parsed.query and parts != ['api', 'events']:
                 raise ValueError('Unexpected query parameters.')
-            if mutation:
-                body = self._body()
-                if self.command == 'POST' and parts == ['api', 'imports']:
-                    return self._json(202, service.import_book(body))
-                if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
-                    ident, tail = parts[2], parts[3:]
-                    if self.command == 'POST':
-                        if tail == ['approve']:
-                            return self._json(200, service.approve(ident, body))
-                        for route, operation in [('prepare', 'prepare'), ('bulk-review', 'bulk'), ('confirmation', 'confirmation')]:
-                            if tail == ['review', route]:
-                                return self._json(200, service.review(ident, operation, body))
-                        if tail == ['reader', 'context']:
-                            return self._json(200, service.reader(ident, 'context', body))
-                        if tail == ['reader', 'markers']:
-                            return self._json(200, service.reader(ident, 'create', body))
-                    if self.command == 'PATCH' and len(tail) == 3 and tail[:2] == ['review', 'terms']:
-                        return self._json(200, service.review(ident, 'patch', body, tail[2]))
-                    if self.command == 'DELETE' and len(tail) == 3 and tail[:2] == ['reader', 'markers']:
-                        return self._json(200, service.reader(ident, 'delete', body, tail[2]))
-                if self.command == "POST" and len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "jobs":
-                    return self._json(202, service.start(parts[2], body))
-                if self.command == "POST" and len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "stop":
-                    if body:
-                        raise ValueError("Stop expects an empty object.")
-                    return self._json(202, supervisor.stop(parts[2]).public())
-            else:
-                if parts == ['api', 'capabilities']:
-                    return self._json(200, service.capabilities())
-                if parts == ['api', 'profiles']:
-                    return self._json(200, service.application.workflow.settings())
-                if parts == ['api', 'import-sources']:
-                    return self._json(200, {'sources': service.imports.sources()})
-                if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
-                    ident, tail = parts[2], parts[3:]
-                    if tail == ['pipeline']:
-                        return self._json(200, service.pipeline(ident))
-                    if tail in (['profiles'], ['settings']):
-                        return self._json(200, service.settings(ident))
-                    if tail == ['review']:
-                        return self._json(200, service.review(ident))
-                    if len(tail) == 4 and tail[:2] == ['review', 'terms'] and tail[3] == 'evidence':
-                        return self._json(200, service.review(ident, 'evidence', term_id=tail[2]))
-                    if tail == ['reader']:
-                        return self._json(200, service.reader(ident))
-                    if tail in (['reader', 'progress'], ['reader', 'markers']):
-                        return self._json(200, service.reader(ident, tail[1]))
-                    if len(tail) == 3 and tail[:2] == ['reader', 'chapters']:
-                        return self._json(200, service.reader(ident, 'chapter', identifier=tail[2]))
-                if parts == ["api", "health"]:
-                    return self._json(200, {"status": "ok"})
-                if parts == ["api", "workspaces"]:
-                    return self._json(200, {"workspaces": service.list_workspaces()})
-                if len(parts) == 3 and parts[:2] == ["api", "workspaces"]:
-                    return self._json(200, service.workspace(parts[2]))
-                if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "usage":
-                    return self._json(200, service.usage(parts[2]))
-                if parts == ["api", "jobs"]:
-                    return self._json(200, supervisor.snapshot())
-                if len(parts) == 3 and parts[:2] == ["api", "jobs"]:
-                    return self._json(200, supervisor.get(parts[2]).public())
-                if parts == ["api", "events"]:
-                    return self._events(parse_qs(parsed.query))
-            self._error(404, "not_found", "Route not found.")
+            if not mutation and parts == ['api', 'events']:
+                return self._events(parse_qs(parsed.query))
+            from .routes import dispatch
+            status, value = dispatch(service, self.command, parts, self._body() if mutation else None)
+            return self._json(status, value)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             self.close_connection = True
         except Exception as exc:
             self.close_connection = True
             known = (
+                (RequestConflict, 409, 'request_key_conflict', 'Request key already belongs to another operation.'),
+                (LifecycleConflict, 409, 'lifecycle_revision_conflict', 'Workspace membership changed.'),
+                (WorkspaceArchived, 409, 'workspace_archived', 'Restore this workspace first.'),
+                (AnalysisMembershipLocked, 409, 'analysis_membership_locked', 'P1 membership is frozen.'),
+                (ConfigConflict, 409, 'config_revision_conflict', 'Configuration changed.'),
+                (ModelChangeRequired, 409, 'model_change_confirmation_required', 'Confirm model changes.'),
                 (ReviewConflict, 409, 'review_revision_conflict', 'Review state changed.'),
                 (MarkerConflict, 409, 'marker_revision_conflict', 'Marker state or translated text changed.'),
                 (DestinationConflict, 409, 'destination_exists', 'Import destination already exists.'),

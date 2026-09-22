@@ -1,11 +1,128 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "2bb9aa2df178355502a7529e460fca12804ef377",
+  "inspected_commit": "b0c40dfaf90add7340da2b992d4e18f7b473383e",
+  "audit_date": "2026-09-22",
+  "audit_basis": "Post-implementation working tree before delivery commit; route, application, runtime, frontend binding and tests manually inspected. Commit identity appears in delivery report.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
+  "audited_symbols": {
+    "bookpipe/server/asgi.py": [
+      "create_app",
+      "stream",
+      "ASGIServer"
+    ],
+    "bookpipe/server/routes.py": [
+      "dispatch"
+    ],
+    "bookpipe/server/http.py": [
+      "Handler"
+    ],
+    "bookpipe/server/service.py": [
+      "ServerService",
+      "list_workspaces",
+      "pipeline",
+      "archive",
+      "prepare",
+      "review"
+    ],
+    "bookpipe/server/serialization.py": [
+      "safe_json",
+      "publication",
+      "review"
+    ],
+    "bookpipe/application/catalog.py": [
+      "WebCatalog",
+      "draft",
+      "archive_draft"
+    ],
+    "bookpipe/application/web.py": [
+      "WebWorkspaceService",
+      "configure",
+      "section_summaries",
+      "preparation"
+    ],
+    "bookpipe/application/workflow.py": [
+      "WorkflowQueries",
+      "pipeline"
+    ],
+    "bookpipe/application/review.py": [
+      "approval_current",
+      "ReviewService",
+      "execute_approval"
+    ],
+    "bookpipe/application/pipeline.py": [
+      "PipelineService",
+      "execute_analyze",
+      "execute_translate"
+    ],
+    "bookpipe/application/publishing.py": [
+      "PublishingService",
+      "download",
+      "query_snapshot"
+    ],
+    "bookpipe/application/imports.py": [
+      "workspace_destination",
+      "confined_source",
+      "validate_source_tree"
+    ],
+    "bookpipe/processing.py": [
+      "configuration",
+      "effective_book",
+      "reconcile_membership"
+    ],
+    "bookpipe/runtime/registry.py": [
+      "JobRegistry",
+      "recent_events",
+      "receipt"
+    ],
+    "bookpipe/runtime/supervisor.py": [
+      "JobSupervisor",
+      "owns_project",
+      "start"
+    ],
+    "bookpipe/provider_registry.py": [
+      "ProviderPool",
+      "select_section"
+    ],
+    "bookpipe/reader_context.py": [
+      "ReaderContext"
+    ],
+    "bookpipe/store.py": [
+      "Store",
+      "save_approval_revision",
+      "mark_chunks_stale"
+    ],
+    "docs/server-runtime.md": [
+      "FastAPI"
+    ]
+  },
+  "evidence": [
+    "tests/test_server_api.py",
+    "tests/test_web_production.py",
+    "tests/test_runtime.py",
+    "web/tests/bootstrap.test.mjs",
+    "web/tests/development.test.mjs",
+    "web/tests/recovery.test.mjs"
+  ],
   "source_blobs": {
-    "bookpipe/server/http.py": "2ea54ac21abae6b5714384dde70ee760b4cbd38d",
-    "bookpipe/application/workflow.py": "bc671cc9e89a4c4969c11fd2eba15674201ff73d",
-    "docs/server-runtime.md": "055d9e4774154031efd95b54037e61125a0bae9c"
+    "bookpipe/server/asgi.py": "a71b58194abab206c453972e207cce044ec92854",
+    "bookpipe/server/routes.py": "2d8abfb0c21de69ae0c31b4ff139ad83d3d4b99c",
+    "bookpipe/server/http.py": "7ab93a75c92bd7aae47ed3090c0ec8248dd781b7",
+    "bookpipe/server/service.py": "b9b30d84ff063bc8f98ba7fb63cd8c13afd51192",
+    "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
+    "bookpipe/application/catalog.py": "cbc3820908f6a4e1cc665f67ee6e5e608fdc5032",
+    "bookpipe/application/web.py": "41ae2d549aa4a073843bc427c98485eabae012ae",
+    "bookpipe/application/workflow.py": "eb3833d0d81bb7926b96d924415071bc2a2e6876",
+    "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
+    "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
+    "bookpipe/application/publishing.py": "f3dd0289871b68faf8421a3a569ec92544426984",
+    "bookpipe/application/imports.py": "f4b241f9c36537a2727dc7d69db87b6566e318cd",
+    "bookpipe/processing.py": "3fc026cd72dc3418a3df4308dcd489840c13a822",
+    "bookpipe/runtime/registry.py": "d7dfd1cc89347e7eff9ca56cd312c9de5628cf52",
+    "bookpipe/runtime/supervisor.py": "110e1962e289cc24cfbbdcd007d226dddcad0920",
+    "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
+    "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
+    "bookpipe/store.py": "286f9ce2f80585c555a4af228d16e38ce45b1c65",
+    "docs/server-runtime.md": "2f14f8cbe7dad1a5a443d6679510f58be56346af"
   }
 }

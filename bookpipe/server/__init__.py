@@ -6,7 +6,7 @@ from ..application.workspaces import WorkspaceQueries
 from ..bootstrap import create_application
 from ..runtime.registry import JobRegistry, default_registry_path
 from ..runtime.supervisor import JobSupervisor
-from .http import IntelitexHTTPServer
+from .asgi import ASGIServer as IntelitexHTTPServer
 from .service import ServerService
 
 

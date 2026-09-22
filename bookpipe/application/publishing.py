@@ -19,6 +19,8 @@ from .ports import (
 from .projects import load_valid_book
 from .results import PublicationStatus, PublishResult
 from .sessions import OperationScope, ProjectReadScope
+from .review import approval_current
+from ..processing import effective_book
 
 
 PUBLICATION_RECORD_VERSION = 1
@@ -74,10 +76,23 @@ class PublishingService:
     def _write_record(self, root: Path, record: dict) -> None:
         self.dependencies.files.write_json(_record_path(root), record)
 
+    def download(self, root: Path) -> bytes:
+        status = self.status(PublicationStatusCommand(root))
+        if not status.current or status.output_path is None:
+            raise KeyError('No current publication.')
+        path = status.output_path.resolve(strict=True)
+        if not path.is_relative_to(root / 'published') or path.suffix != '.epub':
+            raise PipelineError('Unsafe publication resource.')
+        data = self.dependencies.files.read_bytes(path)
+        # Recheck the exact response bytes against the committed publication receipt.
+        if digest(data) != self._read_record(root).get('last_success', {}).get('output_sha256'):
+            raise PipelineError('Publication changed while reading.')
+        return data
+
     def _prepare(self, root: Path, book: dict, store, target_language: str):
         if not store.get("analysis_done"):
             raise PipelineError("Publishing requires completed P1 analysis.")
-        if not store.get("approved"):
+        if not approval_current(store, self.dependencies.files):
             raise PipelineError("Publishing requires approved terminology.")
         states = [(chunk, store.chunk(chunk["id"])) for chunk in book["chunks"]]
         stale = [chunk["id"] for chunk, state in states if state["status"] == "stale"]
@@ -181,6 +196,7 @@ class PublishingService:
             "source_package_fingerprint": source_info.package_fingerprint,
             "target_language": target_language,
             "artifacts": artifact_inputs,
+            **({'processing_revision': book['processing_revision']} if 'processing_revision' in book else {}),
         })
         output = root / "published" / f"{_safe_title(title)} [{target_language.upper()}].epub"
         request = PublicationRequest(
@@ -197,6 +213,7 @@ class PublishingService:
         target = _target_language(command.target_language)
         with OperationScope(self.dependencies, root, self.progress) as scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            book = effective_book(book, root)
             record = self._read_record(root)
             fingerprint = None
             try:
@@ -265,7 +282,7 @@ class PublishingService:
 
     def query_snapshot(self, root: Path, book: dict, store, target: str = "pl") -> PublicationStatus:
         """Validate publication against the caller's short-lived project snapshot."""
-        return self._status_from(root, book, store, target, self._read_record(root))
+        return self._status_from(root, effective_book(book, root), store, target, self._read_record(root))
 
     def _status_from(self, root: Path, book: dict, store, target: str, record: dict,
                      *, prepared=None) -> PublicationStatus:
@@ -281,7 +298,7 @@ class PublishingService:
         validation = tuple(success.get("validation") or ())
         current_fingerprint = None
         readiness_error = None
-        if translation_complete and store.get("analysis_done") and store.get("approved"):
+        if translation_complete and store.get("analysis_done") and approval_current(store, self.dependencies.files):
             try:
                 current_fingerprint, _ = prepared or self._prepare(root, book, store, target)
             except PipelineError as exc:

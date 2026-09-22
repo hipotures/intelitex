@@ -192,7 +192,7 @@ hold no writer or Reader lock; each marker mutation holds the same `.reader.lock
 used by the standalone Reader. A running standalone Reader can therefore temporarily
 exclude API marker writes while its lifetime lock is held. Ordinary API reads still
 work. There is no browser-lifetime Store, application session, or project lock.
-All existing CLI commands remain supported; no frontend was added by this API work.
+All existing CLI commands remain supported. Production `serve` now uses the FastAPI/Uvicorn adapter in `bookpipe/server/asgi.py`, shares route dispatch with the compatibility HTTP adapter, and serves the built React interface from `web/dist`. There remains one supervisor and one ASGI worker. See `docs/web/contract-map.md`.
 
 Tests use real subprocesses with injected offline workers and the existing mock
 provider, covering supervision, isolation, escalation, restart recovery, WAL

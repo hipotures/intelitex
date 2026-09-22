@@ -35,6 +35,9 @@ class JobRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,
                     sequence INTEGER NOT NULL, data TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS event_job ON events(job_id, sequence);
+                CREATE TABLE IF NOT EXISTS requests (
+                    scope TEXT NOT NULL, request_key TEXT NOT NULL, digest TEXT NOT NULL,
+                    job_id TEXT NOT NULL, PRIMARY KEY(scope, request_key));
             ''')
             self.lock = threading.RLock()
             self.event_limit = event_limit
@@ -51,6 +54,29 @@ class JobRegistry:
     def save(self, job: Job):
         with self.lock, self.db:
             self.db.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?)", (job.job_id, json.dumps(asdict(job))))
+
+    def request(self, scope, key, fingerprint):
+        with self.lock:
+            row = self.db.execute('SELECT digest,job_id FROM requests WHERE scope=? AND request_key=?', (scope, key)).fetchone()
+            if row is None:
+                return None
+            if row[0] != fingerprint:
+                from .supervisor import RequestConflict
+                raise RequestConflict('Request key reused with different input.')
+            return self.get(row[1])
+
+    def receipt(self, scope, key):
+        with self.lock:
+            row = self.db.execute('SELECT job_id FROM requests WHERE scope=? AND request_key=?', (scope, key)).fetchone()
+            if row is None:
+                raise KeyError(key)
+            return self.get(row[0])
+
+    def reserve(self, job, key, fingerprint):
+        with self.lock, self.db:
+            self.db.execute('INSERT INTO jobs VALUES (?, ?)', (job.job_id, json.dumps(asdict(job))))
+            if key is not None:
+                self.db.execute('INSERT INTO requests VALUES (?,?,?,?)', (job.workspace_root, key, fingerprint, job.job_id))
 
     def get(self, job_id: str) -> Job:
         with self.lock:
@@ -91,6 +117,14 @@ class JobRegistry:
                        and (job_id is None or j.job_id == job_id)}
             return [public_envelope({**json.loads(data), "id": ident})
                     for ident, data in rows if json.loads(data)["job_id"] in allowed]
+
+    def recent_events(self, *, workspace_root, workspace_id, job_id=None, limit=120):
+        with self.lock:
+            rows = self.db.execute("""SELECT e.id,e.data FROM events e JOIN jobs j ON j.job_id=e.job_id
+                WHERE json_extract(j.data,'$.workspace_root')=?
+                AND json_extract(j.data,'$.workspace_id')=? AND (? IS NULL OR e.job_id=?)
+                ORDER BY e.id DESC LIMIT ?""", (workspace_root, workspace_id, job_id, job_id, limit)).fetchall()
+            return [public_envelope({**json.loads(data), 'id': ident}) for ident, data in reversed(rows)]
 
     def close(self):
         with self.lock:

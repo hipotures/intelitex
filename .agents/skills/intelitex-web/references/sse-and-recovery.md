@@ -1,7 +1,9 @@
 # SSE, replay and recovery
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: `server/http.py:Handler._events`, `runtime/events.py`, `registry.py`,
-`protocol.py`, `models.py`. Client policy below is a target, not existing JS.
+`protocol.py`, `models.py`. Client policy below is implemented in `web/src/realtime`; its tests distinguish snapshot ordering, replay and reconciliation.
 
 Use one app-level EventSource per browser tab for /api/events. Keep it across routes.
 Do not subscribe once per component/row or use a global current-workspace variable.

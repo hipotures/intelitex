@@ -2,7 +2,7 @@
 
 Run `uv run translate.py serve --workspace-root ./workspaces` with an existing
 workspace directory. Optionally supply `--import-root ./sources` (also existing).
-There is one HTTP process and one supervisor. No frontend or old standalone UI
+There is one HTTP process and one supervisor. The production React interface is served on this origin; no old standalone UI
 assets are served. See [runtime ownership and cancellation](server-runtime.md).
 Non-loopback binding is **trusted-network operation**, with no authentication.
 
@@ -270,3 +270,8 @@ This change adds workflow/configuration queries and request-scoped service entry
 points, extends approval with atomic revision checking, and adapts those existing
 services to the main HTTP server. It does not duplicate translation, terminology,
 Reader context, publishing or import algorithms.
+
+
+## Production v33 additions
+
+See [the audited web contract map](web/contract-map.md) for draft/linkage, section configuration, preparation validation, archive/restore, approval freshness, idempotency receipts, historical profile palette and vetted publication download contracts. Existing request fields/error codes remain compatible. Production uses FastAPI; both delivery adapters share explicit dispatch.

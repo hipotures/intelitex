@@ -33,7 +33,10 @@ def publication(value):
             'generated_at': value.generated_at, 'generated_by': value.generated_by,
             'title': value.title, 'creators': list(value.creators), 'source_language': value.source_language,
             'last_error': 'Publication unavailable.' if value.last_error else None,
-            'last_failure': 'Publication failed.' if value.last_failure else None}
+            'last_failure': 'Publication failed.' if value.last_failure else None,
+            'filename': value.output_path.name if value.current and value.output_path else None,
+            'size_bytes': value.output_path.stat().st_size if value.current and value.output_path else None,
+            'checks': list(value.validation) if value.current else []}
 
 
 def status(value):
@@ -48,6 +51,8 @@ def status(value):
 
 def term(value):
     result = pick(value, 'id source aliases category select custom reviewed user_notes review_method series_review_required')
+    result.setdefault('reviewed', False)
+    result.setdefault('user_notes', '')
     result['meaning_notes'] = [pick(v, 'text confidence evidence') for v in value.get('meaning_notes', [])]
     result['candidates'] = [pick(v, 'number text reason reasons confidence evidence') for v in value.get('candidates', [])]
     result['observations'] = [pick(v, 'id about kind statement confidence evidence available_from_order') for v in value.get('observations', [])]

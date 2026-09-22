@@ -1,5 +1,7 @@
 # Pipeline, job and display state
 
+> Current product authority: D02, D03, D04, D05 and D08 were explicitly approved by the task owner on 2026-09-22. See [approved decisions and provenance](decisions-and-provenance.md). Historical baseline limitations below are implementation history, not unresolved product policy. Current bindings and validation are in `docs/web/contract-map.md`.
+
 B: use `WorkflowQueries.pipeline`, `runtime/models.py` and `docs/server-api.md`.
 R: use v33's five-phase rail and compact pass marks. Read D02-D04/D08 before
 implementing a policy not supplied by the backend.
@@ -55,10 +57,11 @@ completed/stale/error based on the registered verified final artifact.
 into a green check. A richer current-pass projection needs backend support. Preserve
 historical failures separately: a later valid successful checkpoint is not failed.
 
-`review.current` checks source/analysis revision compatibility. `approved` indicates
-committed terminology, not that a later edited draft is identical to that approval.
-The baseline translate action uses committed `approved`; it does not demonstrate
-the stronger fresh-draft gate promised in some UI proposals. Record that gap explicitly.
+`review.current` checks source/analysis compatibility. The public pipeline `approved`
+now additionally validates the committed approval receipt against the current Review
+digest. The historical Store flag alone is insufficient. D08 is approved: editing
+terminology blocks translation until renewed confirmation and committed approval.
+Checkpoints are retained; existing application dependency validation marks staleness.
 
 ## Actions and projections
 
@@ -72,10 +75,12 @@ It must not discard the raw `retained` distinction. Group authoritative counts o
 unknown truth remains unknown. Tie transient running overlays to matching live
 job/task IDs and their freshness. On disconnect label cached data stale, not stopped.
 
-F=Full(P1-P5), T=Translate only(P2-P5), E=Excluded, as visual target. Content type is
-metadata, not eligibility. There is no mode mutation/plan revision contract in the
-inspected backend; see D02. Never rewrite imported boundaries or cumulative memory
-from React. Never delete successful outputs to match the mock's state transitions.
+F=Full(P1-P5), T=Translate only(P2-P5), E=Excluded. Content type is descriptive.
+D02 is approved and implemented by `WebWorkspaceService.configure`: all modes can
+change before the first persisted P1 attempt; then Full membership is locked while
+idle T↔E remains allowed. Active jobs/cleanup and stale revisions reject mutations.
+Eligibility is an overlay on frozen source boundaries. Excluded evidence is dormant;
+re-inclusion validates retained inputs, receipt and continuity before reuse.
 
 Usage uses known/unknown coverage, exact units and actual historical model identity.
 Cached input/reasoning may be subsets of reported totals. Do not double-count them.
@@ -83,4 +88,4 @@ Preflight UTF-8 upper bounds are not tokens; received characters are not usage.
 
 Progress must name its denominator and distinguish phase/workflow/reading progress.
 No fake smoothing, timer-driven completion or inferred 100% from `succeeded`.
-Weighted-workflow versus phase-only progress is D03, not an implementation guess.
+D03 is resolved: `WorkflowQueries.pipeline` returns the implementation contract’s weighted workflow percentage together with analysis/translation counts and basis. Unknown denominators produce null; approval invalidation can reduce progress.
