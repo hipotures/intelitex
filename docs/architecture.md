@@ -40,7 +40,7 @@ Interface parity is not required. A feature may remain web-only or CLI-only whil
 
 ### CLI
 
-- Entry point: `translate.py`
+- Entry point: `uv run intelitex` (`translate.py` remains a compatibility shim)
 - Adapter: `bookpipe/cli.py`
 - Presentation: `bookpipe/ui.py`
 

@@ -3,7 +3,7 @@
 Start from the repository using the existing environment:
 
 ```bash
-uv run translate.py serve \
+uv run intelitex serve \
   --workspace-root ./workspaces \
   --import-root ./sources \
   --bind 127.0.0.1 --port 8780

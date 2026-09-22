@@ -51,6 +51,8 @@ entire product. Read supporting references only when relevant. Do not load the
   lockfile. FastAPI is now the production delivery adapter; verify current code and shared route dispatch.
 - Maintain one production HTTP/supervisor process with independent worker processes.
   No per-book HTTP server, second supervisor, browser-owned execution, or Node backend.
+- The canonical project launcher is `uv run intelitex serve ...`; `translate.py`
+  remains a compatibility shim without its own dependency manifest.
 - P1 analyzes the eligible book globally, then stops for human Review and approval.
   Only then run P2 -> P3 -> P4 -> P5 sequentially per translation chunk.
 - A source section is not necessarily one analysis unit or one translation chunk.

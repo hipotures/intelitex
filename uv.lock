@@ -165,7 +165,7 @@ wheels = [
 [[package]]
 name = "intelitex"
 version = "1.11.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "defusedxml" },

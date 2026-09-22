@@ -3,7 +3,7 @@
   "repository": "hipotures/intelitex",
   "inspected_commit": "b0c40dfaf90add7340da2b992d4e18f7b473383e",
   "audit_date": "2026-09-22",
-  "audit_basis": "Post-implementation working tree before delivery commit; route, application, runtime, frontend binding and tests manually inspected. Commit identity appears in delivery report.",
+  "audit_basis": "Post-implementation working tree before delivery commit; route, application, runtime, frontend binding and tests manually inspected. The docs/server-runtime.md hash was updated after reviewing its canonical CLI command change and tests/test_cli_entrypoint.py. Commit identity appears in delivery report.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -123,6 +123,6 @@
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
     "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
     "bookpipe/store.py": "286f9ce2f80585c555a4af228d16e38ce45b1c65",
-    "docs/server-runtime.md": "2f14f8cbe7dad1a5a443d6679510f58be56346af"
+    "docs/server-runtime.md": "ae554f5fb331bc0444a97124577e6fdde4fb8dec"
   }
 }

@@ -13,7 +13,7 @@ See the skill's decision register, [differences](differences.md), and
 
 ## Ownership and delivery
 
-`translate.py serve --workspace-root …` creates one `ASGIServer`, one supervisor,
+`uv run intelitex serve --workspace-root …` creates one `ASGIServer`, one supervisor,
 one runtime registry and detached workers. FastAPI/Starlette/Uvicorn serve `web/dist`,
 explicit API routes, vetted EPUB downloads and SSE on the same origin. The compatibility
 HTTP adapter shares `server/routes.py::dispatch`; it remains covered by the same API tests.

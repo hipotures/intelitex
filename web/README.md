@@ -12,7 +12,7 @@ From the repository root (Node 22.12+ and `uv`):
 uv sync --locked --group dev
 npm --prefix web ci
 npm --prefix web run build
-uv run python translate.py serve --workspace-root /path/to/workspaces --import-root /path/to/sources
+uv run intelitex serve --workspace-root /path/to/workspaces --import-root /path/to/sources
 ```
 
 Open `http://127.0.0.1:8780/work`. The single Python FastAPI/Uvicorn server serves

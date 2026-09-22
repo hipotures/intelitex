@@ -1,6 +1,6 @@
 # Single-server API contract
 
-Run `uv run translate.py serve --workspace-root ./workspaces` with an existing
+Run `uv run intelitex serve --workspace-root ./workspaces` with an existing
 workspace directory. Optionally supply `--import-root ./sources` (also existing).
 There is one HTTP process and one supervisor. The production React interface is served on this origin; no old standalone UI
 assets are served. See [runtime ownership and cancellation](server-runtime.md).

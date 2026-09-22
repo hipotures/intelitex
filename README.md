@@ -41,14 +41,14 @@ generation stops; missing provider usage is represented as unknown, never zero.
 Useful offline and no-generation commands:
 
 ```bash
-uv run translate.py profiles --project "$PROJECT"
-uv run translate.py doctor --project "$PROJECT"
-uv run translate.py attempts --project "$PROJECT"
-uv run translate.py attempts --project "$PROJECT" --attempt artifacts/pass1/ch0001_a001/<fingerprint>/attempt_001
-uv run translate.py usage --project "$PROJECT"
-uv run translate.py usage --project "$PROJECT" --by-unit
-uv run translate.py usage --project "$PROJECT" --by-unit --unit ch0016_c0004
-uv run translate.py catalog-import --project "$PROJECT" /path/to/validated-models.json
+uv run intelitex profiles --project "$PROJECT"
+uv run intelitex doctor --project "$PROJECT"
+uv run intelitex attempts --project "$PROJECT"
+uv run intelitex attempts --project "$PROJECT" --attempt artifacts/pass1/ch0001_a001/<fingerprint>/attempt_001
+uv run intelitex usage --project "$PROJECT"
+uv run intelitex usage --project "$PROJECT" --by-unit
+uv run intelitex usage --project "$PROJECT" --by-unit --unit ch0016_c0004
+uv run intelitex catalog-import --project "$PROJECT" /path/to/validated-models.json
 ```
 
 The original `usage` output remains grouped by pass/provider/model. `--by-unit`
@@ -143,7 +143,7 @@ them into each book's `settings.json`. Profile names follow
 the same name overrides the built-in definition. For example:
 
 ```bash
-uv run translate.py translate --project "$PROJECT" \
+uv run intelitex translate --project "$PROJECT" \
   --profile codex-sol-medium --continue 1 --allow-model-change
 ```
 All discovered skills are disabled and re-listed before a thread starts. The
@@ -251,9 +251,9 @@ such as `Check this term in the Polish context`, and mark the choice reviewed.
 After the remaining choices are reviewed, confirm the glossary and run:
 
 ```bash
-uv run translate.py approve --project "$PROJECT"
-uv run translate.py translate --project "$PROJECT" --continue 5
-uv run translate.py review --project "$PROJECT" --review-port 9000
+uv run intelitex approve --project "$PROJECT"
+uv run intelitex translate --project "$PROJECT" --continue 5
+uv run intelitex review --project "$PROJECT" --review-port 9000
 ```
 
 Stop the review server before invoking approve or translate: the existing CLI
@@ -292,7 +292,7 @@ logic `bookpipe/review_filters.js`, and read-only evidence adapter
 ### Local terminology review application / v1.8
 
 `terms.review.json` is now the single source of truth for human terminology decisions.
-Run `uv run translate.py review --project "$PROJECT"` to start a loopback-only web
+Run `uv run intelitex review --project "$PROJECT"` to start a loopback-only web
 application (default `http://127.0.0.1:8765/`). The UI groups all terms by Pass 1
 category, supports search and reviewed/unreviewed/uncertain/**notes** filters, shows candidate
 reasons and source evidence, accepts custom Polish forms, and saves edits atomically
@@ -316,8 +316,8 @@ no longer the working UI.
 Useful options:
 
 ```bash
-uv run translate.py review --project "$PROJECT" --review-port 8765
-uv run translate.py review --project "$PROJECT" --review-port 0 --no-browser
+uv run intelitex review --project "$PROJECT" --review-port 8765
+uv run intelitex review --project "$PROJECT" --review-port 0 --no-browser
 ```
 
 The review server has no authentication and binds to `127.0.0.1` by default. Do not
@@ -330,7 +330,7 @@ checkpoint-verified Polish text chapter by chapter and quickly mark a suspicious
 word or span without interrupting the reading flow:
 
 ```bash
-uv run translate.py reader --project "$PROJECT"
+uv run intelitex reader --project "$PROJECT"
 ```
 
 The Reader defaults to `http://127.0.0.1:8766/` and opens the browser. It may run
@@ -342,7 +342,7 @@ the same project is rejected. Use `--reader-port 0` to select a free port or
 explicitly beyond loopback, for example:
 
 ```bash
-uv run translate.py reader --project "$PROJECT" --bind 0.0.0.0
+uv run intelitex reader --project "$PROJECT" --bind 0.0.0.0
 ```
 
 This is an unauthenticated local editing service. A non-loopback bind makes it
@@ -420,10 +420,11 @@ or silently imported.
 - HTML, HTM, or XHTML input files. An unpacked EPUB root with its OPF/NCX metadata
   is preferable to a folder containing only isolated HTML files.
 
-`uv run translate.py ...` installs script dependencies into an isolated environment;
-it does not install them into system Python. Keep `translate.py`, `bookpipe/`,
-`prompts/`, `catalog/`, and `settings.default.json` together. Cloud providers are
-called only when the user selects and configures such a profile.
+`uv run intelitex ...` uses the dependencies declared in `pyproject.toml` and the
+project's isolated environment; it does not install them into system Python.
+`translate.py` remains a backwards-compatible launcher in that same environment.
+Keep `bookpipe/`, `prompts/`, `catalog/`, and `settings.default.json` together.
+Cloud providers are called only when the user selects and configures such a profile.
 Dependencies may need downloading on the first `uv` invocation.
 
 ## Quick start
@@ -433,12 +434,12 @@ Extract the program archive, change into `intelitex`, and run:
 ```bash
 PROJECT="$HOME/translations/evolutionary-void"
 
-uv run translate.py import /path/to/unpacked-book \
+uv run intelitex import /path/to/unpacked-book \
   --project "$PROJECT" \
   --host localhost \
   --port 8080
 
-uv run translate.py analyze --project "$PROJECT"
+uv run intelitex analyze --project "$PROJECT"
 ```
 
 **Analysis ends here. It does not start translation.**
@@ -446,7 +447,7 @@ uv run translate.py analyze --project "$PROJECT"
 Open the local review application:
 
 ```bash
-uv run translate.py review --project "$PROJECT"
+uv run intelitex review --project "$PROJECT"
 ```
 
 Review the terminology in the browser. The application writes choices atomically to
@@ -454,15 +455,15 @@ Review the terminology in the browser. The application writes choices atomically
 Then return to the terminal and run:
 
 ```bash
-uv run translate.py approve --project "$PROJECT"
-uv run translate.py translate --project "$PROJECT" --continue 5
+uv run intelitex approve --project "$PROJECT"
+uv run intelitex translate --project "$PROJECT" --continue 5
 ```
 
 Later:
 
 ```bash
-uv run translate.py translate --project "$PROJECT" --continue 5
-uv run translate.py translate --project "$PROJECT" --continue 0
+uv run intelitex translate --project "$PROJECT" --continue 5
+uv run intelitex translate --project "$PROJECT" --continue 0
 ```
 
 `--continue 5` finishes the next five unfinished translation units, including an
@@ -475,7 +476,7 @@ validation fails, the completed translation stays committed and publication can
 be retried without a model call:
 
 ```bash
-uv run translate.py publish --project "$PROJECT"
+uv run intelitex publish --project "$PROJECT"
 ```
 
 Publishing requires a real unpacked EPUB package with `mimetype`,
@@ -493,7 +494,7 @@ To initialize a later volume with memory from the immediately preceding approved
 Intelitex project, add `--previous-volume` to its otherwise normal import:
 
 ```bash
-uv run translate.py import /path/to/unpacked-volume-2 \
+uv run intelitex import /path/to/unpacked-volume-2 \
   --project "$HOME/translations/series-volume-2" \
   --previous-volume "$HOME/translations/series-volume-1"
 ```
@@ -603,7 +604,7 @@ To deliberately accept every currently selected/default candidate without editin
 that confirmation field:
 
 ```bash
-uv run translate.py approve --project "$PROJECT" --accept-defaults
+uv run intelitex approve --project "$PROJECT" --accept-defaults
 ```
 
 Each P1 response proposes up to three candidates per term, but the persistent
@@ -773,8 +774,8 @@ Default thinking is **off**: analysis is explicit JSON work, not unbounded hidde
 deliberation. To test thinking only in P1/P2/P4:
 
 ```bash
-uv run translate.py analyze --project "$PROJECT" --thinking analysis
-uv run translate.py translate --project "$PROJECT" --thinking analysis --continue 5
+uv run intelitex analyze --project "$PROJECT" --thinking analysis
+uv run intelitex translate --project "$PROJECT" --thinking analysis --continue 5
 ```
 
 The model/template must support `enable_thinking`. The code does not pretend a
@@ -797,7 +798,7 @@ no `errors="ignore"` conversion.
 For a legacy consumer, explicitly export a separate ISO-8859-2 copy:
 
 ```bash
-uv run translate.py export --project "$PROJECT" \
+uv run intelitex export --project "$PROJECT" \
   --encoding iso-8859-2 --output "$PROJECT/exports/translation-latin2.txt"
 ```
 
@@ -862,8 +863,8 @@ blindly appends duplicate text on resumption. It exposes only a contiguous reada
 prefix. `status` and `export` work without a running LLM.
 
 ```bash
-uv run translate.py status --project "$PROJECT"
-uv run translate.py export --project "$PROJECT"
+uv run intelitex status --project "$PROJECT"
+uv run intelitex export --project "$PROJECT"
 ```
 
 ## Multi-workspace server
@@ -871,7 +872,7 @@ uv run translate.py export --project "$PROJECT"
 Run one local HTTP server and supervise independent background worker processes:
 
 ```bash
-uv run translate.py serve --workspace-root /home/user/translations --bind 127.0.0.1 --port 8780
+uv run intelitex serve --workspace-root /home/user/translations --bind 127.0.0.1 --port 8780
 ```
 
 Each imported child directory is a workspace. Different workspaces may analyze or
