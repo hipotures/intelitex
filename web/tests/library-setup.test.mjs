@@ -8,8 +8,10 @@ const dist = resolve('dist')
 const output = '/tmp/intelitex-library-setup-evidence'
 const profile = { name: 'codex-luna-low', stable_palette_index: 0, provider: 'codex', model: 'gpt-5.6-luna', enabled: true,
   source_languages: null, target_languages: null }
+const localProfile = { name: 'local', stable_palette_index: 1, provider: 'llamacpp', model: null, enabled: true,
+  source_languages: null, target_languages: null }
 const profiles = { source: 'defaults', revision: 'defaults', default_profile: 'codex-luna-low', assignments: {},
-  profiles: [profile], resolved_passes: Object.fromEntries([1, 2, 3, 4, 5].map(number => [String(number), profile])) }
+  profiles: [profile, localProfile], resolved_passes: Object.fromEntries([1, 2, 3, 4, 5].map(number => [String(number), profile])) }
 const source = { source_id: 'book.epub', title: 'Relay Book', creators: ['Test Author'], language: 'en', word_count: null, workspace_id: null }
 const preflight = { source_id: source.source_id, title: source.title, creators: source.creators, declared_language: 'en',
   detected_language: 'en', detection_confidence: .8, source_language: 'en', source_fingerprint: 'a'.repeat(64), language_warning: null }
@@ -20,7 +22,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
     page.setDefaultTimeout(7000)
-    const errors = [], failed = [], saves = [], prepares = [], workspaces = [], savedRequests = new Map()
+    const errors = [], failed = [], saves = [], prepares = [], patches = [], workspaces = [], savedRequests = new Map(), draftProfiles = new Map()
     let failNextSave = false
     let libraryRequests = 0
     page.on('pageerror', error => errors.push(error.message))
@@ -42,7 +44,19 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       else if (url.pathname === '/api/workspaces' && request.method() === 'GET') body = { workspaces }
       else if (url.pathname === '/api/library') { libraryRequests++; body = { configured: true, sources: [source], next_cursor: null } }
       else if (url.pathname === '/api/profiles') body = profiles
-      else if (/^\/api\/workspaces\/w-\d+\/profiles$/.test(url.pathname)) body = profiles
+      else if (/^\/api\/workspaces\/w-\d+\/profiles$/.test(url.pathname)) {
+        const saved = draftProfiles.get(url.pathname.split('/')[3])
+        body = { ...profiles, source: 'project', revision: saved.revision, assignments: saved.assignments,
+          resolved_passes: Object.fromEntries(Object.entries(saved.assignments).map(([number, name]) => [number, profiles.profiles.find(item => item.name === name)])) }
+      }
+      else if (/^\/api\/workspaces\/w-\d+\/settings$/.test(url.pathname) && request.method() === 'PATCH') {
+        const ident = url.pathname.split('/')[3], saved = draftProfiles.get(ident), payload = request.postDataJSON()
+        patches.push(payload)
+        assert.equal(payload.revision, saved.revision)
+        saved.assignments = { ...saved.assignments, ...payload.pass_profiles }
+        saved.revision = `revision-${patches.length + 1}`
+        body = { revision: saved.revision, sections: {}, pass_profiles: saved.assignments }
+      }
       else if (url.pathname.endsWith('/preflight')) body = preflight
       else if (url.pathname.endsWith('/inspect')) body = { ...preflight, sample_word_count: 126, sampled_documents: 2,
         document_count: 8, sample_previews: [{ position: 1, heading: 'Opening', excerpt: 'The relay moved through the valley.' },
@@ -59,6 +73,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
             metadata: { title: source.title, creators: source.creators, language: 'en', source_language: payload.source_language,
               target_language: payload.target_language, label: payload.label, word_count: null,
               lifecycle: { archived: false, revision: 'rev' } }, active_job: null, last_job: null })
+          draftProfiles.set(workspace_id, { revision: 'revision-1', assignments: { ...payload.pass_profiles } })
           body = { workspace_id, source_id: source.source_id }
           savedRequests.set(payload.request_key, body)
           if (failNextSave) { failNextSave = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"unavailable","message":"Retry","details":{}}}' }) }
@@ -116,12 +131,19 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.locator('[data-source-id="book.epub"]').click()
       await page.getByRole('button', { name: 'Add to workspace' }).click()
       await page.getByRole('textbox', { name: 'Workspace label · optional' }).fill('First experiment')
+      await page.getByRole('combobox', { name: 'Pass 1' }).selectOption('local')
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       await page.getByRole('heading', { name: 'Prepare this workspace' }).waitFor()
       assert.equal(new URL(page.url()).pathname, '/work/workspaces/w-1')
       assert.equal(await page.locator('.sections-table').count(), 0)
       assert.equal(await page.getByRole('button', { name: 'Prepare', exact: true }).count(), 1)
       assert.equal(await page.locator('.workspace-head-actions').count(), 0)
+      await page.getByText('Selected P1 profile for Analyse: local (llamacpp)').waitFor()
+      await page.getByRole('combobox', { name: 'Pass 1' }).selectOption('codex-luna-low')
+      await page.getByRole('button', { name: 'Apply change' }).click()
+      await page.getByText('Selected P1 profile for Analyse: codex-luna-low (codex)').waitFor()
+      assert.equal(patches.length, 1)
+      assert.equal(prepares.length, 0, 'changing a draft profile must not Prepare or call a model')
       await page.screenshot({ path: `${output}/draft-prepare-dark-1440.png`, animations: 'disabled' })
       await page.setViewportSize({ width: 390, height: 844 })
       await page.screenshot({ path: `${output}/draft-prepare-dark-390.png`, animations: 'disabled' })
@@ -132,7 +154,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.setViewportSize({ width: 1440, height: 1000 })
       assert.equal(await page.locator('.phase').first().isDisabled(), true)
       await page.getByText('Ready to prepare').waitFor()
-      await page.getByText('P1 profile: codex-luna-low (codex)').waitFor()
+      await page.getByText('Selected P1 profile for Analyse: codex-luna-low (codex)').waitFor()
       assert.equal(saves.length, 1)
       const prepareResponse = page.waitForResponse(response => response.url().endsWith('/prepare'))
       await page.getByRole('button', { name: 'Prepare', exact: true }).first().click()

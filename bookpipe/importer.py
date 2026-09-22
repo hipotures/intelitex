@@ -18,6 +18,11 @@ CONTAINERS = LEAF_BLOCKS | {"div", "section", "article", "main", "body", "ul", "
 ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "st.", "sr.", "jr.", "vs.", "e.g.", "i.e.", "etc.", "no.", "capt.", "gen.", "adm."}
 
 
+def estimate_source_tokens(text: str) -> int:
+    """Pre-Prepare planning estimate: one token per four Unicode characters, rounded up."""
+    return (len(text) + 3) // 4
+
+
 def sentence_spans(text: str) -> list[tuple[int, int]]:
     """Conservative English sentence boundaries, preserving all original offsets."""
     starts = [0]

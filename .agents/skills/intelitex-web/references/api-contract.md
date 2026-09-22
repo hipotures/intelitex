@@ -137,6 +137,9 @@ is shared with the compatibility HTTP adapter.
   the same configured draft; a distinct Save may create another workspace from
   the same Library source. See `docs/server-api.md` for the full payload.
 - POST `/api/workspaces/{id}/prepare`: optional request_key/profile/pass_profiles; supervised real import.
+  The web worker never constructs a provider at import: it estimates source tokens
+  locally as ceil(Unicode characters / 4), marks them estimated, and defers actual
+  tokenizer/context validation to P1. It does not send source text to a model.
   A configured draft can retry after an early failed import leaves an empty regular
   `.lock`; unrelated or partially imported destinations still conflict. Drafts have
   no pipeline response, so GET `/api/workspaces` supplies their active/last import job.
@@ -144,6 +147,10 @@ is shared with the compatibility HTTP adapter.
 - PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
   allow_model_change:true only after explicit user confirmation.
 - PATCH `/api/workspaces/{id}/settings`: revision, pass_profiles, allow_model_change.
+  On a configured unprepared draft, `revision` is the digest of saved settings;
+  a confirmed assignment change updates only `settings.json` and returns the
+  usual config shape. It rejects stale revisions, active/cleanup jobs, archived
+  drafts, disabled/unknown profiles and declared language incompatibility.
 - GET `/api/workspaces/{id}/sections/{section}/{page}`: bounded text-only preview.
 - POST `/api/workspaces/{id}/archive` or `/restore`: lifecycle revision.
 - POST `/api/workspaces/{id}/review/confirm-and-approve`: exact Review revision, atomic confirmation/approval.

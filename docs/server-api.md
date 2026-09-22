@@ -235,8 +235,10 @@ Required input: `{workspace_id,source_id}`. Optional fields:
 Credentials, endpoints, ports, executables, auth directories and arbitrary provider
 objects cannot be supplied. Provider configuration comes from installed settings,
 existing profiles and optional previous-volume configuration. Operators configure
-credentials locally. Profile/model selection retains existing ImportBookCommand
-semantics; model discovery/token counting may contact the configured provider.
+credentials locally. Web Prepare/import does not construct a provider or contact a
+model. It stores estimated source token counts as ceil(Unicode characters / 4),
+marked estimated; P1 recounts using the selected provider/tokenizer for actual
+context fitting. Direct CLI import retains its existing provider-aware behavior.
 
 Source IDs reject absolute paths, `..`, empty/dot segments and backslashes.
 OPF paths are source-confined. Escaping source symlinks (including nested/sidecar
@@ -265,6 +267,15 @@ model, enabled flag, context size, reasoning effort, thinking setting, planning
 reserve and maximum output tokens. Resolved passes additionally expose selection
 provenance. Nullable fields represent unspecified settings. Legacy settings are
 adapted in memory without migration or provider construction.
+
+For a configured unprepared draft, PATCH `/api/workspaces/{id}/settings` accepts
+`{revision,pass_profiles:{"1".."5":name},allow_model_change:true}` with one or more
+pass assignments. The revision comes from GET `/api/workspaces/{id}/profiles`
+and changes when the saved settings change. The application rejects stale revisions,
+active/cleanup jobs, archived drafts, invalid/disabled profiles and declared
+language incompatibility. It updates only the draft's saved settings; no import,
+checkpoint or provider call occurs. Prepared workspace settings retain their
+existing configuration revision and invalidation rules.
 
 Only allowlisted fields are projected. Endpoint URLs, credential references or
 values, headers, provider options, executable/runtime locations, HOME/CODEX_HOME,

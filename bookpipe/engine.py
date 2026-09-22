@@ -639,7 +639,8 @@ def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> l
         # Import already tokenized the complete natural section. Reuse that count.
         # This avoids thousands of synchronous /tokenize calls over individual
         # paragraphs before P1 can even start.
-        tokenizer_matches = chapter.get("source_tokens_tokenizer") == getattr(client, "tokenizer_identity", None)
+        tokenizer_matches = (chapter.get("source_tokens_quality") != "estimated" and
+                             chapter.get("source_tokens_tokenizer") == getattr(client, "tokenizer_identity", None))
         cached_tokens = int(chapter.get("source_tokens") or 0) if tokenizer_matches else 0
         if cached_tokens and cached_tokens <= source_budget:
             groups = [chapter["blocks"]]

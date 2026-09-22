@@ -30,6 +30,7 @@ class ModelOptions:
 class ImportBookCommand(ModelOptions):
     project: Path
     source: Path
+    local_token_estimate: bool = False
     previous_volume: Path | None = None
     opf: Path | None = None
     input_encoding: str | None = None

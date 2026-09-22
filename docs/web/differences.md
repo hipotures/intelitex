@@ -28,7 +28,10 @@ and responsive breakpoints. The following differences carry real application sem
   opens one-time setup; Save persists a draft with label, language pair and P1–P5
   profiles. Cancel leaves no draft. A source stays in Library and may produce several
   workspaces. Draft archive/restore preserves its setup; Prepare performs the real
-  supervised import and stops before P1. The setup modal is a product addition absent
+  supervised import and stops before P1. Web Prepare uses a local, explicitly
+  estimated count of one token per four characters and never contacts a model;
+  P1 does the provider-specific recount. An existing draft exposes revision-checked
+  P1–P5 profile selectors before Prepare. The setup modal and draft model panel are product additions absent
   from v33. The language selector currently offers the supported English→Polish pair;
   broader translation and Review language support is a separate issue item.
 - Confirm glossary commits approval against the latest complete Review revision.

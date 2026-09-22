@@ -14,7 +14,7 @@ from test_server_api import api, analyze, approve, translate
 from bookpipe.server.asgi import create_app
 from bookpipe.application.web import LifecycleConflict, WorkspaceArchived
 from bookpipe.processing import AnalysisMembershipLocked, ConfigConflict, effective_book
-from bookpipe.util import read_json, PipelineError
+from bookpipe.util import read_json, PipelineError, project_lock
 from bookpipe.application.commands import TranslateCommand
 from bookpipe.application.commands import ImportBookCommand
 from bookpipe.application.epub_sources import unpack_epub
@@ -105,6 +105,88 @@ def test_prepare_retry_accepts_only_the_empty_lock_left_by_a_failed_draft_import
     lock.symlink_to(source / 'chapter.html')
     with pytest.raises(DestinationConflict):
         spec()
+
+
+def test_draft_pass_profile_can_change_with_revision_before_prepare(api):
+    _, root, service, server = api
+    source = service.imports.root / 'profile-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<p>Offline profile change source.</p>')
+    initial = {str(i): 'local' for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': 'profile-book', 'source_fingerprint': source_signature(service.imports.root, 'profile-book'),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': initial, 'request_key': 'profile-draft-0123456789',
+    })
+    ident = draft['workspace_id']
+    destination = root.parent / ident
+    code, before = request(server, 'GET', f'/api/workspaces/{ident}/profiles')
+    assert code == 200 and before['assignments']['1'] == 'local'
+    payload = {'revision': before['revision'], 'pass_profiles': {'1': 'codex-luna-low'},
+               'allow_model_change': True}
+    code, updated = request(server, 'PATCH', f'/api/workspaces/{ident}/settings', payload)
+    assert code == 200 and updated['pass_profiles']['1'] == 'codex-luna-low'
+    assert updated['revision'] != before['revision']
+    code, after = request(server, 'GET', f'/api/workspaces/{ident}/profiles')
+    assert code == 200 and after['revision'] == updated['revision']
+    assert after['resolved_passes']['1']['name'] == 'codex-luna-low'
+    assert after['resolved_passes']['2']['name'] == 'local'
+    assert read_json(destination / 'settings.json')['pass_profiles']['1'] == 'codex-luna-low'
+    assert not (destination / 'book.json').exists()
+    code, stale = request(server, 'PATCH', f'/api/workspaces/{ident}/settings', payload)
+    assert code == 409 and stale['error']['code'] == 'config_revision_conflict'
+    code, confirmation = request(server, 'PATCH', f'/api/workspaces/{ident}/settings',
+                                 {'revision': after['revision'], 'pass_profiles': {'1': 'local'}})
+    assert code == 409 and confirmation['error']['code'] == 'model_change_confirmation_required'
+    with project_lock(destination):
+        code, busy = request(server, 'PATCH', f'/api/workspaces/{ident}/settings',
+                             {'revision': after['revision'], 'pass_profiles': {'1': 'local'},
+                              'allow_model_change': True})
+        assert code == 409 and busy['error']['code'] == 'workspace_busy'
+    assert not (destination / 'state.sqlite3').exists()
+
+
+def test_web_prepare_estimates_locally_without_provider_and_p1_recounts(tmp_path):
+    from bookpipe.bootstrap import create_application
+    from bookpipe.engine import analysis_plan
+    from bookpipe.store import Store
+
+    source_root, workspace_root = tmp_path / 'sources', tmp_path / 'workspaces'
+    source_root.mkdir(); workspace_root.mkdir()
+    source = source_root / 'book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<h1>One</h1><p>Seven words are here for the source text.</p>')
+    def forbidden_provider(*_args, **_kwargs):
+        raise AssertionError('Prepare must not construct a model provider.')
+    app = create_application(provider_factory=forbidden_provider)
+    destination = workspace_root / 'offline'
+    spec = ImportJobSpec(workspace_root=str(workspace_root), workspace_id='offline',
+                         project=str(destination), import_root=str(source_root), source_id='book')
+    assert execute(spec, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    book = read_json(destination / 'book.json')
+    assert book['model_identity'] is None
+    assert book['tokenizer_identity'] == {'method': 'chars_per_four_estimate', 'chars_per_token': 4}
+    chapter = book['chapters'][0]
+    text = '\n\n'.join(block['text'] for block in chapter['blocks'])
+    assert chapter['source_tokens'] == (len(text) + 3) // 4
+    assert chapter['source_tokens_quality'] == 'estimated'
+    assert all(chunk['source_tokens_quality'] == 'estimated' for chunk in book['chunks'])
+
+    class ActualP1Counter:
+        context = 131072
+        tokenizer_identity = book['tokenizer_identity']  # Even a matching identity cannot promote estimates.
+        calls = 0
+        def count(self, value):
+            self.calls += 1
+            return len(value)
+
+    counter = ActualP1Counter()
+    store = Store(destination)
+    try:
+        assert analysis_plan(store, book, counter, read_json(destination / 'settings.json'))
+    finally:
+        store.close()
+    assert counter.calls > 0
 
 
 def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):

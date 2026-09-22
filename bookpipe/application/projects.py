@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from ..importer import import_folder
-from ..profiles import migrate_settings_file, validate_profiles, with_builtin_profiles
+from ..importer import estimate_source_tokens, import_folder
+from ..profiles import migrate_settings_file, resolve_profile, validate_profiles, with_builtin_profiles
 from ..project_config import materialize_configuration
 from ..series import continuation_metadata, prepare_handoff, validate_series_metadata
 from ..util import PipelineError, digest, plan_fingerprint, read_json
@@ -128,14 +128,21 @@ class ProjectsService:
                 raise PipelineError("--whole-section-limit must be positive.")
             if configuration:
                 materialize_configuration(root, configuration, settings)
-            client = scope.providers(
-                settings, profile=command.profile,
-                pass_profiles=validate_pass_profiles(command.pass_profiles),
-            )
-            client.discover(1)
+            assignments = validate_pass_profiles(command.pass_profiles)
+            if command.local_token_estimate:
+                # Web Prepare freezes the source without constructing a provider.
+                for number in range(1, 6):
+                    resolve_profile(settings, number, command_profile=command.profile,
+                                    command_pass_profiles=assignments, project=root)
+                count = estimate_source_tokens
+                client = None
+            else:
+                client = scope.providers(settings, profile=command.profile, pass_profiles=assignments)
+                client.discover(1)
+                count = client.count
             source_folder = unpack_epub(source, root) if source.is_file() and source.suffix.lower() == '.epub' else source
             book = import_folder(
-                source_folder, root, client.count, settings, self.progress,
+                source_folder, root, count, settings, self.progress,
                 opf=command.opf.resolve() if command.opf else None,
                 encoding=command.input_encoding, chapter_mode=command.chapter_mode,
                 chapter_selector=command.chapter_selector, sidecars=command.sidecar_txt,
@@ -143,10 +150,20 @@ class ProjectsService:
             )
             if source_folder != source:
                 book['source_archive'] = str(source)
-            book["model_identity"] = client.identity
-            book["tokenizer_identity"] = client.tokenizer_identity
-            for chapter in book["chapters"]:
-                chapter["source_tokens_tokenizer"] = client.tokenizer_identity
+            if client is None:
+                estimate_identity = {"method": "chars_per_four_estimate", "chars_per_token": 4}
+                book["model_identity"] = None
+                book["tokenizer_identity"] = estimate_identity
+                for chapter in book["chapters"]:
+                    chapter["source_tokens_tokenizer"] = estimate_identity
+                    chapter["source_tokens_quality"] = "estimated"
+                for chunk in book["chunks"]:
+                    chunk["source_tokens_quality"] = "estimated"
+            else:
+                book["model_identity"] = client.identity
+                book["tokenizer_identity"] = client.tokenizer_identity
+                for chapter in book["chapters"]:
+                    chapter["source_tokens_tokenizer"] = client.tokenizer_identity
             book["content_fingerprint"] = plan_fingerprint(book)
             book["planning_settings"] = {"whole_section_char_limit": settings["whole_section_char_limit"]}
             if not configuration:

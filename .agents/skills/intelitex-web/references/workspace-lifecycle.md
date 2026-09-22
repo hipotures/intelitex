@@ -25,11 +25,13 @@ A failed/cancelled import can leave a partial directory; no auto-delete/overwrit
 No client-supplied root paths, ports/endpoints, shell commands or credentials. Source
 IDs reject traversal/escaping symlinks. Previous volume is another workspace ID;
 OPF is relative to the confined source. `sidecar_txt` explicitly allows source writes,
-so do not enable it by default. Import performs P1 profile model discovery/token
-counting before it saves the source structure, but that is not a generated prose
-request. A failed discovery leaves the draft unprepared; its import job failure is
-available in the workspace list, since the pipeline endpoint is unavailable until
-import succeeds.
+so do not enable it by default. The web import worker does not construct or contact
+a model provider. It records a local estimate of one token per four Unicode
+characters, rounded up, for each source section/chunk. The estimate is marked as
+such; P1 later recalculates fitting against its actual provider/tokenizer. Direct
+CLI import retains its existing provider-aware path. A failed web import remains
+visible through the workspace list, since the pipeline endpoint is unavailable
+until import succeeds.
 
 ## Run, Stop, Retry
 
@@ -95,3 +97,7 @@ decision in issue #1. The current explicit Save route is
 holds source identity/fingerprint, immutable language pair and optional label;
 `settings.json` holds P1–P5 assignments. The separate derived SQLite catalog/cache
 item in issue #1 remains open; do not mistake the durable files for that cache.
+Before Prepare, PATCH `/api/workspaces/{id}/settings` can change saved pass
+assignments using the current draft settings revision. It rejects stale revisions,
+busy/archived workspaces and invalid or language-incompatible profiles. The draft
+contains no model output or checkpoints to invalidate.

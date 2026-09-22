@@ -30,6 +30,7 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
                 project.mkdir(exist_ok=False)
             app.projects.import_book(ImportBookCommand(
                 project, source,
+                local_token_estimate=True,
                 previous_volume=workspace_destination(Path(spec.workspace_root), spec.previous_volume) if spec.previous_volume else None,
                 opf=confined_source(source, spec.opf) if spec.opf else None,
                 input_encoding=spec.input_encoding, chapter_mode=spec.chapter_mode,

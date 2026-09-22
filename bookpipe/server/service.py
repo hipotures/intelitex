@@ -113,6 +113,17 @@ class ServerService:
                else {'revision', 'pass_profiles', 'allow_model_change'}, {'revision'})
         if 'allow_model_change' in payload and type(payload['allow_model_change']) is not bool:
             raise ValueError('Invalid model permission.')
+        try:
+            self.workspaces.resolve(ident)
+        except KeyError:
+            if section_id is not None or 'pass_profiles' not in payload:
+                raise
+            with self.supervisor.lock:
+                root = workspace_destination(self.workspaces.root, ident)
+                if self.supervisor.owns_project(root) or self.supervisor.active_for_project(root):
+                    raise JobConflict('Workspace busy.')
+                return self.catalog.configure_draft_profiles(
+                    ident, revision(payload), payload['pass_profiles'], payload.get('allow_model_change', False))
         with self.mutable(ident) as root:
             return self.application.web.configure(root, payload, section_id)
 

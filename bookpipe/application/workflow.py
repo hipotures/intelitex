@@ -37,7 +37,10 @@ class WorkflowQueries:
         for number in range(1, 6):
             name, value, provenance = resolve_profile(settings, number, project=root)
             resolved[str(number)] = {'name': name, 'provenance': provenance['profile'], **profile(value)}
-        return {'source': 'project' if local else 'defaults', 'revision': digest(config),
+        # A configured draft has no web.config.json or book yet. Its saved settings
+        # are the versioned authority for pre-Prepare profile changes.
+        draft = local and not files.is_file(root / 'book.json')
+        return {'source': 'project' if local else 'defaults', 'revision': digest(raw) if draft else digest(config),
                 'assignments': {**settings.get('pass_profiles', {}), **config.get('pass_profiles', {})},
                 'default_profile': settings['default_profile'],
                 'pass_profiles': dict(settings.get('pass_profiles', {})),

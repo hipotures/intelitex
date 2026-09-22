@@ -4,7 +4,7 @@ import uuid
 import re
 from datetime import datetime, timezone
 
-from ..util import atomic_json, digest, file_lock, read_json
+from ..util import atomic_json, digest, file_lock, project_lock, read_json
 from .imports import confined_source, RequestConflict
 from ..util import PipelineError
 from .epub_sources import packed_epub_metadata
@@ -144,6 +144,46 @@ class WebCatalog:
                 root.rmdir()
                 raise
             return {'workspace_id': ident, 'source_id': source_id}
+
+    def configure_draft_profiles(self, workspace_id, revision, updates, allow_model_change=False):
+        """Change saved pass assignments before import, with a settings revision."""
+        from ..processing import ConfigConflict, ModelChangeRequired
+        from .web import WorkspaceArchived
+        from .workspace_setup import validate_draft_destination
+
+        if not isinstance(updates, dict) or not updates or set(updates) - set('12345'):
+            raise ValueError('Invalid pass profiles.')
+        if any(not isinstance(name, str) for name in updates.values()):
+            raise ValueError('Invalid profile.')
+        with self.lock, file_lock(self.root, '.intelitex-web.lock', 'Catalog busy.'):
+            if self.draft_lifecycle(workspace_id)['archived']:
+                raise WorkspaceArchived('Restore this draft before editing.')
+            source_id = self.source(workspace_id)
+            root = workspace_destination(self.root, workspace_id)
+            with project_lock(root):
+                setup = validate_draft_destination(root, source_id)
+                settings_path = root / 'settings.json'
+                raw = read_json(settings_path)
+                if revision != digest(raw):
+                    raise ConfigConflict('Configuration changed.')
+                configured, _ = with_profiles(raw)
+                assignments = dict(configured.get('pass_profiles', {}))
+                changed = any(assignments.get(number) != name for number, name in updates.items())
+                if changed and allow_model_change is not True:
+                    raise ModelChangeRequired('Confirm model changes for future work.')
+                assignments.update(updates)
+                configured['pass_profiles'] = assignments
+                for number in range(1, 6):
+                    name, profile, _ = resolve_profile(configured, number, project=root)
+                    for field, language in (('source_languages', setup['source_language']),
+                                            ('target_languages', setup['target_language'])):
+                        support = profile.get(field)
+                        if support is not None and support != 'all' and language.lower() not in {v.lower() for v in support}:
+                            raise ValueError(f'Pass {number}: {name} does not support {language}.')
+                if changed:
+                    atomic_json(settings_path, configured)
+                return {'revision': digest(configured if changed else raw), 'sections': {},
+                        'pass_profiles': dict(assignments)}
 
     def source_metadata(self, source_id):
         if self.imports.root is None:

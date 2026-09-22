@@ -44,7 +44,7 @@ and the current API has cancellation plus new resumable jobs.
 | D02 | F/T/E — approved | Before the first persisted P1 attempt, modes may change freely. Afterwards Full membership is frozen (`analysis_membership_locked`); idle T↔E remains allowed. | Reject mutations during jobs/cleanup; recompute required work/readiness and publication currency. Retain dormant evidence and validate reuse. |
 | D03 | Workflow progress — approved | Backend calculates the implementation contract’s weighted percentage and returns its counts and denominator. | Label as workflow progress, never ETA; unknown is null. Detail screens retain actual counts. |
 | D04 | Publishing control — approved | Automatic publication keeps the primary action disabled as `Publishing…`. | No Pause or duplicate publish; terminal failure exposes backend publication retry without repeating translation. |
-| D05 | Library setup and draft — approved, refined in issue #1 | Library cards never create workspaces. `Add to workspace` opens read-only preflight and a one-time setup modal; Cancel leaves no workspace; Save atomically persists a configured draft. A source may have multiple workspaces. | Save retries must be idempotent for the same request, not unique per source. Persist source identity, optional label and immutable language pair in workspace-owned metadata, and pass profiles in authoritative settings. No book, sections, checkpoints, import or model call before Prepare; Prepare stops before P1. |
+| D05 | Library setup and draft — approved, refined in issue #1 and later Prepare decision | Library cards never create workspaces. `Add to workspace` opens read-only preflight and a one-time setup modal; Cancel leaves no workspace; Save atomically persists a configured draft. A source may have multiple workspaces. Draft pass profiles can change with a current settings revision before Prepare. | Save retries must be idempotent for the same request, not unique per source. Persist source identity, optional label and immutable language pair in workspace-owned metadata, and pass profiles in authoritative settings. Web Prepare imports without a provider call, estimates one token per four Unicode characters rounded up, and stops before P1. P1 validates its own tokenizer/context counts; estimates are never exact checkpoint evidence. |
 | D06 | Reader expansion | Real Reader/context/markers exist; v33 shows a placeholder shell | Preserve existing behavior; do not invent annotation types, comment lists, AI tools or a complete Reader redesign |
 | D07 | Settings | Read-only safe profile queries exist; mock Test/Add profile are simulations | Do not invent an editor, live diagnostic contract, credentials or automatic model request |
 | D08 | Approval freshness — approved | Terminology edits after approval invalidate freshness; Python blocks translation until latest revision is confirmed and committed again. | Historical approved flag is insufficient. Retain checkpoints; application validation decides downstream staleness. |
@@ -58,6 +58,16 @@ an honest temporary state, not completion of that required feature.
 ## Approved product decision provenance
 
 On 2026-09-22 the task owner explicitly resolved D02, D03, D04, D05 and D08 in the implementation conversation. A later [product decision in issue #1](https://github.com/hipotures/intelitex/issues/1) refines and supersedes the earlier *D05 Library/draft flow*: Library remains a source catalog, `Add to workspace` opens setup before creation, Save creates a configured draft, and multiple workspaces may share one source. Its read-only preflight, source/language/profile setup, durable metadata and Prepare boundary are part of that target. The old one-source/one-draft endpoint remains only for compatibility; the explicit setup Save route implements the approved target. D02, D03, D04 and D08 retain their approved policies unchanged.
+
+The task owner subsequently required web Prepare to avoid model/provider requests and
+count one estimated token per four characters. This supersedes the prior backend
+behavior that discovered the P1 provider and tokenized source text during import.
+It also supersedes the historical handoff's section 5.2 warning against using an
+unspecified invented token count: the later user instruction supplies the exact
+estimation policy, and the count is labeled estimated rather than exact usage.
+The selected profile remains saved for P1–P5 and may be changed on an unprepared
+draft through a revision-controlled application command. Direct CLI import retains
+its existing provider-aware behavior; the web worker uses the local estimate.
 
 The supplied implementation contract is an immutable historical handoff, so its sections 5.2, 16.1 and V33-02 retain the superseded one-draft wording; read those sections through this decision register. The original v33 bytes also remain unchanged. The separate multilingual pipeline and derived SQLite cache items in issue #1 are not silently included in this Library/setup/Prepare implementation; their scope and evidence stay separate in `docs/web/contract-map.md`.
 

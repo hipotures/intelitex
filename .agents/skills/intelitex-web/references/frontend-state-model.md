@@ -66,3 +66,9 @@ outcome; a fresh deliberate Save may create another workspace for the same sourc
 Neither React nor localStorage owns durable draft identity, language pair, profiles
 or Prepare state. The Library details/setup flow uses selected-source preflight and
 the explicit `POST /api/workspaces/setup` Save route; card click does not mutate.
+The unprepared workspace reads its saved P1–P5 assignments and settings revision
+from GET `/api/workspaces/{id}/profiles`. Its visible model panel PATCHes one
+assignment with that revision and explicit confirmation; a 409 requires a fresh
+read and deliberate reapplication. The panel remains usable after a failed early
+Prepare, including a leftover empty `.lock`. No provider call occurs on this edit
+or during web Prepare. P1 performs provider-specific counting later.
