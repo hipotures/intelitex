@@ -109,17 +109,37 @@ class ServerService:
         if key is not None and (not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9-]{16,128}', key)):
             raise ValueError('Invalid request key.')
         # Existing imported projects are linked by canonical source identity, not title.
-        imported = [(ident, Path(self.application.web.book(self.workspaces.resolve(ident))['source_root']).resolve())
+        imported = [(ident, Path((book := self.application.web.book(self.workspaces.resolve(ident))).get('source_archive', book['source_root'])).resolve())
                     for ident in self.workspaces.list()]
         return self.catalog.draft(payload['source_id'], imported, request_key=key)
 
     def library(self):
         sources = self.catalog.library()
-        imported = {str(Path(self.application.web.book(self.workspaces.resolve(i))['source_root']).resolve()): i for i in self.workspaces.list()}
+        imported = {str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
         if self.imports.root:
             for source in sources:
                 source['workspace_id'] = source['workspace_id'] or imported.get(str((self.imports.root / source['source_id']).resolve()))
         return {'sources': sources, 'configured': self.imports.root is not None}
+
+    def library_page(self, query):
+        if set(query) - {'after', 'limit'}:
+            raise ValueError('Invalid Library query.')
+        raw_limit = query.get('limit', '24')
+        if not isinstance(raw_limit, str) or not raw_limit.isdecimal():
+            raise ValueError('Invalid Library page size.')
+        limit = int(raw_limit)
+        if not 1 <= limit <= 40:
+            raise ValueError('Invalid Library page size.')
+        after = query.get('after')
+        if after is not None and (not isinstance(after, str) or not after or len(after) > 255
+                                  or '/' in after or '\\' in after or '\x00' in after):
+            raise ValueError('Invalid Library cursor.')
+        sources, next_cursor = self.catalog.library_page(after, limit)
+        imported = {str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
+        if self.imports.root:
+            for source in sources:
+                source['workspace_id'] = source['workspace_id'] or imported.get(str((self.imports.root / source['source_id']).resolve()))
+        return {'sources': sources, 'configured': self.imports.root is not None, 'next_cursor': next_cursor}
 
     def prepare(self, ident, payload):
         fields(payload, {'request_key', 'profile', 'pass_profiles'})
@@ -198,7 +218,8 @@ class ServerService:
         result['config'] = self.application.web.config(root)
         result['metadata'] = self.application.web.metadata(root)
         result['artifacts'] = {name: self.application.web.dependencies.files.is_file(root / filename) for name, filename in [('terminology', 'terms.review.json'), ('book_memory', 'book_memory.json')]}
-        result['preparation'] = {'source_id': Path(self.application.web.book(root)['source_root']).name, 'checks': ['Frozen source/chunk manifest verified']}
+        book = self.application.web.book(root)
+        result['preparation'] = {'source_id': Path(book.get('source_archive', book['source_root'])).name, 'checks': ['Frozen source/chunk manifest verified']}
         if result['metadata']['lifecycle']['archived']:
             for value in result['actions'].values():
                 value.update(allowed=False, reason='workspace_archived')

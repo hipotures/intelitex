@@ -35,5 +35,5 @@ export function useApi<T>(path: string, schema: z.ZodType<T>, enabled = true) {
   return useQuery({ queryKey: [scope, path], queryFn: ({ signal }) => request(path, schema, { signal }), enabled })
 }
 export async function reconcile(workspace?: string) {
-  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || String(q.queryKey[1]).startsWith(endpoint(workspace)) || ['/api/workspaces', '/api/library', '/api/jobs'].includes(String(q.queryKey[1]))) })
+  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || String(q.queryKey[1]).startsWith(endpoint(workspace)) || ['/api/workspaces', '/api/jobs'].includes(String(q.queryKey[1]))) })
 }

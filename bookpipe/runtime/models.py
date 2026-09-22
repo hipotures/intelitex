@@ -106,10 +106,10 @@ class ImportJobSpec:
             raise DestinationConflict('Destination already exists.')
         source_root = Path(self.import_root).resolve(strict=True)
         source = confined_source(source_root, self.source_id)
-        if not source.is_dir() or destination.is_relative_to(source):
-            raise ValueError('Invalid source folder.')
+        if not (source.is_dir() or (source.is_file() and source.suffix.lower() == '.epub')) or destination.is_relative_to(source):
+            raise ValueError('Invalid source.')
         validate_source_tree(source)
-        if self.opf is not None and not confined_source(source, self.opf).is_file():
+        if self.opf is not None and (source.is_file() or not confined_source(source, self.opf).is_file()):
             raise ValueError('Invalid OPF selection.')
         if self.previous_volume is not None:
             previous = workspace_destination(root, self.previous_volume)

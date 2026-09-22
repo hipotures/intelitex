@@ -51,21 +51,25 @@ try {
  await reference.keyboard.press('Escape')
  await reference.setViewportSize({width:1440,height:1000})
  // Test-only fixture adapts data, never the reference bytes, CSS, or production state.
- await reference.evaluate(()=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'home'};s.settings.sourcePath='Configured';s.library=[{id:'source',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:1,workspaceId:'prepared'},{id:'second',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:2,workspaceId:null}];s.workspaces=[{...s.workspaces[2],id:'prepared',bookId:'source',analysisDone:false,prepared:true,error:null,lastUpdated:Date.now(),sections:[{id:'one',name:'Chapter 1',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}},{id:'two',name:'Chapter 2',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}}]}];localStorage.setItem(key,JSON.stringify(s))})
+ const fixture=await reference.evaluate(()=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'home'};s.settings.sourcePath='Configured';s.library=[{id:'source',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:1,workspaceId:'prepared'},{id:'second',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:2,workspaceId:null}];s.workspaces=[{...s.workspaces[2],id:'prepared',bookId:'source',analysisDone:false,prepared:true,error:null,lastUpdated:Date.now(),sections:[{id:'one',name:'Chapter 1',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}},{id:'two',name:'Chapter 2',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}}]}];return JSON.stringify(s)})
  const results=[]
  for(const [width,height] of [[1440,1000],[1920,1080],[1024,1000],[820,1000],[720,1000],[390,844]]) {
   for(const theme of ['dark','light']) {
-   await reference.setViewportSize({width,height});await actual.setViewportSize({width,height})
-   await reference.evaluate(theme=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.theme=theme;localStorage.setItem(key,JSON.stringify(s))},theme)
-   await reference.reload();await actual.goto(config.url+'/work');await actual.locator('.book-card').first().waitFor()
+   const fixtureState=JSON.parse(fixture);fixtureState.theme=theme
+   const referenceView=await browser.newPage({viewport:{width,height}})
+   await referenceView.addInitScript(value=>localStorage.setItem('intelitex-mockup-v22',value),JSON.stringify(fixtureState))
+   await referenceView.goto(referenceURL)
+   await referenceView.locator('.book-card').first().waitFor()
+   await actual.setViewportSize({width,height})
+   await actual.goto(config.url+'/work');await actual.locator('.book-card').first().waitFor()
    if(await actual.locator('html').getAttribute('data-theme')!==theme)await actual.getByRole('button',{name:'Toggle theme'}).click()
    await actual.locator('.workspace-state').waitFor({state:'attached'})
-   await actual.evaluate(()=>document.fonts.ready);await reference.evaluate(()=>document.fonts.ready)
+   await actual.evaluate(()=>document.fonts.ready);await referenceView.evaluate(()=>document.fonts.ready)
    // Disable only visual transition timing, equally on both pages.
-   for(const page of [actual,reference])await page.emulateMedia({reducedMotion:'reduce'})
+   for(const page of [actual,referenceView])await page.emulateMedia({reducedMotion:'reduce'})
    const name=`work-${theme}-${width}`
    const a=await actual.screenshot({path:`${output}/${name}-actual.png`,animations:'disabled'})
-   const b=await reference.screenshot({path:`${output}/${name}-reference.png`,animations:'disabled'})
+   const b=await referenceView.screenshot({path:`${output}/${name}-reference.png`,animations:'disabled'})
    const one=PNG.sync.read(a),two=PNG.sync.read(b),diff=new PNG({width,height})
    const pixels=pixelmatch(one.data,two.data,diff.data,width,height,{threshold:.15,includeAA:false})
    await writeFile(`${output}/${name}-diff.png`,PNG.sync.write(diff))
@@ -74,7 +78,8 @@ try {
    assert.equal(geometry,64)
    assert.equal(await actual.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false)
    const measure=page=>page.locator('.book-card,.cover').evaluateAll(nodes=>nodes.map(n=>({class:n.className,rect:n.getBoundingClientRect().toJSON(),font:getComputedStyle(n).font,align:getComputedStyle(n).alignItems,padding:getComputedStyle(n).padding})))
-   results.push({name,differingPixels:pixels,percent:100*pixels/(width*height),actualGeometry:await measure(actual),referenceGeometry:await measure(reference)})
+   results.push({name,differingPixels:pixels,percent:100*pixels/(width*height),actualGeometry:await measure(actual),referenceGeometry:await measure(referenceView)})
+   await referenceView.close()
   }
  }
  assert.deepEqual(errors,[])

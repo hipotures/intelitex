@@ -18,7 +18,9 @@ uv run intelitex serve --workspace-root /path/to/workspaces --import-root /path/
 Open `http://127.0.0.1:8780/work`. The single Python FastAPI/Uvicorn server serves
 `web/dist`, API, SSE and vetted current EPUB downloads. Production needs no Node
 server. Do not use ASGI reload or multiple workers against one supervisor/registry.
-Sources are supported HTML/XHTML directories or extracted EPUB packages, not uploads.
+Sources are supported HTML/XHTML directories, extracted EPUB packages or packed `.epub`
+files, not uploads. Library loads 12 sources when scrolled into view, then more as the
+user scrolls. Refresh explicitly restarts discovery from the first page.
 
 For frontend development, keep that Python server running and run
 `npm --prefix web run dev`. Vite binds `127.0.0.1:5173`, proxies `/api` to port 8780,

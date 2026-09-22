@@ -104,7 +104,7 @@ def create_app(service, allowed_hosts, *, frontend=None):
             if path == 'api/events' and request.method == 'GET':
                 return await stream(request, service)
             if path.startswith('api/') or path == 'api':
-                if request.url.query:
+                if request.url.query and not (path == 'api/library' and request.method == 'GET'):
                     raise ValueError('Unexpected query parameters.')
                 parts = [unquote(part) for part in request.scope['raw_path'].decode('ascii').split('/')[1:]]
                 if request.method == 'GET' and len(parts) == 5 and parts[:2] == ['api', 'workspaces'] and parts[3:] == ['publication', 'download']:
@@ -114,7 +114,13 @@ def create_app(service, allowed_hosts, *, frontend=None):
                 payload = await body(request) if request.method in {'POST', 'PATCH', 'DELETE'} else None
                 if request.method not in {'GET', 'POST', 'PATCH', 'DELETE'}:
                     raise KeyError()
-                status, value = await run_in_threadpool(dispatch, service, request.method, parts, payload)
+                library_query = None
+                if request.url.query:
+                    parsed_query = parse_qs(request.url.query, keep_blank_values=True)
+                    if any(len(values) != 1 for values in parsed_query.values()):
+                        raise ValueError('Duplicate query parameter.')
+                    library_query = {key: values[0] for key, values in parsed_query.items()}
+                status, value = await run_in_threadpool(dispatch, service, request.method, parts, payload, library_query)
                 return json_response(status, value)
             if request.method not in {'GET', 'HEAD'}:
                 raise KeyError()

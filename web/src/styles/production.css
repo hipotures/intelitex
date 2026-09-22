@@ -87,6 +87,12 @@ h1,h2,h3 { font-weight:700; }
 .profile-swatch { background:var(--model-color,var(--text-dim));vertical-align:middle; }
 
 .section-header > .subtitle { margin:0; }
+.library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;height:20px; }
+.library-refresh { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
+.library-refresh-icon.busy { animation:library-refresh-spin 1s linear infinite; }
+.library-load-more { height:1px; }
+@keyframes library-refresh-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .library-refresh-icon.busy { animation:none; } }
 .book-card { display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start; }
 /* v33's two off-canvas drawers cast this edge shadow even while closed. Native
    dialogs are unmounted, so preserve that decoration without hidden focus targets. */

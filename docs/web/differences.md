@@ -8,6 +8,10 @@ and responsive breakpoints. The following differences carry real application sem
   fake validation, generated cover artwork or localStorage pipeline state.
 - Sources without metadata show explicit absence. Covers use title initials. Paths
   are summarized as server-configured rather than exposing private filesystem paths.
+- Library loads bounded source pages on scroll, and its dedicated Refresh control
+  restarts discovery without shifting cards. Packed EPUBs are indexed alongside
+  folders. The redundant source-directory label and unknown “— words” placeholder
+  under covers are omitted.
 - F/T/E follows approved D02: Full membership freezes after the first persisted P1
   attempt; idle T↔E retains and validates dormant evidence. Disabled controls explain
   the membership restriction. Content type is independent.
@@ -38,6 +42,8 @@ and responsive breakpoints. The following differences carry real application sem
   remain unavailable because no production contract supports them. Test never generates.
   UI reset affects only scoped presentation preferences, never projects or request receipts.
 
-The stable Work fixtures receive unmasked automated pixel comparison. Other screens
+The stable Work fixtures receive unmasked automated pixel comparison. The Library's
+requested Refresh control and removed text create small intentional differences from
+v33 within the existing 1% budget. Other screens
 are compared manually against original captures with different real fixture data; their
 screenshots are not claimed to be pixel-identical. See the verification report for results.

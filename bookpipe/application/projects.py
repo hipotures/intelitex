@@ -15,6 +15,7 @@ from .commands import ImportBookCommand, ModelOptions, StatusCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .results import ChapterStatus, ChunkStatus, ImportResult, StatusResult
 from .sessions import OperationScope, ProjectReadScope
+from .epub_sources import unpack_epub
 
 
 def validate_pass_profiles(values: Mapping[int, str]) -> dict[int, str]:
@@ -132,13 +133,16 @@ class ProjectsService:
                 pass_profiles=validate_pass_profiles(command.pass_profiles),
             )
             client.discover(1)
+            source_folder = unpack_epub(source, root) if source.is_file() and source.suffix.lower() == '.epub' else source
             book = import_folder(
-                source, root, client.count, settings, self.progress,
+                source_folder, root, client.count, settings, self.progress,
                 opf=command.opf.resolve() if command.opf else None,
                 encoding=command.input_encoding, chapter_mode=command.chapter_mode,
                 chapter_selector=command.chapter_selector, sidecars=command.sidecar_txt,
                 include_glob=command.include_glob,
             )
+            if source_folder != source:
+                book['source_archive'] = str(source)
             book["model_identity"] = client.identity
             book["tokenizer_identity"] = client.tokenizer_identity
             for chapter in book["chapters"]:

@@ -54,7 +54,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 
 | Screen/component | HTTP/application binding | Behavior |
 | --- | --- | --- |
-| Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts |
+| Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts; visible Library loads bounded pages on scroll, while explicit Refresh restarts discovery and retains its last successful result on error |
 | Workspace | GET pipeline/settings/activity; jobs/stop | Five-phase rail, seven-column sections table, counts, actual provenance, supervised Run/Stop |
 | Prepare | POST workspace prepare; GET preparation | Real import; frozen manifest and source-package checks; no simulated sections |
 | Analyse | GET pipeline/usage | Whole-book P1 units, recorded usage and artifact availability |
@@ -101,6 +101,17 @@ workspace, book fingerprint, chapter, block ID and Unicode code-point offset. Lo
 contains UI preferences/location only; sessionStorage contains pending request keys only.
 Entering Reader without an explicit book reuses the last valid Reader route or checks
 backend Reader progress for the first workspace with verified translated text.
+
+The Work Library loads its first bounded `GET /api/library?limit=12` page only when
+the section enters the viewport. An intersection sentinel requests the next page
+when scrolling reaches it. Each page reads metadata only for its source slice,
+including packed EPUB files. The dedicated Refresh control reloads page one;
+commands, SSE, focus/reconnect and route remounts do not rescan sources. The
+successful pages remain in the tab's query cache. Refresh uses the shared floating
+toast and button spinner without moving cards. TanStack Query retains the last
+successful list when a request fails.
+Creating a draft updates only that source's workspace link in the cached list from
+the authoritative command response, without rediscovering every source.
 
 ## Acceptance traceability
 

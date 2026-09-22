@@ -104,12 +104,19 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             parts = [unquote(part) for part in parsed.path.split('/')[1:]]
             service = self.server.service
-            if parsed.query and parts != ['api', 'events']:
+            if parsed.query and not (parts == ['api', 'events'] and self.command == 'GET'
+                                     or parts == ['api', 'library'] and self.command == 'GET'):
                 raise ValueError('Unexpected query parameters.')
             if not mutation and parts == ['api', 'events']:
                 return self._events(parse_qs(parsed.query))
             from .routes import dispatch
-            status, value = dispatch(service, self.command, parts, self._body() if mutation else None)
+            library_query = None
+            if parsed.query:
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                if any(len(values) != 1 for values in query.values()):
+                    raise ValueError('Duplicate query parameter.')
+                library_query = {key: values[0] for key, values in query.items()}
+            status, value = dispatch(service, self.command, parts, self._body() if mutation else None, library_query)
             return self._json(status, value)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             self.close_connection = True

@@ -1,6 +1,7 @@
 """Confined import inputs shared by delivery and worker validation."""
 from pathlib import Path, PurePosixPath
 import re
+import zipfile
 
 
 class RequestConflict(Exception):
@@ -53,13 +54,32 @@ class ImportQueries:
     def sources(self) -> list[dict]:
         if self.root is None:
             raise ImportDisabled('Web import is disabled.')
-        # Only immediate source folders; no file content or generic navigation.
+        # Only immediate source folders and packed EPUBs; no generic navigation.
         result = []
         for entry in sorted(self.root.iterdir()):
             try:
                 path = confined_source(self.root, entry.name)
-                if path.is_dir():
+                if path.is_dir() or (path.is_file() and path.suffix.lower() == '.epub' and zipfile.is_zipfile(path)):
                     result.append({'source_id': entry.name})
             except (ValueError, OSError):
                 continue
         return result
+
+    def sources_page(self, after: str | None, limit: int) -> tuple[list[dict], str | None]:
+        """Enumerate names cheaply; inspect archive validity only for this page."""
+        if self.root is None:
+            raise ImportDisabled('Web import is disabled.')
+        result = []
+        for entry in sorted(self.root.iterdir()):
+            if after is not None and entry.name <= after:
+                continue
+            try:
+                path = confined_source(self.root, entry.name)
+                if path.is_dir() or (path.is_file() and path.suffix.lower() == '.epub' and zipfile.is_zipfile(path)):
+                    result.append({'source_id': entry.name})
+                    if len(result) > limit:
+                        break
+            except (ValueError, OSError):
+                continue
+        next_cursor = result[limit - 1]['source_id'] if len(result) > limit else None
+        return result[:limit], next_cursor

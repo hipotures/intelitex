@@ -23,7 +23,9 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces/{id}/profiles` | Sanitized effective settings (same as `/settings`) |
 | GET | `/api/workspaces/{id}/settings` | Settings schema below |
 | GET | `/api/profiles` | Sanitized installed defaults/profiles, including before the first import |
-| GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders only |
+| GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders and packed EPUB files |
+| GET | `/api/library` | Legacy complete `{configured,sources}` response |
+| GET | `/api/library?limit=12&after={cursor}` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
 | GET | `/api/jobs` | `{jobs:[job],cursor}` |
@@ -177,17 +179,18 @@ API reads remain available. Standalone Review/Reader commands and UIs are unchan
 ## Confined import
 
 Without `--import-root`, capabilities report `import_enabled:false` and both
-import routes return `import_disabled`. Discovery lists immediate folder identifiers
-only. A supplied source ID may identify a nested folder, always under import-root.
-The existing importer accepts HTML/XHTML folders, including extracted EPUB folders;
-this API does not introduce archive uploads or change the importer input format.
+import routes return `import_disabled`. Discovery lists immediate folder and packed
+EPUB identifiers. A supplied source ID may identify a nested folder, always under
+import-root. The existing importer accepts HTML/XHTML folders, including extracted
+EPUB folders. A packed EPUB is safely unpacked into the project at Prepare and then
+uses the same importer; no archive upload endpoint is introduced.
 
 Required input: `{workspace_id,source_id}`. Optional fields:
 
 | Field | Meaning / validation |
 | --- | --- |
 | `previous_volume` | Existing workspace ID under workspace-root; reuses existing series handoff/config inheritance |
-| `opf` | Relative existing OPF file inside the selected source folder |
+| `opf` | Relative existing OPF file inside the selected source folder; unavailable for packed EPUBs |
 | `input_encoding` | Existing importer encoding override |
 | `chapter_mode` | `auto` (default), `file`, `headings` |
 | `chapter_selector` | Existing HTML chapter selector |

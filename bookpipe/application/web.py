@@ -72,7 +72,7 @@ class WebWorkspaceService:
         else:
             unavailable = 'EPUB-specific checks are not applicable to this HTML source.'
         return {'checks': checks, 'unavailable': unavailable,
-                'reading_order': metadata.get('order_method'), 'source_id': Path(book['source_root']).name}
+                'reading_order': metadata.get('order_method'), 'source_id': Path(book.get('source_archive', book['source_root'])).name}
 
     @staticmethod
     def sections(book):

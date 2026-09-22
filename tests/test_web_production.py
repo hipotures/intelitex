@@ -1,7 +1,10 @@
 """Production web boundaries use disposable projects and offline providers only."""
 import asyncio
 import json
+import stat
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -12,6 +15,11 @@ from bookpipe.application.web import LifecycleConflict, WorkspaceArchived
 from bookpipe.processing import AnalysisMembershipLocked, ConfigConflict, effective_book
 from bookpipe.util import read_json, PipelineError
 from bookpipe.application.commands import TranslateCommand
+from bookpipe.application.commands import ImportBookCommand
+from bookpipe.application.epub_sources import unpack_epub
+from bookpipe.runtime.models import ImportJobSpec
+from test_pipeline import make_epub_source
+from test_runtime import request
 
 
 def test_d05_draft_has_no_project_or_model_and_two_tabs_resolve_once(api):
@@ -24,6 +32,97 @@ def test_d05_draft_has_no_project_or_model_and_two_tabs_resolve_once(api):
     assert results[0] == results[1]
     assert not (root.parent / results[0]['workspace_id']).exists()
     assert any(not w['prepared'] for w in service.list_workspaces())
+
+
+def test_library_refresh_discovers_packed_epub_and_prepare_uses_durable_snapshot(api, tmp_path):
+    app, root, service, _ = api
+    before = {item['source_id'] for item in service.library()['sources']}
+    source = make_epub_source(tmp_path)
+    packed = service.imports.root / 'New Book.epub'
+    with zipfile.ZipFile(packed, 'w') as archive:
+        for path in source.rglob('*'):
+            if path.is_file():
+                archive.write(path, path.relative_to(source).as_posix())
+    discovered = {item['source_id']: item for item in service.library()['sources']}
+    assert 'New Book.epub' not in before
+    assert discovered['New Book.epub']['title'] == 'Relay Book'
+    assert discovered['New Book.epub']['creators'] == ['Test Author']
+    assert discovered['New Book.epub']['language'] == 'en'
+    draft = service.create_draft({'source_id': 'New Book.epub'})
+    assert not (root.parent / draft['workspace_id']).exists()
+    spec = ImportJobSpec(workspace_root=str(root.parent), workspace_id=draft['workspace_id'],
+                         project=str(root.parent / draft['workspace_id']), import_root=str(service.imports.root),
+                         source_id='New Book.epub')
+    assert spec.source_id == 'New Book.epub'
+    destination = root.parent / draft['workspace_id']
+    app.projects.import_book(ImportBookCommand(destination, packed))
+    book = app.web.book(destination)
+    assert book['source_archive'] == str(packed)
+    assert (destination / 'source-package' / 'META-INF' / 'container.xml').is_file()
+    assert service.pipeline(draft['workspace_id'])['preparation']['source_id'] == 'New Book.epub'
+    assert next(item for item in service.library()['sources'] if item['source_id'] == 'New Book.epub')['workspace_id'] == draft['workspace_id']
+
+
+@pytest.mark.parametrize('member', ['../escape.txt', '/absolute.txt', 'folder/../escape.txt', 'folder\\escape.txt'])
+def test_packed_epub_rejects_unsafe_member_paths(tmp_path, member):
+    packed = tmp_path / 'unsafe.epub'
+    with zipfile.ZipFile(packed, 'w') as archive:
+        archive.writestr(member, 'unsafe')
+    project = tmp_path / 'workspace'
+    project.mkdir()
+    with pytest.raises(PipelineError, match='Unsafe EPUB member path'):
+        unpack_epub(packed, project)
+    assert not (tmp_path / 'escape.txt').exists()
+
+
+def test_packed_epub_rejects_symlink_and_duplicate_members(tmp_path):
+    project = tmp_path / 'workspace'
+    project.mkdir()
+    packed = tmp_path / 'symlink.epub'
+    link = zipfile.ZipInfo('link')
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(packed, 'w') as archive:
+        archive.writestr(link, '../outside')
+    with pytest.raises(PipelineError, match='unsupported member type'):
+        unpack_epub(packed, project)
+    packed = tmp_path / 'duplicate.epub'
+    with zipfile.ZipFile(packed, 'w') as archive:
+        archive.writestr('one.txt', 'first')
+        archive.writestr('one.txt', 'second')
+    (tmp_path / 'other-workspace').mkdir()
+    with pytest.raises(PipelineError, match='duplicate members'):
+        unpack_epub(packed, tmp_path / 'other-workspace')
+
+
+def test_library_page_cursor_loads_only_requested_metadata_and_rejects_bad_queries(api, monkeypatch):
+    _, _, service, server = api
+    for index in range(26):
+        source = service.imports.root / f'new-{index:02d}'
+        source.mkdir()
+        (source / 'chapter.html').write_text('<p>Offline catalog fixture.</p>')
+    calls = []
+    original = service.catalog.source_metadata
+    def observed(source_id):
+        calls.append(source_id)
+        return original(source_id)
+    monkeypatch.setattr(service.catalog, 'source_metadata', observed)
+    collected = []
+    cursor = None
+    while True:
+        path = '/api/library?limit=12' + (f'&after={quote(cursor)}' if cursor else '')
+        code, page = request(server, 'GET', path)
+        assert code == 200
+        assert len(page['sources']) <= 12
+        collected.extend(item['source_id'] for item in page['sources'])
+        cursor = page['next_cursor']
+        if cursor is None:
+            break
+    assert len(collected) == 27
+    assert len(set(collected)) == 27
+    assert calls == collected
+    for query in ('limit=0', 'limit=41', 'limit=oops', 'limit=12&limit=12', 'after=..%2Fetc', 'unexpected=1'):
+        assert request(server, 'GET', '/api/library?' + query)[0] == 400
 
 
 def test_draft_archive_restore_uses_catalog_revision_without_importing(api):

@@ -6,6 +6,8 @@ from ..util import atomic_json, digest, file_lock, read_json
 from .imports import confined_source, validate_source_tree, RequestConflict
 from ..importer import reading_order
 from ..util import PipelineError
+from .epub_sources import packed_epub_metadata
+import zipfile
 
 
 class WebCatalog:
@@ -27,7 +29,7 @@ class WebCatalog:
             from .imports import ImportDisabled
             raise ImportDisabled('Import disabled.')
         source = confined_source(self.imports.root, source_id)
-        if not source.is_dir():
+        if not source.is_dir() and not (source.is_file() and source.suffix.lower() == '.epub' and zipfile.is_zipfile(source)):
             raise KeyError(source_id)
         with self.lock, file_lock(self.root, '.intelitex-web.lock', 'Catalog busy.'):
             state = self.read()
@@ -63,6 +65,8 @@ class WebCatalog:
             return {'title': source_id, 'creators': [], 'language': None, 'word_count': None}
         try:
             source = confined_source(self.imports.root, source_id)
+            if source.is_file() and source.suffix.lower() == '.epub':
+                return packed_epub_metadata(source)
             validate_source_tree(source)
             _, metadata, _ = reading_order(source)
             title = metadata.get('title') or source.name
@@ -111,3 +115,16 @@ class WebCatalog:
             result.append({'source_id': item['source_id'], **self.source_metadata(item['source_id']),
                            'workspace_id': entry['workspace_id'] if entry else None})
         return result
+
+    def library_page(self, after, limit):
+        if self.imports.root is None:
+            return [], None
+        state = self.read()
+        items, next_cursor = self.imports.sources_page(after, limit)
+        result = []
+        for item in items:
+            source = confined_source(self.imports.root, item['source_id'])
+            entry = state['sources'].get(digest(str(source)))
+            result.append({'source_id': item['source_id'], **self.source_metadata(item['source_id']),
+                           'workspace_id': entry['workspace_id'] if entry else None})
+        return result, next_cursor

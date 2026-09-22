@@ -4,13 +4,13 @@ def response(status, value):
     return status, value
 
 
-def dispatch(service, method, parts, body=None):
+def dispatch(service, method, parts, body=None, query=None):
     supervisor = service.supervisor
     mutation = method != 'GET'
     if method == 'POST' and parts == ['api', 'workspaces']:
         return response(200, service.create_draft(body))
     if method == 'GET' and parts == ['api', 'library']:
-        return response(200, service.library())
+        return response(200, service.library_page(query) if query is not None else service.library())
     if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
         ident, tail = parts[2], parts[3:]
         if method == 'POST':
