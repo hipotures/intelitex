@@ -1,6 +1,7 @@
 """Analysis and translation use-case orchestration."""
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from ..engine import Runner, analysis_plan, export_text, previous_context, source_blocks
@@ -188,8 +189,10 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
 
 
 class PipelineService:
-    def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink):
+    def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink,
+                 publishing=None):
         self.dependencies, self.progress = dependencies, progress
+        self.publishing = publishing
 
     def _resources(self, command: AnalyzeCommand | TranslateCommand):
         root = command.project.resolve()
@@ -223,6 +226,7 @@ class PipelineService:
 
     def translate(self, command: TranslateCommand) -> PipelineResult:
         root, scope = self._resources(command)
+        became_complete = False
         with scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             settings = effective_settings(
@@ -242,4 +246,20 @@ class PipelineService:
                     "profile": selected.profile_name,
                 }
             check_model(client, book, command.allow_model_change, self.progress)
-            return execute_translate(scope.store, book, client, settings, self.progress, command.chunk_limit)
+            result = execute_translate(
+                scope.store, book, client, settings, self.progress, command.chunk_limit,
+            )
+            became_complete = result.completed_units > 0 and all(
+                scope.store.chunk(chunk["id"])["status"] == "done" for chunk in book["chunks"]
+            )
+        if became_complete and self.publishing is not None:
+            from .commands import PublicationStatusCommand, PublishCommand
+            try:
+                published = self.publishing.publish(PublishCommand(root))
+                return replace(result, publication=published.status)
+            except PipelineError:
+                # Translation checkpoints are already committed.  Publication
+                # records the failure and remains independently retryable.
+                status = self.publishing.status(PublicationStatusCommand(root))
+                return replace(result, publication=status)
+        return result

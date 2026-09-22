@@ -193,7 +193,8 @@ def _structure_title(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[*_`]+", "", text)).strip()
 
 
-def extract_blocks(raw: bytes, *, encoding: str | None = None, chapter_selector: str | None = None) -> tuple[list[dict], str, list[str]]:
+def _extract_document(raw: bytes, *, encoding: str | None = None,
+                      chapter_selector: str | None = None):
     """Extract readable blocks plus conservative literary-structure hints.
 
     Inline spans are concatenated without synthetic spaces, so drop caps/small caps
@@ -224,6 +225,7 @@ def extract_blocks(raw: bytes, *, encoding: str | None = None, chapter_selector:
     selectors = {id(x) for x in soup.select(chapter_selector)} if chapter_selector else set()
     body = soup.body or soup
     result: list[dict] = []
+    nodes: list[Tag | None] = []
     pending_anchors: list[str] = []
     pending_scene_break = False
 
@@ -277,6 +279,7 @@ def extract_blocks(raw: bytes, *, encoding: str | None = None, chapter_selector:
             "scene_start": scene_start,
             "classes": classes,
         })
+        nodes.append(node if isinstance(node, Tag) else None)
         pending_anchors.clear()
         pending_scene_break = False
 
@@ -329,7 +332,27 @@ def extract_blocks(raw: bytes, *, encoding: str | None = None, chapter_selector:
             emit(node, "".join(inline(x) for x in buffer))
 
     walk(body)
-    return result, detected, sorted(set(warnings))
+    return result, detected, sorted(set(warnings)), soup, nodes
+
+
+def extract_blocks(raw: bytes, *, encoding: str | None = None,
+                   chapter_selector: str | None = None) -> tuple[list[dict], str, list[str]]:
+    """Public extraction API; its values and ordering are frozen import inputs."""
+    blocks, detected, warnings, _, _ = _extract_document(
+        raw, encoding=encoding, chapter_selector=chapter_selector,
+    )
+    return blocks, detected, warnings
+
+
+def extract_publication_document(raw: bytes, *, encoding: str | None = None):
+    """Return the normal extracted blocks and their parsed source elements.
+
+    This deliberately reuses the importer traversal so publication never guesses
+    a second, subtly different block order. Callers must still reject elements
+    whose inline structure cannot be rewritten safely.
+    """
+    blocks, detected, _, soup, nodes = _extract_document(raw, encoding=encoding)
+    return blocks, detected, soup, nodes
 
 
 def _section_role(section: dict, index: int, total: int, metadata: dict) -> str:

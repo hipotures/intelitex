@@ -427,6 +427,20 @@ uv run translate.py translate --project "$PROJECT" --continue 0
 interrupted unit. `--continue 0` processes all remaining units. A number greater
 than the remaining count also stops at the end. The default is five units.
 
+When the last pending or stale unit reaches a valid P5 checkpoint, Intelitex
+automatically publishes the current translated EPUB. If package construction or
+validation fails, the completed translation stays committed and publication can
+be retried without a model call:
+
+```bash
+uv run translate.py publish --project "$PROJECT"
+```
+
+Publishing requires a real unpacked EPUB package with `mimetype`,
+`META-INF/container.xml`, and the imported OPF. A generic HTML-directory project
+continues to support analysis, translation, text export, and Reader, but cannot be
+faithfully published as EPUB by this version.
+
 No repeated input path, manual source cutting, or copying intermediate JSON is
 needed. Host and port are saved at import. They may be overridden on `analyze` or
 `translate` without repeating the import.
@@ -499,6 +513,7 @@ external authentication path in the predecessor first.
 | P3 | The same unit | Polish draft. |
 | P4 | The same unit | Independent correction ledger. |
 | P5 | The same unit | Final edited Polish text. |
+| Publish | Completed, current translation | Validate and atomically build the final EPUB. No LLM call. |
 
 P1 walks the **whole book** before any translation. Later P1 calls receive a
 relevant slice of accumulated memory and a bounded name catalogue. The complete
@@ -748,6 +763,30 @@ Conversion is strict and may reject smart punctuation or symbols absent from tha
 encoding. UTF-8 originals remain unchanged. Internal project files are protected
 from being overwritten by additional exports.
 
+## Text export versus EPUB publication
+
+`export` is the existing technical text materialization operation. It rebuilds
+`translation.txt`, `translated_chapters/*.txt`, and `translation.status.json` and
+remains useful while translation is incomplete. Translation also maintains those
+files after every completed unit.
+
+`publish` is a separate final-product operation. It requires completed P1,
+approved terminology, all chunks currently `done`, and intact P5 checkpoints. It
+copies the original EPUB package, replaces only mapped translated prose blocks,
+sets package language metadata to the requested target (`pl` by default), validates
+the generated archive, and atomically promotes:
+
+```text
+PROJECT/published/<original title> [PL].epub
+```
+
+`publication.json` records the current publication fingerprint, output checksum,
+metadata, validation checks, last successful edition, and latest failed attempt.
+An older valid EPUB may remain after terminology makes chunks stale, but `status`
+reports that edition as stale rather than current. `publish --target-language TAG`
+keeps the application boundary language-neutral even though the current product
+workflow defaults to Polish.
+
 ## Files to inspect
 
 ```text
@@ -764,6 +803,8 @@ project/
   lexicon.approved.json
   translation.txt              # growing contiguous completed prefix
   translation.status.json      # pending/done/stale status
+  publication.json             # publication identity, validation and last attempt
+  published/                   # atomically promoted current translated EPUB
   extracted/                   # per-HTML source text
   chapters/                    # per-chapter source text
   translated_chapters/          # per-chapter available translations
@@ -807,9 +848,14 @@ malformed/missing blocks and references, not every semantic mistranslation. P4 i
 model audit, not a guarantee of fidelity. Keep the first run small and inspect its
 source, draft, correction ledger and final output before running the entire book.
 
-There is no final EPUB reconstruction in this version; outputs are UTF-8 TXT and
-structured artifacts. The browser Reader is a local checkpoint-backed reading view,
-not an EPUB-producing ebook application.
+EPUB round-tripping is deliberately conservative. Plain block text, line breaks,
+and balanced emphasis/strong markers retained by the translation are reconstructed.
+If a translated source block contains meaningful inline structures that cannot be
+mapped safely (for example a text-bearing hyperlink or attributed inline span),
+publication fails rather than silently deleting markup. Untranslated navigation,
+non-narrative content, CSS, images, fonts, cover data, and other package assets are
+copied unchanged. The browser Reader remains a local checkpoint-backed reading view;
+it does not construct the EPUB itself.
 
 ## Reference documents
 

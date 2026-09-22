@@ -151,6 +151,21 @@ def test_architecture_guards_semantic_progress_and_reader_session_boundary():
     assert "context_service" not in reader_session
 
 
+def test_publishing_boundary_is_separate_from_text_export_and_package_infrastructure():
+    root = Path(__file__).parents[1] / "bookpipe"
+    publishing = (root / "application" / "publishing.py").read_text(encoding="utf-8")
+    exports = (root / "application" / "exports.py").read_text(encoding="utf-8")
+    epub = (root / "infrastructure" / "epub_publisher.py").read_text(encoding="utf-8")
+    cli = (root / "cli.py").read_text(encoding="utf-8")
+
+    assert "zipfile" not in publishing and "BeautifulSoup" not in publishing
+    assert "EpubPublicationBuilder" not in publishing
+    assert "publish" not in exports.lower() and "epub" not in exports.lower()
+    assert "state.sqlite3" not in epub and "book.json" not in epub and "Store" not in epub
+    assert "book.json" not in cli and "state.sqlite3" not in cli
+    assert "app.publishing.publish(" in cli
+
+
 class LocalImportProvider:
     identity = {"id": "fixture-model"}
     tokenizer_identity = {"kind": "fixture", "id": "fixture-tokenizer"}

@@ -97,6 +97,7 @@ application/
   reader.py       reader/marker operations
   operations.py   diagnostics/discovery/smoke/reports
   exports.py      text export orchestration
+  publishing.py   EPUB publication policy, state and workflow orchestration
 ```
 
 `bookpipe.bootstrap.create_application(...)` is the composition root. Constructing the application is intentionally inert: it does not open a project, create a database, contact a provider, resolve credentials, bind a socket, or start a process.
@@ -116,6 +117,9 @@ app.review.approve(...)
 app.reader.open_session(...)
 
 app.exports.export_text(...)
+
+app.publishing.publish(...)
+app.publishing.status(...)
 
 app.operations.profiles(...)
 app.operations.doctor(...)
@@ -184,7 +188,7 @@ Resource ownership is explicit in `bookpipe/application/sessions.py`.
 - a lazily created provider pool;
 - deterministic reverse-order cleanup.
 
-Import, analysis, translation, approval, export, status, and operational commands use this scope as appropriate.
+Import, analysis, translation, approval, export, publication, status, and operational commands use this scope as appropriate.
 
 ### Review
 
@@ -214,6 +218,7 @@ Important artifacts include:
 | `translation.review.json` | Reader marker state |
 | `artifacts/` | model attempt evidence and checkpoint results |
 | `translation.txt`, `translated_chapters/`, `translation.status.json` | current readable text products |
+| `publication.json`, `published/*.epub` | final-publication identity/status and atomically promoted EPUB |
 | `series.json`, `series.seed.json` | continuation identity and inherited memory |
 
 Accepted task identity and checkpoint reuse must not depend on interface names, UI layout, progress labels, or new wrapper types.
@@ -232,6 +237,7 @@ import
   -> explicit approval
   -> P2 -> P3 -> P4 -> P5 per selected unfinished translation unit
   -> incremental text products / Reader
+  -> automatic EPUB publication after the final unfinished/stale unit
 ```
 
 Key invariants:
@@ -244,6 +250,10 @@ Key invariants:
 - accepted checkpoints are reused;
 - validation fails closed;
 - stale translated output remains readable until regenerated;
+- text export and EPUB publication remain separate application operations;
+- publishing performs no model call and never rolls back valid P1-P5 checkpoints;
+- partial or stale translations cannot produce a current EPUB;
+- a failed replacement preserves the last validated EPUB and is explicitly retryable;
 - provider/evidence failure must not be mistaken for bad model JSON and trigger blind duplicate inference.
 
 ## Providers and evidence

@@ -9,7 +9,7 @@ from pathlib import Path
 from .application import (
     AnalyzeCommand, ApproveCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand,
     DoctorCommand, ExportCommand, ImportBookCommand, ProfilesCommand, ReaderSessionCommand,
-    ReviewSessionCommand, SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
+    PublishCommand, ReviewSessionCommand, SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
 )
 from .bootstrap import create_application
 from .provider_registry import ProviderPool
@@ -23,7 +23,7 @@ BUNDLE = Path(__file__).resolve().parent.parent
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Persistent five-pass literary translation. Import -> analyze -> human review -> approve -> translate.")
+    p = argparse.ArgumentParser(description="Persistent five-pass literary translation. Import -> analyze -> human review -> approve -> translate -> publish.")
     sub = p.add_subparsers(dest="command", required=True)
     pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
@@ -34,6 +34,7 @@ def parser() -> argparse.ArgumentParser:
         ("translate", "Run P2-P5 for the next N unfinished chunks; resume checkpoints automatically."),
         ("status", "Show local progress without contacting the server."),
         ("export", "Rebuild completed text; optionally produce a strict legacy-encoding copy."),
+        ("publish", "Build or retry the final translated EPUB without contacting a model."),
     )
     for name, help_text in pipeline_commands:
         command = sub.add_parser(name, help=help_text)
@@ -76,6 +77,9 @@ def parser() -> argparse.ArgumentParser:
         if name == "export":
             command.add_argument("--encoding", default="utf-8", help="Encoding for an additional copy; internal state always stays UTF-8.")
             command.add_argument("--output", type=Path, help="Required for non-UTF-8 export.")
+        if name == "publish":
+            command.add_argument("--target-language", default="pl",
+                                 help="BCP 47 target language tag. Default: pl.")
     for name, help_text in (
         ("profiles", "Show configured and resolved profiles without exposing credentials."),
         ("doctor", "Validate local configuration and Codex protocol without a model turn."),
@@ -150,6 +154,14 @@ def _render_status(result, ui: Display) -> None:
         f"Terms: {result.term_count} | retained candidates: {result.retained_candidates}\n"
         f"Readable output: {result.readable_output}"
     )
+    if result.publication is not None:
+        publication = result.publication
+        ui.message(
+            f"Translation complete: {publication.translation_complete}\n"
+            f"Publication: {publication.state} | current: {publication.current}"
+            + (f"\nPublished EPUB: {publication.output_path}" if publication.output_path else "")
+            + (f"\nLast publish error: {publication.last_error}" if publication.last_error else "")
+        )
     for chapter in result.chapters:
         ui.message(f"  {chapter.id}  {chapter.completed}/{chapter.total} units  {chapter.title[:100]}")
 
@@ -173,7 +185,15 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "analyze":
                 app.pipeline.analyze(AnalyzeCommand(**_model_options(args)))
             elif args.command == "translate":
-                app.pipeline.translate(TranslateCommand(**_model_options(args), chunk_limit=args.chunk_limit))
+                result = app.pipeline.translate(TranslateCommand(**_model_options(args), chunk_limit=args.chunk_limit))
+                if result.publication is not None:
+                    if result.publication.current:
+                        ui.message(f"Published EPUB: {result.publication.output_path}")
+                    elif result.publication.last_error:
+                        ui.message(
+                            "Translation completed, but EPUB publishing failed. "
+                            f"Retry with `publish --project {root}`.\n{result.publication.last_error}"
+                        )
             elif args.command == "review":
                 with app.review.open_session(ReviewSessionCommand(root)) as session:
                     ui.stop_progress()
@@ -194,6 +214,12 @@ def main(argv: list[str] | None = None) -> int:
                 result = app.exports.export_text(ExportCommand(root, args.encoding, args.output))
                 ui.message(f"Exported {args.output} ({args.encoding}, strict)." if result.copy_output
                            else f"Exported {result.internal_output} (UTF-8).")
+            elif args.command == "publish":
+                result = app.publishing.publish(PublishCommand(root, args.target_language))
+                ui.message(
+                    f"Published {result.status.output_path}."
+                    if result.built else f"Publication already current: {result.status.output_path}."
+                )
             else:
                 if args.command == "profiles":
                     report = app.operations.profiles(ProfilesCommand(root))

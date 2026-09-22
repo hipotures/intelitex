@@ -80,6 +80,18 @@ class ExportCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class PublishCommand:
+    project: Path
+    target_language: str = "pl"
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationStatusCommand:
+    project: Path
+    target_language: str = "pl"
+
+
+@dataclass(frozen=True, slots=True)
 class ProfilesCommand:
     project: Path
 

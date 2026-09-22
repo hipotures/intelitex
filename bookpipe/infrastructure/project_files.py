@@ -26,6 +26,9 @@ class LocalProjectFiles:
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         return path.read_text(encoding=encoding)
 
+    def read_bytes(self, path: Path) -> bytes:
+        return path.read_bytes()
+
     def copy_prompts(self, source: Path, destination: Path) -> None:
         destination.mkdir(exist_ok=True)
         for prompt in source.glob("*.txt"):

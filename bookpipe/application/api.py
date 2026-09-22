@@ -5,6 +5,7 @@ from .ports import ApplicationDependencies, NullProgress, ProgressSink
 from .exports import ExportsService
 from .operations import OperationsService
 from .pipeline import PipelineService
+from .publishing import PublishingService
 from .projects import ProjectsService
 from .review import ReviewService
 from .reader import ReaderService
@@ -15,8 +16,9 @@ class Application:
 
     def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink | None = None):
         sink = progress or NullProgress()
-        self.projects = ProjectsService(dependencies, sink)
-        self.pipeline = PipelineService(dependencies, sink)
+        self.publishing = PublishingService(dependencies, sink)
+        self.projects = ProjectsService(dependencies, sink, self.publishing)
+        self.pipeline = PipelineService(dependencies, sink, self.publishing)
         self.review = ReviewService(dependencies, sink)
         self.reader = ReaderService(dependencies, sink)
         self.exports = ExportsService(dependencies, sink)

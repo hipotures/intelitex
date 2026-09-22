@@ -47,6 +47,8 @@ class StatusResult:
     retained_candidates: int
     chapters: tuple[ChapterStatus, ...]
     readable_output: Path
+    translation_complete: bool = False
+    publication: PublicationStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,10 +65,36 @@ class ExportResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PublicationStatus:
+    state: str
+    translation_complete: bool
+    current: bool
+    output_path: Path | None
+    target_language: str
+    publication_fingerprint: str | None = None
+    generated_by: str | None = None
+    title: str | None = None
+    creators: tuple[str, ...] = ()
+    source_language: str | None = None
+    generated_at: str | None = None
+    last_error: str | None = None
+    last_failure: str | None = None
+    validation: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PublishResult:
+    project: Path
+    status: PublicationStatus
+    built: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineResult:
     project: Path
     completed_units: int = 0
     review_path: Path | None = None
+    publication: PublicationStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)

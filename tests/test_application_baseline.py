@@ -5,7 +5,7 @@ from bookpipe.cli import parser
 
 
 COMMANDS = {
-    "import", "analyze", "review", "reader", "approve", "translate", "status", "export",
+    "import", "analyze", "review", "reader", "approve", "translate", "status", "export", "publish",
     "profiles", "doctor", "attempts", "usage", "catalog-import", "discover", "smoke",
 }
 
@@ -39,6 +39,9 @@ def test_cli_defaults_that_are_application_semantics(tmp_path):
     assert translated.chunk_limit == 5
     assert translated.pass_profile == []
 
+    published = _parse("publish", "--project", project)
+    assert published.target_language == "pl"
+
     reviewed = _parse("review", "--project", project)
     assert (reviewed.bind, reviewed.review_port, reviewed.no_browser) == ("127.0.0.1", 8765, False)
 
@@ -51,4 +54,3 @@ def test_cli_defaults_that_are_application_semantics(tmp_path):
     for command in ("discover", "smoke"):
         parsed = _parse(command, "--project", project)
         assert parsed.pass_no == 1
-

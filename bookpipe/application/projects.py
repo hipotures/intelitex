@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from ..importer import import_folder
@@ -96,8 +97,10 @@ def load_valid_book(root: Path, fingerprint=plan_fingerprint, files=None) -> dic
 
 
 class ProjectsService:
-    def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink):
+    def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink,
+                 publishing=None):
         self.dependencies, self.progress = dependencies, progress
+        self.publishing = publishing
 
     def import_book(self, command: ImportBookCommand) -> ImportResult:
         root, source = command.project.resolve(), command.source.resolve()
@@ -192,11 +195,16 @@ class ProjectsService:
                 completed=sum(store.chunk(cid)["status"] == "done" for cid in chapter["chunk_ids"]),
                 total=len(chapter["chunk_ids"]),
             ) for chapter in book["chapters"])
-            return StatusResult(
+            result = StatusResult(
                 project=root, title=book["metadata"].get("title") or Path(book["source_root"]).name,
                 series_id=series_id, series_volume=series_volume,
                 narrative_sections=len(book["chapters"]), chunks=chunks,
                 analysis_complete=bool(store.get("analysis_done")), approved=bool(store.get("approved")),
                 term_count=len(terms), retained_candidates=sum(len(t["candidates"]) for t in terms),
                 chapters=chapters, readable_output=root / "translation.txt",
+                translation_complete=bool(chunks) and all(chunk.status == "done" for chunk in chunks),
             )
+        if self.publishing is not None:
+            from .commands import PublicationStatusCommand
+            result = replace(result, publication=self.publishing.status(PublicationStatusCommand(root)))
+        return result

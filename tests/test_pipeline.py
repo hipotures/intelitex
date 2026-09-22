@@ -4,6 +4,7 @@ import copy
 import json
 import re
 import threading
+import zipfile
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,13 +14,14 @@ import pytest
 from bookpipe.cli import main
 from bookpipe.application import (
     AnalyzeCommand, ApproveCommand, ExportCommand, ReaderSessionCommand, ReviewSessionCommand,
-    StatusCommand, TranslateCommand,
+    PublicationStatusCommand, PublishCommand, StatusCommand, TranslateCommand,
 )
 from bookpipe.bootstrap import create_application
 from bookpipe.client import Client
 from bookpipe.engine import (Runner, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
                              response_schema, source_blocks, validate_result)
 from bookpipe.importer import extract_blocks, import_folder, pack_blocks, reading_order, split_long
+from bookpipe.infrastructure.epub_publisher import EpubPublicationBuilder
 from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
 from bookpipe.ui import Display
@@ -151,6 +153,40 @@ def project(tmp_path, server):
     args = ["--project", str(root), "--quiet"]
     assert main(["import", str(source), *args, "--host", "127.0.0.1", "--port", str(port)]) == 0
     return root, args, state
+
+
+def make_epub_source(tmp_path: Path) -> Path:
+    source = tmp_path / "epub-source"
+    (source / "META-INF").mkdir(parents=True)
+    (source / "EPUB" / "text").mkdir(parents=True)
+    (source / "EPUB" / "styles").mkdir(parents=True)
+    (source / "EPUB" / "images").mkdir(parents=True)
+    (source / "mimetype").write_bytes(b"application/epub+zip")
+    (source / "META-INF" / "container.xml").write_text(
+        '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'
+        '<rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/>'
+        '</rootfiles></container>', encoding="utf-8",
+    )
+    (source / "EPUB" / "package.opf").write_text(
+        '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:test:relay</dc:identifier>'
+        '<dc:title>Relay Book</dc:title><dc:creator>Test Author</dc:creator><dc:language>en</dc:language></metadata>'
+        '<manifest><item id="css" href="styles/book.css" media-type="text/css"/>'
+        '<item id="cover" href="images/cover.bin" media-type="application/octet-stream" properties="cover-image"/>'
+        '<item id="one" href="text/one.xhtml" media-type="application/xhtml+xml"/>'
+        '<item id="two" href="text/two.xhtml" media-type="application/xhtml+xml"/></manifest>'
+        '<spine><itemref idref="one"/><itemref idref="two"/></spine></package>', encoding="utf-8",
+    )
+    (source / "EPUB" / "styles" / "book.css").write_bytes(b"p { color: #123456; }\n")
+    (source / "EPUB" / "images" / "cover.bin").write_bytes(b"fixture-cover-bytes\x00\x01")
+    for number, name in ((1, "one"), (2, "two")):
+        (source / "EPUB" / "text" / f"{name}.xhtml").write_text(
+            '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head>'
+            f'<title>Chapter {number}</title><link rel="stylesheet" href="../styles/book.css"/></head>'
+            f'<body><h1>Chapter {number}</h1><p>Relay moved steadily in section {number}.</p></body></html>',
+            encoding="utf-8",
+        )
+    return source
 
 
 
@@ -472,6 +508,98 @@ def test_user_selection_and_incremental_continue(project):
     completed = state.calls.copy()
     assert main(["translate", *args, "--continue", "0"]) == 0
     assert state.calls == completed
+
+
+def test_final_translation_unit_auto_publishes_and_stale_retranslation_republishes(tmp_path, server):
+    state, port = server
+    source = make_epub_source(tmp_path)
+    root = tmp_path / "epub-project"
+    args = ["--project", str(root), "--quiet"]
+    assert main(["import", str(source), *args, "--host", "127.0.0.1", "--port", str(port)]) == 0
+    assert main(["analyze", *args]) == 0
+    review = read_json(root / "terms.review.json")
+    review["confirmed"] = True
+    review["terms"][0]["select"] = 1
+    atomic_json(root / "terms.review.json", review)
+    assert main(["approve", *args]) == 0
+
+    assert main(["translate", *args, "--continue", "1"]) == 0
+    assert not (root / "publication.json").exists()
+    assert not (root / "published").exists()
+    assert main(["translate", *args, "--continue", "1"]) == 0
+
+    app = create_application()
+    status = app.projects.status(StatusCommand(root))
+    assert status.translation_complete is True
+    assert status.publication.state == "published" and status.publication.current is True
+    published = status.publication.output_path
+    assert published == root / "published" / "Relay Book [PL].epub"
+    with zipfile.ZipFile(published) as epub:
+        assert epub.read("EPUB/styles/book.css") == b"p { color: #123456; }\n"
+        assert epub.read("EPUB/images/cover.bin") == b"fixture-cover-bytes\x00\x01"
+
+    calls_before_publish = state.calls.copy()
+    assert main(["publish", *args]) == 0
+    explicit = app.publishing.publish(PublishCommand(root))
+    assert explicit.built is False
+    assert state.calls == calls_before_publish
+
+    changed = read_json(root / "terms.review.json")
+    changed["confirmed"] = True
+    changed["terms"][0]["select"] = 2
+    changed["terms"][0]["reviewed"] = True
+    atomic_json(root / "terms.review.json", changed)
+    assert main(["approve", *args]) == 0
+    stale = app.publishing.status(PublicationStatusCommand(root))
+    assert stale.state == "stale" and stale.current is False
+    assert stale.output_path == published and published.is_file()
+
+    assert main(["translate", *args, "--continue", "1"]) == 0
+    still_stale = app.publishing.status(PublicationStatusCommand(root))
+    assert still_stale.state == "stale" and still_stale.output_path == published
+    assert main(["translate", *args, "--continue", "1"]) == 0
+    current = app.publishing.status(PublicationStatusCommand(root))
+    assert current.state == "published" and current.current is True
+
+
+def test_automatic_publish_failure_keeps_translation_and_explicit_retry_needs_no_model(tmp_path, server):
+    state, port = server
+    source = make_epub_source(tmp_path)
+    root = tmp_path / "epub-project"
+    args = ["--project", str(root), "--quiet"]
+    assert main(["import", str(source), *args, "--host", "127.0.0.1", "--port", str(port)]) == 0
+    assert main(["analyze", *args]) == 0
+    review = read_json(root / "terms.review.json")
+    review["confirmed"] = True
+    atomic_json(root / "terms.review.json", review)
+    assert main(["approve", *args]) == 0
+
+    class BrokenPublisher:
+        def __init__(self):
+            self.delegate = EpubPublicationBuilder()
+
+        def inspect(self, *args, **kwargs):
+            return self.delegate.inspect(*args, **kwargs)
+
+        def build(self, request):
+            raise PipelineError("publisher offline for test")
+
+    broken_app = create_application(publication_builder=BrokenPublisher())
+    partial = broken_app.pipeline.translate(TranslateCommand(root, chunk_limit=1))
+    assert partial.publication is None
+    completed = broken_app.pipeline.translate(TranslateCommand(root, chunk_limit=1))
+    assert completed.publication.state == "failed"
+    assert completed.publication.translation_complete is True
+    store = Store(root)
+    try:
+        assert all(store.chunk(chunk["id"])["status"] == "done" for chunk in read_json(root / "book.json")["chunks"])
+    finally:
+        store.close()
+
+    calls_after_translation = state.calls.copy()
+    retry = create_application().publishing.publish(PublishCommand(root))
+    assert retry.status.state == "published" and retry.status.current is True
+    assert state.calls == calls_after_translation
 
 
 def test_interrupted_pass_restarts_only_that_pass(project):
