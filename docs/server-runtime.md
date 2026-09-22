@@ -80,7 +80,10 @@ On startup, earlier `starting`, `running`, and `stopping` records become
 `abandoned`. Version 1 does **not** re-adopt workers or signal historical PIDs.
 After an abrupt server crash an orphan may still finish or retain the project
 lock; restarting a job cannot bypass that lock. Inspect such processes locally
-before retrying. Graceful shutdown stops all workers owned by this server.
+before retrying. Graceful shutdown stops all workers owned by this server. Completed workers are
+removed from the in-memory ownership map after their monitor has finished process
+reaping and any stop/descendant-cleanup thread has returned. Job and event history
+remains in the registry.
 
 ## Cancellation
 
@@ -162,7 +165,11 @@ UTC `timestamp`, and a global persisted `id`. Current pass/task/chapter/chunk ID
 profile/provider/model, waiting/preflight measurements, usage counters, and
 publication events retain their meaning; UTF-8 bytes are never relabelled tokens.
 The metadata allowlist in `runtime/protocol.py` deliberately excludes free-form
-messages and provider error bodies; extend it explicitly when adding new fields.
+messages, provider error bodies, and filesystem path fields (`project`,
+`output_path`, `recovery_path`, `review_path`). Job snapshots and event replay also
+strip path fields from history written by earlier versions. Publication output is
+available as a workspace-relative path through workspace status. Extend the
+allowlist explicitly when adding new fields.
 
 `/api/events` accepts `workspace_id`, `job_id`, and `after` query parameters.
 Reconnects can send `Last-Event-ID` (which takes precedence over `after`). Every

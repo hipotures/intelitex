@@ -8,6 +8,7 @@ import threading
 
 from ..util import file_lock
 from .models import ACTIVE, Job, now
+from .protocol import public_envelope
 
 
 def default_registry_path() -> Path:
@@ -88,7 +89,8 @@ class JobRegistry:
             allowed = {j.job_id for j in self.list() if j.workspace_root == workspace_root
                        and (workspace_id is None or j.workspace_id == workspace_id)
                        and (job_id is None or j.job_id == job_id)}
-            return [{**json.loads(data), "id": ident} for ident, data in rows if json.loads(data)["job_id"] in allowed]
+            return [public_envelope({**json.loads(data), "id": ident})
+                    for ident, data in rows if json.loads(data)["job_id"] in allowed]
 
     def close(self):
         with self.lock:

@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 
+from .protocol import public_envelope
+
 ACTIVE = frozenset({"starting", "running", "stopping"})
 TERMINAL = frozenset({"succeeded", "failed", "cancelled", "abandoned"})
 
@@ -60,4 +62,6 @@ class Job:
         value = asdict(self)
         value.pop("project")
         value.pop("workspace_root")
+        if value["last_event"] is not None:
+            value["last_event"] = public_envelope(value["last_event"])
         return value

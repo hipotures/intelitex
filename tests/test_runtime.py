@@ -141,10 +141,12 @@ def test_shutdown_stops_all_owned_workers_and_escalates(runtime):
     jobs = [supervisor.start(spec(root, ident)) for ident in ("a", "b", "stubborn")]
     for job in jobs:
         running(supervisor, job)
+    owned = dict(supervisor.owned)
     supervisor.shutdown()
+    assert not supervisor.owned
     for job in jobs:
         assert supervisor.get(job.job_id).state == "cancelled"
-        assert supervisor.owned[job.job_id].process.poll() is not None
+        assert owned[job.job_id].process.poll() is not None
     assert supervisor.get(jobs[-1].job_id).exit_code == -signal.SIGKILL
     with pytest.raises(JobConflict):
         supervisor.start(spec(root, "c"))
@@ -493,8 +495,110 @@ def test_forced_stop_reaps_detached_provider_child_and_leaves_other_worker(runti
     running(supervisor, job)
     child_pid = int((root / "a" / "child.pid").read_text())
     assert Path(f"/proc/{child_pid}").exists()
+    owned = supervisor.owned[job.job_id]
     supervisor.stop(job.job_id)
     assert terminal(supervisor, job).state == "cancelled"
-    supervisor.owned[job.job_id].stopper.join(timeout=5)
+    owned.monitor.join(timeout=5)
+    assert job.job_id not in supervisor.owned
     assert not Path(f"/proc/{child_pid}").exists()
     assert supervisor.get(survivor.job_id).state == "running"
+
+
+@pytest.mark.parametrize("kind", ["analysis_completed", "recovery_repaired", "publication_completed"])
+def test_progress_paths_are_removed_at_both_protocol_boundaries(kind, tmp_path):
+    paths = {"project": str(tmp_path), "review_path": str(tmp_path / "terms.review.json"),
+             "recovery_path": str(tmp_path / "artifacts/recovery.json"),
+             "output_path": str(tmp_path / "published/book.epub")}
+    event = ProgressEvent(kind, current=2, total=4, values={
+        **paths, "pass_no": 5, "task_key": "P5:c1", "target_language": "pl",
+    })
+    stream = io.StringIO()
+    JsonlProgressSink(stream).emit(event)
+    assert str(tmp_path) not in stream.getvalue()
+    # The decoder independently protects against older worker versions too.
+    for wire in (stream.getvalue(), json.dumps({"type": "progress", "event": asdict(event)}) + '\n'):
+        decoded = decode(wire)["event"]
+        assert decoded["values"] == {"pass_no": 5, "task_key": "P5:c1", "target_language": "pl"}
+        assert decoded["kind"] == kind and decoded["current"] == 2 and decoded["total"] == 4
+    assert all(event.values[key] == value for key, value in paths.items())
+
+
+def test_legacy_event_paths_are_hidden_in_http_snapshots_and_sse_replay(http_server):
+    server, supervisor, root = http_server
+    registry = supervisor.registry
+    job = Job("legacy", str(root), "a", str(root / "a"), "translate", state="succeeded")
+    registry.save(job)
+    # Simulate persisted events written before the path fields were removed.
+    original = registry.append(job.job_id, {"kind": "publication_completed", "values": {
+        "project": str(root / "a"), "output_path": str(root / "a/published/book.epub"),
+        "recovery_path": str(root / "a/artifacts/recovery.json"),
+        "review_path": str(root / "a/terms.review.json"), "target_language": "pl",
+    }})
+    for route in ("/api/jobs", "/api/jobs/legacy"):
+        status, value = request(server, "GET", route)
+        assert status == 200 and str(root) not in json.dumps(value)
+    connection = http.client.HTTPConnection(*server.server_address, timeout=3)
+    try:
+        connection.request("GET", "/api/events?job_id=legacy", headers={"Last-Event-ID": "0"})
+        response = connection.getresponse()
+        assert response.status == 200
+        snapshot, replay = read_sse(response), read_sse(response)
+        assert str(root) not in json.dumps([snapshot, replay])
+        assert snapshot["data"]["jobs"][0]["last_event"]["event"]["values"] == {"target_language": "pl"}
+        assert replay["data"]["event"]["values"] == {"target_language": "pl"}
+        assert replay["data"]["sequence"] == original["sequence"]
+        assert int(replay["id"]) == original["id"]
+        response.close()
+    finally:
+        connection.close()
+    # Serialization must not mutate the stored snapshot or renumber history.
+    assert registry.get(job.job_id).last_event == original
+
+
+@pytest.mark.parametrize("workspace_id, expected", [("success", "succeeded"), ("fail", "failed"), ("a", "cancelled")])
+def test_completed_workers_are_released_but_registry_history_survives(runtime, workspace_id, expected):
+    root, registry, supervisor = runtime
+    for _ in range(3):
+        job = supervisor.start(spec(root, workspace_id))
+        if expected == "cancelled":
+            running(supervisor, job)
+            supervisor.stop(job.job_id)
+        assert terminal(supervisor, job).state == expected
+        wait_for(lambda: job.job_id not in supervisor.owned)
+        assert registry.get(job.job_id).state == expected
+        assert registry.events(0, workspace_root=str(root), job_id=job.job_id)
+        assert supervisor.stop(job.job_id).state == expected
+    assert not supervisor.owned and len(supervisor.list()) == 3
+
+
+def test_owned_remains_until_stop_cleanup_finishes_and_shutdown_waits(runtime, monkeypatch):
+    import bookpipe.runtime.supervisor as runtime_supervisor
+    root, _, supervisor = runtime
+    cleanup_entered, release_cleanup, shutdown_done = threading.Event(), threading.Event(), threading.Event()
+    def delayed_reap(children):
+        cleanup_entered.set()
+        assert release_cleanup.wait(5), "Test did not release child cleanup"
+    monkeypatch.setattr(runtime_supervisor, "reap_descendants", delayed_reap)
+    job = supervisor.start(spec(root, "stubborn"))
+    running(supervisor, job)
+    owned = supervisor.owned[job.job_id]
+    supervisor.stop(job.job_id)
+    shutdown = None
+    try:
+        assert cleanup_entered.wait(5)
+        assert terminal(supervisor, job).state == "cancelled"
+        assert supervisor.owned[job.job_id] is owned and owned.monitor.is_alive()
+        def shut_down():
+            supervisor.shutdown()
+            shutdown_done.set()
+        shutdown = threading.Thread(target=shut_down)
+        shutdown.start()
+        wait_for(lambda: supervisor.closing)
+        assert not shutdown_done.is_set()
+    finally:
+        release_cleanup.set()
+        if shutdown is not None:
+            shutdown.join(timeout=5)
+    assert shutdown_done.is_set() and not supervisor.owned
+    assert not owned.monitor.is_alive() and not owned.stopper.is_alive()
+    assert supervisor.get(job.job_id).state == "cancelled"

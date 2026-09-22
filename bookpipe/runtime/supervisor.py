@@ -133,6 +133,14 @@ class JobSupervisor:
                     "type": "WorkerProtocolError" if protocol_error else "WorkerExit",
                     "message": "Worker failed or exited without a successful terminal result."}
             self._state(job_id, state=state, exit_code=code, finished_at=now(), error=error)
+            stopper = owned.stopper
+        # Terminal state prevents a later stop() from creating another stopper.
+        # Keep ownership until detached-child cleanup finishes, and join outside
+        # the lifecycle mutex so concurrent shutdown/start/get remain safe.
+        if stopper is not None:
+            stopper.join()
+        with self.lock:
+            self.owned.pop(job_id)
 
     def stop(self, job_id: str) -> Job:
         with self.lock:

@@ -15,12 +15,24 @@ PROGRESS_FIELDS = frozenset("""
 analysis_unit_id answer_chars attempt_number cache_write_input_tokens cached_input_tokens
 chapter_id chapter_number chapter_total chunk_id chunk_index chunk_total completed_units
 cumulative error filename fixed_chunk_boundaries input_method input_quality input_tokens
-input_unit input_value model_called output_path output_tokens part parts pass_no profile
-project prose_translation_generated provider publication_fingerprint reasoning_chars
-reasoning_output_tokens recalculate_request_tokens recovery_path repair_count
-replace_successful_outputs requested_model review_path run_current run_total section_number
+input_unit input_value model_called output_tokens part parts pass_no profile
+prose_translation_generated provider publication_fingerprint reasoning_chars
+reasoning_output_tokens recalculate_request_tokens repair_count
+replace_successful_outputs requested_model run_current run_total section_number
 source status target_language task_key total_tokens unit_id unit_index
 """.split())
+
+
+# Older registries may still contain these fields. Scrub both replay and job
+# snapshots as well as excluding them from newly emitted progress metadata.
+PATH_FIELDS = frozenset({"project", "output_path", "recovery_path", "review_path"})
+
+
+def public_envelope(envelope: dict) -> dict:
+    event = envelope["event"]
+    return {**envelope, "event": {**event, "values": {
+        key: value for key, value in event.get("values", {}).items() if key not in PATH_FIELDS
+    }}}
 
 
 def progress_value(event: ProgressEvent) -> dict:
