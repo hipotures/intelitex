@@ -57,3 +57,11 @@ Escape/scrim behavior, no unnoticed draft loss. Table controls stop row-click pr
 Transient/empty/error states have explicit UI: no source library configured; configured
 but empty; load failed; no terms; no evidence; no verified text; missing profile; partial
 usage; stale output. Unknown usage is not zero and stale connection is not failed job.
+
+For refined D05, a Library card click opens source details without a mutation.
+`Add to workspace` gathers read-only preflight and setup values; Cancel discards only
+the unsaved local form. Save persists the draft through a backend command before
+navigation. Keep the same request identity for reconciliation after an unknown Save
+outcome; a fresh deliberate Save may create another workspace for the same source.
+Neither React nor localStorage owns durable draft identity, language pair, profiles
+or Prepare state. The current card-click creation flow is a known implementation gap.

@@ -8,6 +8,9 @@ contains those files. Hash matching is a drift guard, not runtime verification.
 
 The original v33 HTML and supplied implementation contract remain byte-identical.
 The task owner's explicit 2026-09-22 decisions resolve D02, D03, D04, D05 and D08.
+D05 was later refined in [issue #1](https://github.com/hipotures/intelitex/issues/1):
+the current one-draft-per-source, card-click flow described below is an audited
+implementation gap against the approved setup-before-Save, multiple-workspace target.
 See the skill's decision register, [differences](differences.md), and
 [executed verification](verification.md).
 
@@ -111,8 +114,9 @@ reloads page one; commands, SSE, focus/reconnect and route remounts do not resca
 successful pages remain in the tab's query cache. Refresh uses the shared floating
 toast and button spinner without moving cards. TanStack Query retains the last
 successful list when a request fails.
-Creating a draft updates only that source's workspace link in the cached list from
-the authoritative command response, without rediscovering every source.
+In the current implementation, creating a draft updates only that source's workspace
+link in the cached list from the authoritative command response, without rediscovering
+every source. This is not the refined Library/setup/Prepare product flow.
 
 ## Acceptance traceability
 
@@ -124,7 +128,7 @@ an independent browser test. Runtime/API/application assertions remain in Python
 | ID | Implementation | Evidence |
 | --- | --- | --- |
 | V33-01 | Home list/library, initials, responsive CSS | Work pixel comparison; component initials tests; browser journey |
-| V33-02 | WebCatalog draft/source lock | D05 two-tab and existing-source tests |
+| V33-02 | Historical WebCatalog one-draft/source lock; refined D05 pending | Existing two-tab and source-link tests cover the current API, not setup-before-Save or multiple workspaces |
 | V33-03 | Prepare supervised import | Browser real Prepare; import disconnect/API tests |
 | V33-04 | Workflow/section aggregate counts, P1 gate | API workflow and production policy tests |
 | V33-05 | Typed rail/phase routes | Browser phase navigation/deep reload |

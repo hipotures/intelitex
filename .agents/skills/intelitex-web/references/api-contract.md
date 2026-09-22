@@ -120,7 +120,10 @@ is shared with the compatibility HTTP adapter.
 - GET `/api/library`: configured flag, safe source metadata and workspace linkage;
   optional `limit` (1–40) and `after` return a bounded page with `next_cursor`.
   Immediate packed EPUB files are sources; their metadata is read only on the requested page.
-- POST `/api/workspaces`: source_id, optional request_key; durable idempotent draft.
+- POST `/api/workspaces`: source_id, optional request_key; currently resolves one
+  durable draft per source. This is the audited wire contract, not refined D05's
+  multiple-workspace Save operation. Do not wire the target setup modal to this
+  endpoint as if it already persisted language/profile setup or supported variants.
 - POST `/api/workspaces/{id}/prepare`: optional request_key/profile/pass_profiles; supervised real import.
 - PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
   allow_model_change:true only after explicit user confirmation.

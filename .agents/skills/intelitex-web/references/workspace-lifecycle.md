@@ -45,11 +45,12 @@ Publication is automatic inside final translation. Explicit publish retries an
 eligible output build without retranslating or contacting a model. Publication
 readiness/currentness, not job success alone, determines completion.
 
-## Implemented web lifecycle
+## Current implemented web lifecycle (B)
 
 GET `/api/library` returns confined sources and existing workspace links. POST
 `/api/workspaces` accepts source_id and optional request_key, atomically resolving one
-persisted draft/source link. D05 creates no project directory, manifest, checkpoint or
+persisted draft/source link. This is the older D05 implementation, not the refined
+product target. It creates no project directory, manifest, checkpoint or
 model request. POST `/api/workspaces/{id}/prepare` performs real supervised import.
 An incomplete failed import is not automatically deleted or overwritten.
 
@@ -67,3 +68,19 @@ are not automatically imported by opening them.
 D04 is resolved: automatic publication displays disabled Publishing…; no Pause and
 no duplicate publish. Terminal publication failure enables the backend’s publication-only
 retry. Primary actions never infer complete publication from job success.
+
+## Refined D05 target (P; not yet implemented)
+
+Library remains a source catalog when one or many workspaces use the same source.
+Clicking a book card selects or opens source details without creating a workspace.
+`Add to workspace` performs read-only source preflight as needed and opens a one-time
+setup modal before any workspace state exists. Cancel creates nothing. Save atomically
+creates a configured draft and navigates to it; retrying the same Save request must
+resolve its outcome without creating a second draft, while a distinct Save may create
+another workspace for the same source. Persist source identity, optional label and
+immutable source/target languages inside the workspace, with selected P1-P5 profiles
+in authoritative settings. No `book.json`, section plan or checkpoints exist until
+Prepare. Prepare performs real import and stops before P1. Legacy workspaces with
+missing setup metadata remain readable without fabricated values. Source preflight,
+model/language compatibility and cache rules are specified in the later product
+decision in issue #1; do not infer them from the current POST contract.

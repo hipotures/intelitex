@@ -68,5 +68,9 @@ Unused helper functions in the HTML do not establish an extra visible table colu
 
 F/T/E invalidation after starting P1, the meaning of weighted progress, publication
 Stop availability, draft-workspace persistence and complete Reader/profile editors
-are not solved by copying click handlers. D02–D05 are explicitly approved in the decision register; D06–D07 retain their bounded Reader/Settings scope. No success-shaped placeholder
-for absent backend behavior. Any intentional production departure must be documented.
+are not solved by copying click handlers. D02–D05 are explicitly approved in the
+decision register. D05's later issue #1 refinement requires a one-time setup modal
+before Save and permits multiple workspaces per source, even though immutable v33
+and the historical handoff show an earlier card-click flow. D06–D07 retain their
+bounded Reader/Settings scope. No success-shaped placeholder for absent backend
+behavior. Any intentional production departure must be documented.
