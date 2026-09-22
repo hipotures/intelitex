@@ -1,7 +1,7 @@
 # Production web implementation and contract map
 
 Audited 2026-09-22 against the working implementation built from
-`b0c40dfaf90add7340da2b992d4e18f7b473383e`. The skill's original recorded backend
+the repository HEAD recorded in `api-baseline.json`. The skill's original recorded backend
 commit is historical. Exact audited source blob identities are recorded in
 `.agents/skills/intelitex-web/references/api-baseline.json`; the delivery commit
 contains those files. Hash matching is a drift guard, not runtime verification.
@@ -9,8 +9,9 @@ contains those files. Hash matching is a drift guard, not runtime verification.
 The original v33 HTML and supplied implementation contract remain byte-identical.
 The task owner's explicit 2026-09-22 decisions resolve D02, D03, D04, D05 and D08.
 D05 was later refined in [issue #1](https://github.com/hipotures/intelitex/issues/1):
-the current one-draft-per-source, card-click flow described below is an audited
-implementation gap against the approved setup-before-Save, multiple-workspace target.
+the explicit Library details/setup flow now creates configured drafts on Save,
+and a source may produce multiple workspaces. The historical one-draft-per-source
+endpoint remains for compatibility but is no longer used by the Library card.
 See the skill's decision register, [differences](differences.md), and
 [executed verification](verification.md).
 
@@ -26,12 +27,14 @@ No Node production server, reload worker, upload endpoint or CLI-output parser i
 
 `state.sqlite3`, validated checkpoint receipts and atomic project JSON remain durable
 pipeline truth. Runtime jobs/events are execution history, not completion truth. Web
-metadata lives in `.intelitex-web.json` at the workspace root, `web.config.json` and
-`web.lifecycle.json` in prepared projects. No second application database was introduced.
-Source linkage uses canonical source identity, not title, and a process/file lock.
-Draft archive membership also lives in this catalog with an optimistic revision;
-archiving a draft creates no project directory. Opening a source does not create a
-project directory. Prepare submits the existing import
+metadata lives in `.intelitex-web.json` at the workspace root,
+`workspace.json` and `settings.json` for configured drafts, and `web.config.json`
+and `web.lifecycle.json` in prepared projects. No second application database was
+introduced in this flow. Source linkage uses source ID and a selected-source
+fingerprint, not title, and a process/file lock. Draft archive membership also
+lives in the catalog with an optimistic revision; archiving preserves a configured
+draft directory. Opening a source does not create a project directory. Save creates
+the durable unprepared draft; Prepare submits the existing import
 command to a supervised worker; only real import produces `book.json` and sections.
 
 `application/web.py::WebWorkspaceService` handles metadata, bounded source preview,
@@ -114,9 +117,12 @@ reloads page one; commands, SSE, focus/reconnect and route remounts do not resca
 successful pages remain in the tab's query cache. Refresh uses the shared floating
 toast and button spinner without moving cards. TanStack Query retains the last
 successful list when a request fails.
-In the current implementation, creating a draft updates only that source's workspace
-link in the cached list from the authoritative command response, without rediscovering
-every source. This is not the refined Library/setup/Prepare product flow.
+Library cards now open read-only source details. Inspect and setup preflight query
+the selected source only. Save creates a configured, persisted draft through the
+application catalog, then navigates to its unprepared workspace. A source remains
+in Library and may have multiple workspaces. Cancel creates no draft. Prepare is
+the next explicit mutation and stops before P1. New source setup and existing
+workspace/profile queries are reconciled without rescanning Library pages.
 
 ## Acceptance traceability
 
@@ -128,7 +134,7 @@ an independent browser test. Runtime/API/application assertions remain in Python
 | ID | Implementation | Evidence |
 | --- | --- | --- |
 | V33-01 | Home list/library, initials, responsive CSS | Work pixel comparison; component initials tests; browser journey |
-| V33-02 | Historical WebCatalog one-draft/source lock; refined D05 pending | Existing two-tab and source-link tests cover the current API, not setup-before-Save or multiple workspaces |
+| V33-02 | Explicit source details, one-time setup Save, durable multi-workspace drafts | `tests/test_web_production.py` Save/Prepare/concurrent-key assertions; `web/tests/library-setup.test.mjs` offline browser journey |
 | V33-03 | Prepare supervised import | Browser real Prepare; import disconnect/API tests |
 | V33-04 | Workflow/section aggregate counts, P1 gate | API workflow and production policy tests |
 | V33-05 | Typed rail/phase routes | Browser phase navigation/deep reload |

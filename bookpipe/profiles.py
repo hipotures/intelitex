@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
     "max_output_tokens", "request_timeout", "reasoning_effort", "credential_env",
     "endpoint", "executable", "runtime_root", "options", "temperature", "seed",
+    "source_languages", "target_languages",
 }
 
 _BUILTIN_CODEX_MODELS = {
@@ -143,6 +145,13 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
             raise PipelineError(f"Profile {name!r} has unknown provider {provider!r}.")
         if not isinstance(profile.get("options", {}), dict):
             raise PipelineError(f"Profile {name!r} options must be an object.")
+        for field in ("source_languages", "target_languages"):
+            languages = profile.get(field)
+            if languages is not None and languages != 'all' and (
+                not isinstance(languages, list) or not languages or
+                any(not isinstance(lang, str) or not re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', lang) for lang in languages)
+            ):
+                raise PipelineError(f"Profile {name!r} {field} must be 'all', a language list, or unknown.")
         p1_wire_format = profile.get("options", {}).get("p1_wire_format")
         if provider == "codex" and p1_wire_format not in {None, "compact-v1", "canonical"}:
             raise PipelineError(

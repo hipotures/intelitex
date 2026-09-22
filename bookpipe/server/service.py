@@ -1,6 +1,7 @@
 """HTTP-independent control/query adapter; no pipeline execution in this process."""
 from ..application.commands import ApproveCommand, UsageByUnitCommand
 from ..application.catalog import WebCatalog
+from ..application.source_preflight import inspect_source
 from ..application.web import WorkspaceArchived
 from ..runtime.supervisor import JobConflict
 from ..util import digest
@@ -54,16 +55,28 @@ class ServerService:
         for ident in imported:
             root = self.workspaces.resolve(ident)
             active = self.supervisor.active_for_project(root)
+            from ..application.workspace_setup import read_workspace_setup
+            setup = read_workspace_setup(root)
+            source_id = setup.get('source_id')
+            if source_id is None and self.imports.root is not None:
+                book = self.application.web.book(root)
+                path = Path(book.get('source_archive', book['source_root'])).resolve()
+                if path.parent == self.imports.root:
+                    source_id = path.name
             result.append({'workspace_id': ident, 'prepared': True,
+                           **({'source_id': source_id} if source_id else {}),
                            'metadata': self.application.web.metadata(root),
                            'active_job': active.public() if active else None, 'last_job': self.last_job(ident)})
         for entry in self.catalog.entries():
             if entry['workspace_id'] not in imported:
                 active = self.supervisor.active_for_project(self.workspaces.root / entry['workspace_id'])
+                manifest = self.catalog.setup_metadata(entry['workspace_id'])
                 result.append({'workspace_id': entry['workspace_id'], 'source_id': entry['source_id'],
                                'prepared': False, 'metadata': {**self.catalog.source_metadata(entry['source_id']),
+                               'label': manifest.get('label'), 'source_language': manifest.get('source_language'),
+                               'target_language': manifest.get('target_language'),
                                'lifecycle': self.catalog.draft_lifecycle(entry['workspace_id'])},
-                               'progress': {'percent': 0, 'basis': 'Workflow progress — not an ETA',
+                               'progress': {'percent': None, 'basis': 'Workflow progress — not an ETA',
                                             'analysis': {'completed': 0, 'required': 0,
                                                          'denominator': 'required P1 analysis units'},
                                             'translation': {'completed': 0, 'required': 0,
@@ -113,6 +126,64 @@ class ServerService:
                     for ident in self.workspaces.list()]
         return self.catalog.draft(payload['source_id'], imported, request_key=key)
 
+    def inspect_source(self, ident, *, detailed=False):
+        if self.imports.root is None:
+            raise ImportDisabled('Import disabled.')
+        return inspect_source(self.imports.root, ident, detailed=detailed)
+
+    def compatibility(self, payload):
+        fields(payload, {'source_language', 'target_language', 'pass_profiles'},
+               {'source_language', 'target_language', 'pass_profiles'})
+        for language in (payload['source_language'], payload['target_language']):
+            if not isinstance(language, str) or not re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', language):
+                raise ValueError('Invalid language.')
+        settings = self.application.workflow.settings()
+        profiles = {p['name']: p for p in settings['profiles']}
+        assignments = payload['pass_profiles']
+        if not isinstance(assignments, dict) or set(assignments) != set('12345'):
+            raise ValueError('Select all five pass profiles.')
+        warnings = []
+        warned_unknown = set()
+        # Current prompts, Review schema and Reader accept English -> Polish only.
+        # Profile capability metadata cannot expand the application's language pair.
+        compatible = payload['source_language'].lower() == 'en' and payload['target_language'].lower() == 'pl'
+        if payload['source_language'].lower() != 'en':
+            warnings.append('This translation pipeline currently requires an English source.')
+        if payload['target_language'].lower() != 'pl':
+            warnings.append('This translation pipeline currently produces Polish output.')
+        targets = {'pl'}
+        for number, name in assignments.items():
+            if not isinstance(name, str) or name not in profiles or not profiles[name]['enabled']:
+                raise ValueError('Invalid profile.')
+            profile = profiles[name]
+            for field, language in (('source_languages', payload['source_language']),
+                                    ('target_languages', payload['target_language'])):
+                support = profile.get(field)
+                if support is None:
+                    if (name, field) not in warned_unknown:
+                        warnings.append(f'{field.replace("_", " ").capitalize()} are not declared for {name}.')
+                        warned_unknown.add((name, field))
+                elif support != 'all' and language.lower() not in {v.lower() for v in support}:
+                    warnings.append(f'Pass {number}: {name} does not declare support for {language}.')
+                    compatible = False
+            support = profile.get('target_languages')
+            if isinstance(support, list):
+                values = {v.lower() for v in support}
+                targets &= values
+        return {'compatible': compatible, 'warnings': warnings,
+                'target_choices': sorted(targets)}
+
+    def save_setup(self, payload):
+        fields(payload, {'source_id', 'source_fingerprint', 'source_language', 'target_language',
+                         'label', 'pass_profiles', 'request_key'},
+               {'source_id', 'source_fingerprint', 'source_language', 'target_language',
+                'label', 'pass_profiles', 'request_key'})
+        result = self.compatibility({key: payload[key] for key in ('source_language', 'target_language', 'pass_profiles')})
+        if not result['compatible']:
+            raise ValueError('Selected model profiles do not support this language pair.')
+        raw = self.application.web.dependencies.files.read_json(self.application.web.dependencies.bundle / 'settings.default.json')
+        return self.catalog.save_setup(payload, raw)
+
     def library(self):
         sources = self.catalog.library()
         imported = {str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
@@ -145,6 +216,13 @@ class ServerService:
         fields(payload, {'request_key', 'profile', 'pass_profiles'})
         if self.catalog.draft_lifecycle(ident)['archived']:
             raise WorkspaceArchived('Restore draft before preparing.')
+        manifest = self.catalog.setup_metadata(ident)
+        if manifest:
+            if payload.get('profile') or payload.get('pass_profiles'):
+                raise ValueError('Configured draft profiles cannot be overridden at Prepare.')
+            from ..application.source_preflight import source_signature
+            if source_signature(self.imports.root, manifest['source_id']) != manifest['source_fingerprint']:
+                raise ValueError('Source changed since setup; create a new workspace.')
         return self.import_book({'workspace_id': ident, 'source_id': self.catalog.source(ident), **payload})
 
     def receipt(self, payload, operation):
@@ -195,6 +273,9 @@ class ServerService:
         if any(e['workspace_id'] == payload['workspace_id'] and e.get('archived', False)
                for e in self.catalog.entries()):
             raise WorkspaceArchived('Restore draft before importing.')
+        setup = self.catalog.setup_metadata(payload['workspace_id'])
+        if setup and (payload['source_id'] != setup['source_id'] or set(payload) != {'workspace_id', 'source_id'}):
+            raise ValueError('Configured draft import must use its saved source and setup.')
         spec = ImportJobSpec(workspace_root=str(self.workspaces.root), project=str(project),
                              import_root=str(self.imports.root), **payload)
         return self.supervisor.start(spec, request_key=key, request_fingerprint=fingerprint).public()
@@ -240,7 +321,13 @@ class ServerService:
                 'active_job': active.public() if active else None, 'last_job': self.last_job(workspace_id)}
 
     def settings(self, workspace_id):
-        return self.profiles(self.workspaces.resolve(workspace_id))
+        try:
+            root = self.workspaces.resolve(workspace_id)
+        except KeyError:
+            self.catalog.source(workspace_id)
+            candidate = workspace_destination(self.workspaces.root, workspace_id)
+            root = candidate if (candidate / 'workspace.json').is_file() else None
+        return self.profiles(root)
 
     def profiles(self, root=None):
         result = self.application.workflow.settings(root)

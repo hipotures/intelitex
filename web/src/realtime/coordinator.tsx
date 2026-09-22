@@ -20,7 +20,7 @@ export function Realtime() {
       if (closed) return
       if (refreshing) { dirty = true; return }
       refreshing = true
-      const predicate = (q: { queryKey: readonly unknown[]; getObserversCount(): number }) => q.queryKey[0] === scope && q.getObserversCount() > 0 && q.queryKey[1] !== '/api/library' && !String(q.queryKey[1]).includes('/reader/chapters/')
+      const predicate = (q: { queryKey: readonly unknown[]; getObserversCount(): number }) => q.queryKey[0] === scope && q.getObserversCount() > 0 && !String(q.queryKey[1]).startsWith('/api/library') && !String(q.queryKey[1]).includes('/reader/chapters/')
       const results = await Promise.allSettled([
         queryClient.invalidateQueries({ predicate }, { cancelRefetch: false }),
         request('/api/jobs', jobsSchema),

@@ -7,15 +7,16 @@ B: `server/service.py`, `application/imports.py`, `runtime/models.py`,
 
 ## Existing import
 
-GET /api/import-sources lists confined folder IDs. It is not a generic filesystem
+GET /api/import-sources lists confined folder and packed EPUB IDs. It is not a generic filesystem
 browser, EPUB upload route or rich cover/title library. Import is optional and disabled
 without the server's explicit import root. Existing imported projects still work.
 POST /api/imports receives workspace_id and source_id plus allowlisted options.
 It schedules a validated ImportJobSpec through the existing supervisor.
 
-Sources are HTML/XHTML directories, including extracted EPUB directories. Do not
-claim raw .epub archive upload support. Destinations must not preexist; worker creation
-is atomic. `book.json` is the completed-import marker; the job can be followed by ID/SSE
+Sources are HTML/XHTML directories or selected packed EPUB files (there is no upload
+route). A configured D05 draft destination may preexist with only `workspace.json`
+and `settings.json`; legacy import destinations must not preexist. `book.json` is the
+completed-import marker; the job can be followed by ID/SSE
 before workspace discovery includes it. Never create a destination in React first.
 A failed/cancelled import can leave a partial directory; no auto-delete/overwrite.
 
@@ -69,7 +70,7 @@ D04 is resolved: automatic publication displays disabled Publishing…; no Pause
 no duplicate publish. Terminal publication failure enables the backend’s publication-only
 retry. Primary actions never infer complete publication from job success.
 
-## Refined D05 target (P; not yet implemented)
+## Refined D05 Library/setup/Prepare binding
 
 Library remains a source catalog when one or many workspaces use the same source.
 Clicking a book card selects or opens source details without creating a workspace.
@@ -83,4 +84,9 @@ in authoritative settings. No `book.json`, section plan or checkpoints exist unt
 Prepare. Prepare performs real import and stops before P1. Legacy workspaces with
 missing setup metadata remain readable without fabricated values. Source preflight,
 model/language compatibility and cache rules are specified in the later product
-decision in issue #1; do not infer them from the current POST contract.
+decision in issue #1. The current explicit Save route is
+`POST /api/workspaces/setup`; it is distinct from the historical
+`POST /api/workspaces` one-source draft compatibility route. `workspace.json`
+holds source identity/fingerprint, immutable language pair and optional label;
+`settings.json` holds P1–P5 assignments. The separate derived SQLite catalog/cache
+item in issue #1 remains open; do not mistake the durable files for that cache.

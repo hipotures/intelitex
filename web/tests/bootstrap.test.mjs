@@ -93,15 +93,18 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  await page.getByRole('button',{name:'Archive →',exact:true}).click()
  await page.getByRole('button',{name:'Restore',exact:true}).click()
  await page.locator('.workspace-title').waitFor()
- // A second source creates a persisted draft before Prepare, then uses the real offline worker.
+ // A second source opens read-only details; Save creates a persisted draft before Prepare.
  await page.locator('[data-source-id="second-book"]').click()
+ await page.getByRole('button',{name:'Add to workspace'}).click()
+ await page.getByRole('button',{name:'Save',exact:true}).click()
  await page.getByRole('heading',{name:'Prepare this workspace'}).waitFor()
  const draftPath=new URL(page.url()).pathname
+ const draftId=draftPath.split('/').at(-1)
  await page.locator('.archive-workspace-btn').click()
  await page.getByRole('dialog').getByRole('button',{name:'Archive workspace',exact:true}).click()
  await page.getByRole('button',{name:'Archive →'}).click()
  await page.getByRole('dialog').getByRole('button',{name:'Restore'}).click()
- await page.locator('[data-source-id="second-book"]').click()
+ await page.locator(`[data-ui-debug-id="WRC"][data-entity-id="${draftId}"] .workspace-title`).click()
  assert.equal(new URL(page.url()).pathname,draftPath)
  await page.getByRole('button',{name:'Prepare',exact:true}).first().click()
  await wait(async()=>await page.locator('.sections-table').isVisible(),'real Prepare import')

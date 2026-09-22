@@ -9,8 +9,15 @@ def dispatch(service, method, parts, body=None, query=None):
     mutation = method != 'GET'
     if method == 'POST' and parts == ['api', 'workspaces']:
         return response(200, service.create_draft(body))
+    if method == 'POST' and parts == ['api', 'workspaces', 'setup']:
+        return response(200, service.save_setup(body))
+    if method == 'POST' and parts == ['api', 'library', 'compatibility']:
+        return response(200, service.compatibility(body))
     if method == 'GET' and parts == ['api', 'library']:
         return response(200, service.library_page(query) if query is not None else service.library())
+    if method == 'GET' and len(parts) == 5 and parts[:3] == ['api', 'library', 'sources']:
+        if parts[4] in {'preflight', 'inspect'}:
+            return response(200, service.inspect_source(parts[3], detailed=parts[4] == 'inspect'))
     if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
         ident, tail = parts[2], parts[3:]
         if method == 'POST':

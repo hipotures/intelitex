@@ -74,7 +74,7 @@ class Job:
 
 @dataclass(frozen=True)
 class ImportJobSpec:
-    """Import has no existing project; do not relax pipeline JobSpec invariants."""
+    """Import targets a new directory or a validated, unprepared configured draft."""
     workspace_root: str
     workspace_id: str
     project: str
@@ -103,7 +103,12 @@ class ImportJobSpec:
         if self.operation != 'import' or str(destination) != self.project:
             raise ValueError('Invalid import specification.')
         if destination.exists():
-            raise DestinationConflict('Destination already exists.')
+            from ..application.workspace_setup import validate_draft_destination
+            from ..util import PipelineError
+            try:
+                validate_draft_destination(destination, self.source_id)
+            except PipelineError as exc:
+                raise DestinationConflict('Destination already exists.') from exc
         source_root = Path(self.import_root).resolve(strict=True)
         source = confined_source(source_root, self.source_id)
         if not (source.is_dir() or (source.is_file() and source.suffix.lower() == '.epub')) or destination.is_relative_to(source):

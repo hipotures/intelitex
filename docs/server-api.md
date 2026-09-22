@@ -26,6 +26,10 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders and packed EPUB files |
 | GET | `/api/library` | Legacy complete `{configured,sources}` response |
 | GET | `/api/library?limit=12&after={cursor}` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page |
+| GET | `/api/library/sources/{source_id}/preflight` | Read-only selected-source fingerprint, metadata and local language sample for setup |
+| GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, document count and preview names |
+| POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
+| POST | `/api/workspaces/setup` | Setup payload below → `{workspace_id,source_id}`; creates a durable unprepared draft |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
 | GET | `/api/jobs` | `{jobs:[job],cursor}` |
@@ -51,6 +55,23 @@ All mutations, including PATCH and DELETE, enforce the same Host, Origin and
 Fetch Metadata policy. JSON requires one Content-Length, no Transfer-Encoding,
 and at most 16 KiB. Duplicate object keys, non-finite numbers and non-object
 bodies are rejected. There is no CORS grant, upload or arbitrary file endpoint.
+
+The Library card and Inspect are read-only. `POST /api/workspaces/setup` requires
+`source_id`, the preflight `source_fingerprint`, `source_language`,
+`target_language`, nullable `label`, five `pass_profiles`, and a 16–128 character
+`request_key`. Reusing the same key and identical setup returns the same workspace;
+a distinct key may create another workspace from the same source. A changed source
+fingerprint or reused key with changed input conflicts. Save writes `workspace.json`
+(source reference/fingerprint, immutable language pair, optional label and request
+receipt) plus `settings.json` (P1–P5 assignments). It creates no `book.json`, plan,
+checkpoint, or model output. Prepare subsequently performs the supervised import
+and stops before P1. Direct `/api/imports` requests targeting a configured draft
+must use its saved source and setup; import options cannot override them. The
+current translation/Review/Reader implementation accepts
+English sources and Polish output only; broader language support is a separate
+issue item. Profile metadata declares `source_languages` and `target_languages` as
+`all`, an explicit list, or unknown; unknown support produces a warning rather than
+an invented rejection. Legacy projects without `workspace.json` remain valid.
 
 ## Jobs and current state
 

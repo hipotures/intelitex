@@ -8,6 +8,8 @@ and responsive breakpoints. The following differences carry real application sem
   fake validation, generated cover artwork or localStorage pipeline state.
 - Sources without metadata show explicit absence. Covers use title initials. Paths
   are summarized as server-configured rather than exposing private filesystem paths.
+  Extracted cover assets and the rebuildable SQLite catalog cache remain in their
+  separate issue #1 item; this setup change does not claim to provide them.
 - Library loads bounded source pages on scroll, and its dedicated Refresh control
   restarts discovery without shifting cards. Packed EPUBs are indexed alongside
   folders. The redundant source-directory label and unknown “— words” placeholder
@@ -19,9 +21,14 @@ and responsive breakpoints. The following differences carry real application sem
   with null for unknown denominators. Counts may decrease after real invalidation.
 - Publishing is disabled while the worker automatically publishes; terminal failure
   offers publish-only retry. EPUB bytes, size and checks are validated by the backend.
-- Source opening persists an idempotent draft before Prepare. It does not generate a
-  plan or invoke a model. Draft archive/restore changes only catalog metadata.
-  Prepare performs the real supervised import.
+- Library card selection opens source details without creating a workspace. Inspect
+  and setup preflight read the selected source without a model call. Add to workspace
+  opens one-time setup; Save persists a draft with label, language pair and P1–P5
+  profiles. Cancel leaves no draft. A source stays in Library and may produce several
+  workspaces. Draft archive/restore preserves its setup; Prepare performs the real
+  supervised import and stops before P1. The setup modal is a product addition absent
+  from v33. The language selector currently offers the supported English→Polish pair;
+  broader translation and Review language support is a separate issue item.
 - Confirm glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
 - P2–P4 retained receipts display amber retained/unverified state where the existing

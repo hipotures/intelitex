@@ -1,5 +1,6 @@
 """Production web boundaries use disposable projects and offline providers only."""
 import asyncio
+import io
 import json
 import stat
 import zipfile
@@ -18,8 +19,104 @@ from bookpipe.application.commands import TranslateCommand
 from bookpipe.application.commands import ImportBookCommand
 from bookpipe.application.epub_sources import unpack_epub
 from bookpipe.runtime.models import ImportJobSpec
+from bookpipe.runtime.worker import execute
+from bookpipe.runtime.protocol import JsonlProgressSink
+from bookpipe.application.source_preflight import source_signature
+from bookpipe.application.imports import RequestConflict, DestinationConflict
+from bookpipe.application.source_preflight import detect_language
 from test_pipeline import make_epub_source
 from test_runtime import request
+
+
+def test_configured_setup_is_explicit_durable_and_allows_multiple_workspaces(api):
+    app, root, service, server = api
+    source = service.imports.root / 'setup-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<h1>Chapter</h1><p>The reader walks through the town and remembers the story.</p>')
+    code, preflight = request(server, 'GET', '/api/library/sources/setup-book/preflight')
+    assert code == 200
+    assert preflight['source_fingerprint'] == source_signature(service.imports.root, 'setup-book')
+    assert not any(w.get('source_id') == 'setup-book' for w in service.list_workspaces())
+    profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    setup = {'source_id': 'setup-book', 'source_fingerprint': preflight['source_fingerprint'],
+             'source_language': 'en', 'target_language': 'pl', 'label': 'Offline A',
+             'pass_profiles': profiles, 'request_key': 'setup-request-0123456789'}
+    code, first = request(server, 'POST', '/api/workspaces/setup', setup)
+    assert code == 200
+    assert request(server, 'POST', '/api/workspaces/setup', setup)[1] == first
+    second = service.save_setup({**setup, 'label': 'Offline B', 'request_key': 'setup-request-9876543210'})
+    assert first['workspace_id'] != second['workspace_id']
+    for value in (first, second):
+        destination = root.parent / value['workspace_id']
+        assert (destination / 'workspace.json').is_file()
+        assert (destination / 'settings.json').is_file()
+        assert not (destination / 'book.json').exists()
+        assert not (destination / 'state.sqlite3').exists()
+        assert service.settings(value['workspace_id'])['assignments'] == profiles
+    listed = [w for w in service.list_workspaces() if w.get('source_id') == 'setup-book']
+    assert len(listed) == 2 and {w['metadata']['label'] for w in listed} == {'Offline A', 'Offline B'}
+    archived = service.archive(second['workspace_id'],
+                               {'revision': next(w for w in listed if w['workspace_id'] == second['workspace_id'])['metadata']['lifecycle']['revision']})
+    assert archived['archived'] is True
+    assert (root.parent / second['workspace_id'] / 'workspace.json').is_file()
+    service.archive(second['workspace_id'], {'revision': archived['revision']}, False)
+    destination = root.parent / first['workspace_id']
+    code, error = request(server, 'POST', '/api/imports', {
+        'workspace_id': first['workspace_id'], 'source_id': 'setup-book',
+        'profile': service.profiles()['default_profile']})
+    assert code == 400 and error['error']['code'] == 'invalid_request'
+    spec = ImportJobSpec(workspace_root=str(root.parent), workspace_id=first['workspace_id'],
+                         project=str(destination), import_root=str(service.imports.root), source_id='setup-book')
+    assert execute(spec, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    assert (destination / 'book.json').is_file()
+    assert service.pipeline(first['workspace_id'])['stage'] == 'analysis'
+    with pytest.raises(RequestConflict):
+        service.save_setup({**setup, 'label': 'Changed'})
+    (source / 'chapter.html').write_text('<p>Changed after preflight.</p>')
+    with pytest.raises(RequestConflict):
+        service.save_setup({**setup, 'request_key': 'setup-request-2222222222'})
+
+
+def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):
+    _, root, service, server = api
+    profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    code, result = request(server, 'POST', '/api/library/compatibility', {
+        'source_language': 'en', 'target_language': 'de', 'pass_profiles': profiles})
+    assert code == 200 and result['compatible'] is False and result['target_choices'] == ['pl']
+    code, result = request(server, 'POST', '/api/library/compatibility', {
+        'source_language': None, 'target_language': 'pl', 'pass_profiles': profiles})
+    assert code == 400 and result['error']['code'] == 'invalid_request'
+    unrelated = root.parent / 'unrelated'
+    unrelated.mkdir()
+    (unrelated / 'settings.json').write_text('{}')
+    with pytest.raises(DestinationConflict):
+        ImportJobSpec(workspace_root=str(root.parent), workspace_id='unrelated', project=str(unrelated),
+                      import_root=str(service.imports.root), source_id='book')
+    assert detect_language(['The author and the reader were in the town. ' * 20])[0] == 'en'
+    assert detect_language(['Ada.'])[0] is None
+
+
+def test_setup_concurrent_saves_reuse_only_their_own_request_key(api):
+    _, root, service, _ = api
+    source = service.imports.root / 'parallel-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<p>The reader and the author were together in the town.</p>')
+    fingerprint = source_signature(service.imports.root, 'parallel-book')
+    profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    setup = {'source_id': 'parallel-book', 'source_fingerprint': fingerprint,
+             'source_language': 'en', 'target_language': 'pl', 'label': None,
+             'pass_profiles': profiles, 'request_key': 'parallel-save-1234567890'}
+    with ThreadPoolExecutor(4) as pool:
+        same = list(pool.map(service.save_setup, [setup] * 4))
+    assert len({result['workspace_id'] for result in same}) == 1
+    other = service.save_setup({**setup, 'request_key': 'parallel-save-0987654321'})
+    assert other['workspace_id'] != same[0]['workspace_id']
+    assert len([p for p in root.parent.iterdir() if (p / 'workspace.json').is_file()]) == 2
+    original = root.parent / same[0]['workspace_id']
+    (original / 'partial-import.txt').write_text('unexpected')
+    with pytest.raises(DestinationConflict):
+        ImportJobSpec(workspace_root=str(root.parent), workspace_id=same[0]['workspace_id'],
+                      project=str(original), import_root=str(service.imports.root), source_id='parallel-book')
 
 
 def test_d05_draft_has_no_project_or_model_and_two_tabs_resolve_once(api):
@@ -269,7 +366,7 @@ def test_unconfigured_source_root_keeps_persisted_draft_listable(api):
     listed = next(w for w in service.list_workspaces() if w['workspace_id'] == draft['workspace_id'])
     assert listed['prepared'] is False
     assert listed['metadata']['title'] == 'offline-only'
-    assert listed['progress']['percent'] == 0
+    assert listed['progress']['percent'] is None
     assert not (root.parent / draft['workspace_id']).exists()
 
 

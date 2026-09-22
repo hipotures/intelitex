@@ -64,4 +64,5 @@ the unsaved local form. Save persists the draft through a backend command before
 navigation. Keep the same request identity for reconciliation after an unknown Save
 outcome; a fresh deliberate Save may create another workspace for the same source.
 Neither React nor localStorage owns durable draft identity, language pair, profiles
-or Prepare state. The current card-click creation flow is a known implementation gap.
+or Prepare state. The Library details/setup flow uses selected-source preflight and
+the explicit `POST /api/workspaces/setup` Save route; card click does not mutate.

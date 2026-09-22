@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "b0c40dfaf90add7340da2b992d4e18f7b473383e",
+  "inspected_commit": "58cc5e7aa03da7e793b302d19e46acd12f56148d",
   "audit_date": "2026-09-22",
-  "audit_basis": "Post-implementation working tree before delivery commit; paginated Library routes, packed EPUB import, cursor validation, source-linking, frontend bindings, and offline API/browser regressions manually inspected. Commit identity appears in delivery report.",
+  "audit_basis": "Current working tree manually re-audited for read-only selected-source inspection, language/profile compatibility, configured multi-workspace Save, draft destination checks, explicit Prepare import, and affected offline Python/browser regressions. Source hashes are a drift guard, not runtime certification.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -17,7 +17,9 @@
       "server.shutdown"
     ],
     "bookpipe/server/routes.py": [
-      "dispatch"
+      "dispatch",
+      "library preflight and inspect routes",
+      "workspace setup route"
     ],
     "bookpipe/server/http.py": [
       "Handler"
@@ -29,7 +31,10 @@
       "archive",
       "prepare",
       "review",
-      "library_page"
+      "library_page",
+      "inspect_source",
+      "compatibility",
+      "save_setup"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -41,7 +46,10 @@
       "draft",
       "archive_draft",
       "library_page",
-      "source_metadata"
+      "source_metadata",
+      "save_setup",
+      "entries",
+      "setup_metadata"
     ],
     "bookpipe/application/web.py": [
       "WebWorkspaceService",
@@ -51,7 +59,8 @@
     ],
     "bookpipe/application/workflow.py": [
       "WorkflowQueries",
-      "pipeline"
+      "pipeline",
+      "settings"
     ],
     "bookpipe/application/review.py": [
       "approval_current",
@@ -118,6 +127,24 @@
     "bookpipe/runtime/models.py": [
       "ImportJobSpec",
       "__post_init__"
+    ],
+    "bookpipe/runtime/worker.py": [
+      "execute",
+      "draft destination and fingerprint check"
+    ],
+    "bookpipe/profiles.py": [
+      "validate_settings",
+      "source_languages",
+      "target_languages"
+    ],
+    "bookpipe/application/source_preflight.py": [
+      "inspect_source",
+      "source_signature",
+      "detect_language"
+    ],
+    "bookpipe/application/workspace_setup.py": [
+      "read_workspace_setup",
+      "validate_draft_destination"
     ]
   },
   "evidence": [
@@ -128,18 +155,19 @@
     "web/tests/bootstrap.test.mjs",
     "web/tests/development.test.mjs",
     "web/tests/recovery.test.mjs",
-    "web/tests/library-refresh.test.mjs"
+    "web/tests/library-refresh.test.mjs",
+    "web/tests/library-setup.test.mjs"
   ],
   "source_blobs": {
     "bookpipe/server/asgi.py": "ba683a20dcbc05b5e776be36eda4a7c477a9f0e1",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
-    "bookpipe/server/routes.py": "eee8e42ec7e0e7799749f00414c35185c6d06815",
+    "bookpipe/server/routes.py": "0922aa2ffb76ef8ac1d1aa618920e7b9fb2e825b",
     "bookpipe/server/http.py": "f5158c0d998813dd5f82b5eaf2a7f0b5f31ae481",
-    "bookpipe/server/service.py": "e99614c575479b7a196281c4a9fa57c0afe8556a",
+    "bookpipe/server/service.py": "2ff1268abbb6a084d8f845174e768f5faafcd227",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
-    "bookpipe/application/catalog.py": "e2d2f7b90b2bb6d720d1b5790335ebc31f191403",
-    "bookpipe/application/web.py": "0c78a546bb5f047ca2be150876bea2e4cfeba4eb",
-    "bookpipe/application/workflow.py": "eb3833d0d81bb7926b96d924415071bc2a2e6876",
+    "bookpipe/application/catalog.py": "e5b91573b0e6c7c4e5421a451b0f16b6a2c0432d",
+    "bookpipe/application/web.py": "a206a7bafe86489c4fc5a1f9c5949722539277e3",
+    "bookpipe/application/workflow.py": "3cf6d250b1bb11b60196785adecb9a871283c818",
     "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
     "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
     "bookpipe/application/publishing.py": "f3dd0289871b68faf8421a3a569ec92544426984",
@@ -153,6 +181,10 @@
     "docs/server-runtime.md": "9c334000170d6074e06cd16525715ca08753c587",
     "bookpipe/application/epub_sources.py": "77883c7b0e01424d1a29551362e49522688d2021",
     "bookpipe/application/projects.py": "250b63ce7dc5fe29281958a391c7c447f3ac6a4d",
-    "bookpipe/runtime/models.py": "dbceb642a25bf66e55af8b2ec978bdb21580c5cb"
+    "bookpipe/runtime/models.py": "b9a7624785207e648640dc8637048f22119fc9e4",
+    "bookpipe/runtime/worker.py": "c400ba008d75447d6ed9483e681c6b851305826c",
+    "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
+    "bookpipe/application/source_preflight.py": "8ae31941361a9a0fea89b32309bd8c56c7a0bf73",
+    "bookpipe/application/workspace_setup.py": "ff65b524c7d90e3d85e81edad901168a423146b4"
   }
 }

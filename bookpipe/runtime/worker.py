@@ -19,8 +19,15 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             from ..application.imports import confined_source, workspace_destination, validate_source_tree
             source = confined_source(Path(spec.import_root), spec.source_id)
             validate_source_tree(source)
-            # Atomic reservation also rejects races with local creation/another server.
-            project.mkdir(exist_ok=False)
+            # A configured draft is already reserved; legacy imports reserve a new directory.
+            if project.exists():
+                from ..application.workspace_setup import validate_draft_destination
+                from ..application.source_preflight import source_signature
+                setup = validate_draft_destination(project, spec.source_id)
+                if source_signature(Path(spec.import_root), spec.source_id) != setup['source_fingerprint']:
+                    raise ValueError('Source changed since workspace setup.')
+            else:
+                project.mkdir(exist_ok=False)
             app.projects.import_book(ImportBookCommand(
                 project, source,
                 previous_volume=workspace_destination(Path(spec.workspace_root), spec.previous_volume) if spec.previous_volume else None,

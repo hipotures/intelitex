@@ -1,5 +1,33 @@
 # Executed production web verification
 
+## Library setup/Prepare change (2026-09-22)
+
+This focused follow-up used disposable pytest sources/workspaces and a fully
+intercepted Chromium origin. It did not start or stop the user's server and made no
+model-generation request. The Library card, Inspect, Cancel, Save, second workspace,
+unknown Save acknowledgement across reload, unprepared Workspace and explicit
+Prepare control were exercised in the browser. The test injected one expected HTTP
+503 for Save; there were no unexpected console/page errors or failed requests.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 831 passed, 3 warnings on final full run. An earlier run had 1 timing-sensitive failure in `test_concurrency_conflict_and_isolated_cancellation`; that test passed alone and the full rerun passed. |
+| `uv run --group dev python -m pytest -q tests/test_web_production.py tests/test_server_api.py` | 549 passed, 1 deliberate duplicate-ZIP fixture warning. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm run typecheck && npm run lint && npm run test:unit && npm run build` (from `web/`) | Passed; 13 component/unit tests. Vite reported its existing >500 kB uncompressed chunk warning. |
+| `FONTCONFIG_FILE=/tmp/intelitex-playwright-libs/fonts.conf LD_LIBRARY_PATH=/tmp/intelitex-playwright-libs/root/usr/lib/x86_64-linux-gnu node --test tests/library-setup.test.mjs tests/library-rows.test.mjs` (from `web/`) | 2 passed; offline browser interaction and responsive Library paging. |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; immutable v33 and implementation contract hashes unchanged. |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual source re-audit. |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -v` | 31 passed. |
+
+Original v33 was rendered separately at 1440×1000 and 390×844. The production
+Work capture retains the header, list, cover grid and responsive geometry; it shows
+one offline source and no seeded workspaces. Setup is an intentional additional
+dialog absent from v33. Dark desktop/mobile and light mobile setup captures were
+visually inspected in `/tmp/intelitex-library-setup-evidence/`; no mobile horizontal
+overflow appeared. The source-cover/derived SQLite index item in issue #1 remains
+separate from this focused setup flow.
+
 Run on 2026-09-22 in `/home/user/DEV/intelitex`, with `uv 0.12.17`, Python 3.14,
 Node 22.22.1 and Playwright Chromium 153.0.8010.12. Fixture workspaces, sources,
 registry and offline provider live under `/tmp/intelitex-browser-*` or pytest's

@@ -17,6 +17,10 @@ only in Debug mode and are not product terminology.
 | WRC | Workspace row | `web/src/features/work/Home.tsx` |
 | LIB | Library | `web/src/features/work/Home.tsx` |
 | BKC | Library book card | `web/src/features/work/Home.tsx` |
+| LSD | Library source details drawer | `web/src/features/work/LibrarySource.tsx` |
+| LSI | Library source inspection section | `web/src/features/work/LibrarySource.tsx` |
+| WCM | Workspace creation and setup modal | `web/src/features/work/LibrarySource.tsx` |
+| WMP | Workspace setup pass-model group | `web/src/features/work/LibrarySource.tsx` |
 | ARD | Archive drawer | `web/src/features/work/Home.tsx` |
 | ARI | Archived workspace row | `web/src/features/work/Home.tsx` |
 | WSP | Workspace overview | `web/src/features/pipeline/Workspace.tsx` |

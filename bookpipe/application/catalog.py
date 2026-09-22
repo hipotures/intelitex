@@ -1,12 +1,16 @@
 """Root-owned source/draft linkage. Creating a draft never creates a project."""
 import threading
 import uuid
+import re
+from datetime import datetime, timezone
 
 from ..util import atomic_json, digest, file_lock, read_json
-from .imports import confined_source, validate_source_tree, RequestConflict
-from ..importer import reading_order
+from .imports import confined_source, RequestConflict
 from ..util import PipelineError
 from .epub_sources import packed_epub_metadata
+from .source_preflight import source_signature, _folder_metadata
+from .imports import workspace_destination
+from ..profiles import resolve_profile, with_profiles
 import zipfile
 
 
@@ -60,6 +64,87 @@ class WebCatalog:
             if changed:
                 atomic_json(self.path, state)
 
+    def save_setup(self, payload, settings):
+        """Commit one configured workspace. A request key identifies one Save, not one source."""
+        if self.imports.root is None:
+            from .imports import ImportDisabled
+            raise ImportDisabled('Import disabled.')
+        expected = {'source_id', 'source_fingerprint', 'source_language', 'target_language', 'label', 'pass_profiles', 'request_key'}
+        if not isinstance(payload, dict) or set(payload) != expected:
+            raise ValueError('Invalid workspace setup.')
+        source_id, key = payload['source_id'], payload['request_key']
+        if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9-]{16,128}', key):
+            raise ValueError('Invalid request key.')
+        label = payload['label']
+        if label is not None and (not isinstance(label, str) or len(label.strip()) > 64 or not label.strip() or any(ord(c) < 32 for c in label)):
+            raise ValueError('Invalid workspace label.')
+        for field in ('source_language', 'target_language'):
+            value = payload[field]
+            if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', value):
+                raise ValueError('Invalid language.')
+        profiles = payload['pass_profiles']
+        if not isinstance(profiles, dict) or set(profiles) != set('12345'):
+            raise ValueError('Select all five pass profiles.')
+        configured, _ = with_profiles(settings)
+        for number, name in profiles.items():
+            if not isinstance(name, str):
+                raise ValueError('Invalid profile.')
+            resolve_profile(configured, int(number), command_profile=name)
+        setup_digest = digest(payload)
+        with self.lock, file_lock(self.root, '.intelitex-web.lock', 'Catalog busy.'):
+            state = self.read()
+            requests = state.setdefault('setup_requests', {})
+            prior = requests.get(key)
+            if prior is None:
+                from .workspace_setup import read_workspace_setup
+                for folder in self.root.iterdir():
+                    manifest = folder / 'workspace.json'
+                    if folder.is_dir() and manifest.is_file() and not manifest.is_symlink():
+                        try:
+                            value = read_workspace_setup(folder)
+                        except (OSError, ValueError, PipelineError):
+                            continue
+                        if value.get('request_key') == key:
+                            prior = {'digest': value.get('setup_digest'), 'workspace_id': folder.name}
+                            break
+            if prior is not None:
+                if prior['digest'] != setup_digest:
+                    raise RequestConflict('Request key reused for different setup.')
+                if key not in requests:
+                    state.setdefault('drafts', {})[prior['workspace_id']] = {
+                        'workspace_id': prior['workspace_id'], 'source_id': source_id, 'archived': False}
+                    requests[key] = prior
+                    atomic_json(self.path, state)
+                return {'workspace_id': prior['workspace_id'], 'source_id': source_id}
+            # Revalidate the selected source at Save; Prepare verifies it again.
+            fingerprint = source_signature(self.imports.root, source_id)
+            if payload['source_fingerprint'] != fingerprint:
+                raise RequestConflict('Source changed since setup preflight.')
+            ident = 'w-' + uuid.uuid4().hex
+            root = workspace_destination(self.root, ident)
+            root.mkdir(mode=0o700)
+            try:
+                configured['pass_profiles'] = dict(profiles)
+                atomic_json(root / 'settings.json', configured)
+                metadata = {'format_version': 1, 'source_id': source_id, 'source_fingerprint': fingerprint,
+                            'label': label.strip() if label else None,
+                            'source_language': payload['source_language'].lower(),
+                            'target_language': payload['target_language'].lower(),
+                            'created_at': datetime.now(timezone.utc).isoformat(),
+                            'request_key': key, 'setup_digest': setup_digest}
+                atomic_json(root / 'workspace.json', metadata)
+                entry = {'workspace_id': ident, 'source_id': source_id, 'archived': False}
+                state.setdefault('drafts', {})[ident] = entry
+                requests[key] = {'digest': setup_digest, 'workspace_id': ident}
+                atomic_json(self.path, state)
+            except BaseException:
+                # Only remove our exact unpublished setup files; never touch another project.
+                for name in ('workspace.json', 'settings.json'):
+                    (root / name).unlink(missing_ok=True)
+                root.rmdir()
+                raise
+            return {'workspace_id': ident, 'source_id': source_id}
+
     def source_metadata(self, source_id):
         if self.imports.root is None:
             return {'title': source_id, 'creators': [], 'language': None, 'word_count': None}
@@ -67,16 +152,40 @@ class WebCatalog:
             source = confined_source(self.imports.root, source_id)
             if source.is_file() and source.suffix.lower() == '.epub':
                 return packed_epub_metadata(source)
-            validate_source_tree(source)
-            _, metadata, _ = reading_order(source)
+            metadata = _folder_metadata(source)
             title = metadata.get('title') or source.name
         except (OSError, ValueError, PipelineError):
             metadata, title = {}, source_id
         return {'title': title,
                 'creators': metadata.get('creators', []), 'language': metadata.get('language'), 'word_count': None}
 
+    def setup_metadata(self, workspace_id):
+        root = workspace_destination(self.root, workspace_id)
+        path = root / 'workspace.json'
+        if path.is_symlink():
+            raise ValueError('Unsafe workspace metadata.')
+        if not path.is_file():
+            return {}
+        value = read_json(path)
+        if not isinstance(value, dict) or value.get('format_version') != 1 or value.get('source_id') != self.source(workspace_id):
+            raise ValueError('Invalid workspace metadata.')
+        return value
+
     def entries(self):
-        return list(self.read()['sources'].values())
+        state = self.read()
+        result = [*state['sources'].values(), *state.get('drafts', {}).values()]
+        known = {entry['workspace_id'] for entry in result}
+        from .workspace_setup import read_workspace_setup
+        for folder in self.root.iterdir():
+            if folder.name in known or folder.is_symlink() or not folder.is_dir() or not (folder / 'workspace.json').is_file():
+                continue
+            try:
+                setup = read_workspace_setup(folder)
+                if setup:
+                    result.append({'workspace_id': folder.name, 'source_id': setup['source_id'], 'archived': False})
+            except (OSError, ValueError, PipelineError):
+                continue
+        return result
 
     def draft_lifecycle(self, workspace_id):
         entry = next((e for e in self.entries() if e['workspace_id'] == workspace_id), None)
@@ -88,9 +197,16 @@ class WebCatalog:
         from .web import LifecycleConflict
         with self.lock, file_lock(self.root, '.intelitex-web.lock', 'Catalog busy.'):
             state = self.read()
-            entry = next((e for e in state['sources'].values() if e['workspace_id'] == workspace_id), None)
+            entry = next((e for e in [*state['sources'].values(), *state.get('drafts', {}).values()]
+                          if e['workspace_id'] == workspace_id), None)
             if entry is None:
-                raise KeyError(workspace_id)
+                from .workspace_setup import read_workspace_setup
+                root = workspace_destination(self.root, workspace_id)
+                setup = read_workspace_setup(root)
+                if not setup:
+                    raise KeyError(workspace_id)
+                entry = {'workspace_id': workspace_id, 'source_id': setup['source_id'], 'archived': False}
+                state.setdefault('drafts', {})[workspace_id] = entry
             if revision != digest(entry):
                 raise LifecycleConflict('Draft archive state changed.')
             if entry.get('archived', False) != archived:

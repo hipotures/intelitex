@@ -66,8 +66,8 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
   assert.equal(await page.getByText('— words').count(), 0)
   const beforeOpen = libraryRequests
   await page.locator('[data-source-id="new-book"]').click()
-  await page.waitForURL(/\/work\/workspaces\//)
-  await page.goBack()
+  await page.locator('[data-ui-debug-id="LSD"]').waitFor()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.locator('[data-source-id="new-book"]').waitFor()
   assert.equal(libraryRequests, beforeOpen, 'opening a source and returning must not rediscover Library')
 
@@ -75,7 +75,7 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
   await page.getByRole('button', { name: 'Refresh Library' }).click()
   await page.getByRole('alert').filter({ hasText: 'Library temporarily unavailable.' }).waitFor()
   assert.equal(await page.locator('[data-source-id="new-book"]').count(), 1, 'last successful source list survives failure')
-  assert.equal(await page.locator('.workspace-row').count(), 2, 'opening the new source leaves its draft workspace visible')
+  assert.equal(await page.locator('.workspace-row').count(), 1, 'opening the new source creates no workspace')
   await page.unroute('**/api/library?*')
   await page.getByRole('button', { name: 'Retry Library refresh' }).click()
   await page.getByRole('alert').filter({ hasText: 'Library temporarily unavailable.' }).waitFor({ state: 'detached' })
@@ -101,6 +101,8 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
 
   const beforePackedOpen = libraryRequests
   await page.locator('[data-source-id="Packed Book.epub"]').click()
+  await page.getByRole('button', { name: 'Add to workspace' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('heading', { name: 'Prepare this workspace' }).waitFor()
   await page.getByRole('button', { name: 'Prepare', exact: true }).first().click()
   await page.locator('.sections-table').waitFor({ state: 'visible' })

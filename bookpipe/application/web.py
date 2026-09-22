@@ -47,11 +47,15 @@ class WebWorkspaceService:
         return load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
 
     def metadata(self, root):
+        from .workspace_setup import read_workspace_setup
         book = self.book(root)
         metadata = book.get('metadata', {})
         sections = self.sections(book)
+        setup = read_workspace_setup(root)
         return {'title': metadata.get('title') or root.name,
                 'creators': metadata.get('creators', []), 'language': metadata.get('language'),
+                'label': setup.get('label'), 'source_language': setup.get('source_language'),
+                'target_language': setup.get('target_language'),
                 'format': 'EPUB' if metadata.get('opf') else 'HTML',
                 'word_count': sum(len(b['text'].split()) for s in sections for b in s.get('blocks', [])),
                 'lifecycle': self.lifecycle(root)}

@@ -13,7 +13,8 @@ export const jobsSchema = z.object({ jobs: z.array(jobSchema), cursor: count })
 export const capabilitiesSchema = z.object({ scope_id: text, import_enabled: z.boolean(), review: z.boolean(), reader: z.boolean(),
   sse: z.boolean(), multi_workspace: z.boolean(), drafts: z.boolean(), archive: z.boolean(), section_configuration: z.boolean(), diagnostics: z.boolean() })
 const lifecycle = z.object({ archived: z.boolean(), revision: nullableText, updated_at: text.optional() })
-const metadata = z.object({ title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(), format: text.optional(), lifecycle })
+const metadata = z.object({ title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(),
+  label: nullableText.optional(), source_language: nullableText.optional(), target_language: nullableText.optional(), format: text.optional(), lifecycle })
 const progressCount = z.object({ completed: count, required: count, denominator: text })
 const workflowProgress = z.object({ percent: count.nullable(), basis: text, analysis: progressCount, translation: progressCount })
 export const workspaceSchema = z.object({ workspace_id: text, prepared: z.boolean(), metadata, progress: workflowProgress.optional(), active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), source_id: text.optional() })
@@ -51,7 +52,9 @@ export const approvalSchema = z.object({ approved_terms: count, stale_chunks: co
 export const evidenceSchema = z.object({ term_id: text, warnings: z.array(text), choice_pending_approval: z.boolean(),
   entries: z.array(z.object({ block_id: text, chapter_id: text, source_text: text.optional(), polish_text: nullableText.optional(),
     status: text.optional(), message: text.optional() })) })
-const profile = z.object({ name: text, stable_palette_index: count.nullable(), provider: nullableText, model: nullableText, enabled: z.boolean(), source: text.optional(), provenance: text.optional() })
+const languageSupport = z.union([z.literal('all'), z.array(text)]).nullable()
+const profile = z.object({ name: text, stable_palette_index: count.nullable(), provider: nullableText, model: nullableText, enabled: z.boolean(), source: text.optional(), provenance: text.optional(),
+  source_languages: languageSupport.optional(), target_languages: languageSupport.optional() })
 export const profilesSchema = z.object({ source: text, revision: text, assignments: z.record(text, nullableText), profiles: z.array(profile),
   default_profile: text, resolved_passes: z.record(text, profile) })
 export const previewSchema = z.object({ id: text, blocks: z.array(z.object({ id: text, text })), next_page: count.nullable() })
@@ -73,6 +76,11 @@ export const contextSchema = z.object({ recognized: z.boolean(), matched_text: t
   display_name: text.optional(), attributes: z.array(z.object({ label: text, value: text })).optional(), statements: z.array(text).optional() }).passthrough()
 export const activitySchema = z.object({ events: z.array(eventSchema) })
 export const draftSchema = z.object({ workspace_id: text, source_id: text })
+export const preflightSchema = z.object({ source_id: text, title: text, creators: z.array(text), declared_language: nullableText,
+  detected_language: nullableText, detection_confidence: count, source_language: nullableText, source_fingerprint: text,
+  language_warning: nullableText, sample_word_count: count.optional(), sampled_documents: count.optional(),
+  document_count: count.optional(), section_preview: z.array(text).optional() })
+export const compatibilitySchema = z.object({ compatible: z.boolean(), warnings: z.array(text), target_choices: z.array(text) })
 export const lifecycleSchema = lifecycle
 export type Job = z.infer<typeof jobSchema>
 export type Envelope = z.infer<typeof eventSchema>

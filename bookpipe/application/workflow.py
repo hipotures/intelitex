@@ -30,13 +30,15 @@ class WorkflowQueries:
             result = {key: value.get(key) for key in fields}
             result['enabled'] = value.get('enabled', True)
             result['thinking'] = value.get('options', {}).get('thinking')
+            result['source_languages'] = value.get('source_languages')
+            result['target_languages'] = value.get('target_languages')
             return result
         resolved = {}
         for number in range(1, 6):
             name, value, provenance = resolve_profile(settings, number, project=root)
             resolved[str(number)] = {'name': name, 'provenance': provenance['profile'], **profile(value)}
         return {'source': 'project' if local else 'defaults', 'revision': digest(config),
-                'assignments': config.get('pass_profiles', {}),
+                'assignments': {**settings.get('pass_profiles', {}), **config.get('pass_profiles', {})},
                 'default_profile': settings['default_profile'],
                 'pass_profiles': dict(settings.get('pass_profiles', {})),
                 'profiles': [{'name': name, 'source': 'configured' if name in settings['profiles'] else 'builtin',

@@ -121,9 +121,18 @@ is shared with the compatibility HTTP adapter.
   optional `limit` (1–40) and `after` return a bounded page with `next_cursor`.
   Immediate packed EPUB files are sources; their metadata is read only on the requested page.
 - POST `/api/workspaces`: source_id, optional request_key; currently resolves one
-  durable draft per source. This is the audited wire contract, not refined D05's
-  multiple-workspace Save operation. Do not wire the target setup modal to this
-  endpoint as if it already persisted language/profile setup or supported variants.
+  legacy draft link per source. This is retained for compatibility, not used by
+  the refined D05 setup flow.
+- GET `/api/library/sources/{source_id}/preflight` and `/inspect`: selected-source
+  read-only metadata, local language sample and fingerprint; Inspect adds bounded
+  structural details. Neither starts P1 or writes project state.
+- POST `/api/library/compatibility`: checks the selected language pair and P1–P5
+  profile capabilities. Unknown capability metadata warns; the current application
+  language pair remains English source and Polish target.
+- POST `/api/workspaces/setup`: source ID/fingerprint, immutable language pair,
+  optional label, five pass profiles, and request key. Same request/key resolves
+  the same configured draft; a distinct Save may create another workspace from
+  the same Library source. See `docs/server-api.md` for the full payload.
 - POST `/api/workspaces/{id}/prepare`: optional request_key/profile/pass_profiles; supervised real import.
 - PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
   allow_model_change:true only after explicit user confirmation.
