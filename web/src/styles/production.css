@@ -109,6 +109,10 @@ body:has(dialog.drawer[open])::before { display:none; }
 .debug-setting { display:flex;align-items:center;gap:10px; }
 .debug-setting input { width:16px;height:16px;accent-color:var(--accent); }
 html[data-ui-debug="on"] [data-ui-debug-id]:not(.topbar):not(.reader-selection):not(dialog) { position:relative; }
+html[data-ui-debug="on"] [data-ui-debug-id="WRK"],
+html[data-ui-debug="on"] [data-ui-debug-id="WHT"] { outline:1px dashed color-mix(in srgb,var(--accent) 55%,transparent); }
+html[data-ui-debug="on"] [data-ui-debug-id="WRK"] { outline-offset:-2px; }
+html[data-ui-debug="on"] [data-ui-debug-id="WHT"] { outline-offset:4px; }
 html[data-ui-debug="on"] [data-ui-debug-id]::after {
   content:attr(data-ui-debug-id);
   position:absolute;

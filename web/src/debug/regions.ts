@@ -1,8 +1,8 @@
 /** Stable UI-debug API. Keep an ID with its conceptual panel across refactors. */
 export const debugRegions = [
   { id: 'HDR', description: 'Application header', source: 'app/Shell.tsx' },
-  { id: 'WRK', description: 'Work home', source: 'features/work/Home.tsx' },
-  { id: 'WHT', description: 'Work home heading', source: 'features/work/Home.tsx' },
+  { id: 'WRK', description: 'Whole Work home content region', source: 'features/work/Home.tsx' },
+  { id: 'WHT', description: 'Work home title and description group', source: 'features/work/Home.tsx' },
   { id: 'ACT', description: 'Active workspaces', source: 'features/work/Home.tsx' },
   { id: 'WLS', description: 'Active workspace list', source: 'features/work/Home.tsx' },
   { id: 'WRC', description: 'Workspace row', source: 'features/work/Home.tsx' },

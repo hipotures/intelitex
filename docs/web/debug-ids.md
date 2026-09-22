@@ -10,8 +10,8 @@ only in Debug mode and are not product terminology.
 | ID | Conceptual component | Source component/file |
 | --- | --- | --- |
 | HDR | Application header | `web/src/app/Shell.tsx` |
-| WRK | Work home | `web/src/features/work/Home.tsx` |
-| WHT | Work home heading | `web/src/features/work/Home.tsx` |
+| WRK | Whole Work home content region | `web/src/features/work/Home.tsx` |
+| WHT | Work home title and description group | `web/src/features/work/Home.tsx` |
 | ACT | Active workspaces | `web/src/features/work/Home.tsx` |
 | WLS | Active workspace list | `web/src/features/work/Home.tsx` |
 | WRC | Workspace row | `web/src/features/work/Home.tsx` |

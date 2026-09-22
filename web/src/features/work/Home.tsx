@@ -73,7 +73,7 @@ export function Home() {
     } catch (error) { setRefreshError(error) }
     finally { setRefreshingLibrary(false) }
   }
-  return <main className="main" {...debugTag('WRK')}><div className="page-title-row" {...debugTag('WHT')}><div><div className="eyebrow">Work</div><h1>Books in progress</h1><div className="subtitle">Open a workspace, continue the pipeline, or start working on a book from the library.</div></div></div>
+  return <main className="main" {...debugTag('WRK')}><div className="page-title-row"><div {...debugTag('WHT')}><div className="eyebrow">Work</div><h1>Books in progress</h1><div className="subtitle">Open a workspace, continue the pipeline, or start working on a book from the library.</div></div></div>
     <ErrorNote error={workspaces.error ?? command.error} retry={() => void reconcile()} />
     <section className="section" {...debugTag('ACT')}><div className="section-header"><div className="section-title"><h2>Active workspaces</h2><span className="count-badge">{workspaces.data ? active.length : '—'}</span></div><Button variant="ghost" className="compact" onClick={() => setArchive(true)}>Archive →</Button></div>
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
