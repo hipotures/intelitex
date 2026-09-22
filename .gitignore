@@ -23,3 +23,8 @@ projects/
 **/codex-sqlite/
 **/auth.json
 .verification/
+
+# Frontend dependencies and generated output.
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
