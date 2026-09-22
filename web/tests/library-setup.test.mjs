@@ -20,13 +20,14 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
     page.setDefaultTimeout(7000)
-    const errors = [], failed = [], saves = [], workspaces = [], savedRequests = new Map()
+    const errors = [], failed = [], saves = [], prepares = [], workspaces = [], savedRequests = new Map()
     let failNextSave = false
     let libraryRequests = 0
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error' && !(message.text().includes('503') && message.location().url.includes('/api/workspaces/setup'))) errors.push(message.text()) })
     page.on('requestfailed', request => failed.push(request.url()))
     await page.addInitScript(() => {
+      Object.defineProperty(Crypto.prototype, 'randomUUID', { value: undefined, configurable: true })
       window.EventSource = class { static OPEN = 1; readyState = 1; listeners = {}; constructor() { window.testStream = this }
         addEventListener(type, callback) { this.listeners[type] = callback }
         emitSnapshot() { this.listeners.snapshot?.({ data: '{"jobs":[],"cursor":0}' }) }
@@ -62,6 +63,11 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
           if (failNextSave) { failNextSave = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"unavailable","message":"Retry","details":{}}}' }) }
         }
       }
+      else if (/^\/api\/workspaces\/w-\d+\/prepare$/.test(url.pathname)) {
+        prepares.push(request.postDataJSON())
+        body = { job_id: 'j-prepare', workspace_id: url.pathname.split('/')[3], operation: 'import', state: 'starting',
+          sequence: 0, started_at: null, finished_at: null, last_event: null, error: null }
+      }
       if (body) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
       const file = url.pathname.startsWith('/assets/') ? resolve(dist, '.' + url.pathname) : resolve(dist, 'index.html')
@@ -70,6 +76,8 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
     })
     try {
       await page.goto('http://localhost/work')
+      assert.equal(await page.evaluate(() => typeof crypto.randomUUID), 'undefined', 'plain-HTTP LAN behavior must be reproduced')
+      assert.equal(await page.evaluate(() => typeof crypto.getRandomValues), 'function')
       await page.locator('[data-source-id="book.epub"]').waitFor()
       assert.equal(await page.title(), 'Intelitex')
       await page.screenshot({ path: `${output}/work-dark-1440.png`, animations: 'disabled' })
@@ -111,6 +119,10 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       assert.equal(await page.getByRole('button', { name: 'Prepare', exact: true }).count(), 2)
       assert.equal(await page.locator('.phase').first().isDisabled(), true)
       assert.equal(saves.length, 1)
+      const prepareResponse = page.waitForResponse(response => response.url().endsWith('/prepare'))
+      await page.getByRole('button', { name: 'Prepare', exact: true }).first().click()
+      await prepareResponse
+      assert.match(prepares[0].request_key, /^[a-f0-9]{32}$/)
       await page.getByRole('link', { name: 'Library', exact: true }).click()
       await page.locator('[data-source-id="book.epub"]').waitFor()
       await page.getByText('1 workspace', { exact: true }).waitFor()

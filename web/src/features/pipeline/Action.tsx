@@ -1,10 +1,11 @@
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Play, Square } from 'lucide-react'
 import { z } from 'zod'
 import { endpoint, useApi, request, reconcile, Scope } from '../../api/client'
 import { jobSchema, pipelineSchema, type Workspace, type Pipeline } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
+import { createRequestKey } from '../../api/requestKey'
 import { Button, ErrorNote } from '../../components/ui/common'
 import { useLive } from '../../realtime/coordinator'
 export function primaryAction(p: Pipeline) {
@@ -24,6 +25,7 @@ export function primaryAction(p: Pipeline) {
 export function Action({ workspace, pipeline, row = false }: { workspace: Workspace; pipeline?: Pipeline; row?: boolean }) {
   const query = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared && !pipeline)
   const command = useCommand(workspace.workspace_id)
+  const [localError, setLocalError] = useState<unknown>(null)
   const navigate = useNavigate()
   const scope = useContext(Scope)
   const live = useLive()
@@ -36,13 +38,15 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
     ? { label: 'Restore before running', allowed: false, operation: 'prepare' }
     : { label: activeJob ? activeJob.state === 'stopping' ? 'Stopping…' : 'Stop' : 'Prepare', allowed: !activeJob || activeJob.state === 'running', operation: activeJob ? 'stop' : 'prepare' }
   async function run() {
+    setLocalError(null)
     if (row && action.label === 'Finished') { await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: workspace.workspace_id } }); return }
     if (action.operation === 'review') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'review' } }); return }
     if (action.operation === 'stop' && activeJob) { await command.send(`/api/jobs/${encodeURIComponent(activeJob.job_id)}/stop`, jobSchema, {}); return }
     const resource = action.operation === 'prepare' ? 'prepare' : 'jobs'
     const storageKey = `intelitex.pending.${scope}.${workspace.workspace_id}.${resource}.${action.operation}`
     let key: string
-    try { key = sessionStorage.getItem(storageKey) ?? crypto.randomUUID(); sessionStorage.setItem(storageKey, key) } catch { key = crypto.randomUUID() }
+    try { key = sessionStorage.getItem(storageKey) ?? createRequestKey(); sessionStorage.setItem(storageKey, key) }
+    catch { try { key = createRequestKey() } catch (error) { setLocalError(error); return } }
     const value = await command.send(endpoint(workspace.workspace_id, resource), jobSchema,
       action.operation === 'prepare' ? { request_key: key } : { operation: action.operation, request_key: key, ...(action.operation === 'translate' ? { chunk_limit: 0 } : {}) })
     if (value) { try { sessionStorage.removeItem(storageKey) } catch { /* Optional storage. */ } }
@@ -57,6 +61,6 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
     }
   }
   return <div className="command"><Button variant={action.operation === 'stop' ? 'danger' : row ? 'secondary' : 'primary'} disabled={command.disabled || (!action.allowed && !(row && action.label === 'Finished'))} onClick={() => void run()} title={!action.allowed ? p?.actions.publish?.reason?.replaceAll('_', ' ') : undefined}>
-    {command.pending ? 'Saving…' : <>{action.operation === 'stop' ? <Square size={12} /> : action.label === 'Run' && !row ? <Play size={13} /> : null}{row && action.label === 'Finished' ? 'Open' : action.label}</>}</Button><ErrorNote error={command.error ?? query.error} /></div>
+    {command.pending ? 'Saving…' : <>{action.operation === 'stop' ? <Square size={12} /> : action.label === 'Run' && !row ? <Play size={13} /> : null}{row && action.label === 'Finished' ? 'Open' : action.label}</>}</Button><ErrorNote error={localError ?? command.error ?? query.error} /></div>
 }
 export const emptyResponse = z.object({})

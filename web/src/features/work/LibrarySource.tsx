@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { request, useApi } from '../../api/client'
 import { compatibilitySchema, draftSchema, preflightSchema, profilesSchema, type LibraryPage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
+import { createRequestKey } from '../../api/requestKey'
 import { useConnection } from '../../realtime/coordinator'
 import { Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
 import { debugTag } from '../../debug/regions'
@@ -61,6 +62,7 @@ function SetupForm({ source, preflight, profiles, close }: {
   const [compatibility, setCompatibility] = useState<z.infer<typeof compatibilitySchema> | null>(null)
   const [checkedSelection, setCheckedSelection] = useState<string | null>(null)
   const [compatibilityError, setCompatibilityError] = useState<unknown>(null)
+  const [saveError, setSaveError] = useState<unknown>(null)
   const [unknownOutcome, setUnknownOutcome] = useState(!!restored)
   const attempt = useRef<{ key: string; body: Record<string, unknown> } | null>(restored)
   const command = useCommand()
@@ -78,14 +80,18 @@ function SetupForm({ source, preflight, profiles, close }: {
       .catch(error => { if (!(error instanceof DOMException && error.name === 'AbortError')) setCompatibilityError(error) })
     return () => controller.abort()
   }, [sourceLanguage, targetLanguage, assignments, languagesValid, selection])
-  const edit = () => { if (!unknownOutcome) attempt.current = null }
+  const edit = () => { if (!unknownOutcome) attempt.current = null; setSaveError(null) }
   async function save() {
-    if (!attempt.current) attempt.current = { key: crypto.randomUUID(), body: { source_id: source.source_id,
-      source_fingerprint: preflight.source_fingerprint, source_language: sourceLanguage, target_language: targetLanguage,
-      label: label.trim() || null, pass_profiles: assignments, request_key: '' } }
-    const pending = attempt.current
-    pending.body.request_key = pending.key
-    sessionStorage.setItem(pendingKey, JSON.stringify(pending))
+    setSaveError(null)
+    let pending: { key: string; body: Record<string, unknown> }
+    try {
+      if (!attempt.current) attempt.current = { key: createRequestKey(), body: { source_id: source.source_id,
+        source_fingerprint: preflight.source_fingerprint, source_language: sourceLanguage, target_language: targetLanguage,
+        label: label.trim() || null, pass_profiles: assignments, request_key: '' } }
+      pending = attempt.current
+      pending.body.request_key = pending.key
+      sessionStorage.setItem(pendingKey, JSON.stringify(pending))
+    } catch (error) { setSaveError(error); return }
     const result = await command.send('/api/workspaces/setup', draftSchema, pending.body)
     if (result) { sessionStorage.removeItem(pendingKey); close(); await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: result.workspace_id } }) }
     else if (command.unknownOutcome()) setUnknownOutcome(true)
@@ -105,6 +111,6 @@ function SetupForm({ source, preflight, profiles, close }: {
     {currentCompatibility && !currentCompatibility.compatible && <div className="notice error">This language pair is unavailable with the current pipeline or selected profiles.</div>}
     {connection !== 'Live' && <div className="notice" role="status">Save is waiting for live synchronization ({connection}). It will be available when the connection recovers.</div>}
     {unknownOutcome && <div className="notice">Save may have succeeded. Retry the same request to resolve its result; no second workspace will be created.</div>}
-    <ErrorNote error={compatibilityError ?? command.error} />
+    <ErrorNote error={saveError ?? compatibilityError ?? command.error} />
   </div><div className="modal-foot"><Button onClick={close} disabled={command.pending}>{unknownOutcome ? 'Close' : 'Cancel'}</Button><Button variant="primary" onClick={() => void save()} disabled={command.disabled || (!unknownOutcome && (!languagesValid || !currentCompatibility?.compatible || !!compatibilityError))}>{unknownOutcome ? 'Retry Save' : command.pending ? 'Saving…' : connection !== 'Live' ? 'Waiting for sync…' : 'Save'}</Button></div></>
 }

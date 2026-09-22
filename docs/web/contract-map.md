@@ -131,6 +131,10 @@ explains that these are profile-metadata warnings, not a Save gate. While the
 shared SSE connection is not live, Save names the waiting state and shows the
 recovery reason instead of appearing to do nothing; an `en` → `pl` selection with
 unknown profile capabilities can be saved once synchronization completes.
+Setup and job commands generate 128-bit random request keys with
+`crypto.getRandomValues`, which is available on plain-HTTP LAN origins where
+`crypto.randomUUID` is absent. Key generation failures are surfaced in the UI
+before any mutation is sent.
 
 ## Acceptance traceability
 
