@@ -14,3 +14,18 @@ The current user request defines scope; the skill does not authorize an unrelate
 Use `uv`, never direct `pip`. Preserve unrelated changes. Never use live model calls
 in implementation tests without separate explicit authorization. Report test results
 only when executed. Commit focused requested changes; push only when instructed.
+
+
+GitHub CLI:
+Do not use:
+  gh issue view <n> --repo <repo>
+
+because the default GraphQL query may request deprecated
+Projects Classic projectCards and fail.
+
+For reading issues, prefer:
+  gh api repos/<owner>/<repo>/issues/<n> --jq '.body'
+
+For structured metadata:
+  gh api repos/<owner>/<repo>/issues/<n> \
+    --jq '{number,title,state,html_url,body}'
