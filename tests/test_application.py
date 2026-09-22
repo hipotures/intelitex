@@ -16,6 +16,7 @@ from bookpipe.application.sessions import OperationScope, ReaderScope
 from bookpipe.bootstrap import create_application
 from bookpipe.cli import _model_options, parser
 from bookpipe.store import Store
+from bookpipe.infrastructure.read_store import ReadStore
 from bookpipe.util import project_lock, reader_lock
 from bookpipe.util import plan_fingerprint
 from bookpipe.infrastructure.project_files import LocalProjectFiles
@@ -209,6 +210,7 @@ def test_direct_project_operations_need_no_cli_or_http(tmp_path):
     bundle = Path(__file__).parents[1]
     app = Application(ApplicationDependencies(
         project_lock=project_lock, reader_lock=reader_lock, store_factory=Store,
+        read_store_factory=ReadStore,
         provider_factory=LocalImportPool, bundle=bundle,
         plan_fingerprint=plan_fingerprint,
         files=LocalProjectFiles(),

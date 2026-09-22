@@ -105,3 +105,4 @@ class ApplicationDependencies:
     plan_fingerprint: Callable[[dict], str]
     files: ProjectFiles
     publication_builder: PublicationBuilder | None = None
+    read_store_factory: StoreFactory | None = None

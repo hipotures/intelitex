@@ -1,6 +1,7 @@
 """Terminology draft operations, review sessions and committed approval."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 import copy
 import json
 import threading
@@ -104,11 +105,12 @@ class ReviewConflict(PipelineError):
 class ReviewRepository:
     """Session-confined draft service; mutations hold one mutex end to end."""
 
-    def __init__(self, path: Path, files=None):
+    def __init__(self, path: Path, files=None, mutation_lock=None):
         self.path = path
         self.lock = threading.Lock()
         self.evidence_reader = EvidenceReader(path.parent)
         self.files = files
+        self.mutation_lock = mutation_lock or nullcontext
 
     def _load_state(self):
         return ensure_review_state(self.path, self.files)
@@ -117,7 +119,7 @@ class ReviewRepository:
         return self.files.write_json(path, value) if self.files else atomic_json(path, value)
 
     def load(self) -> dict:
-        with self.lock:
+        with self.lock, self.mutation_lock():
             review = self._load_state()
             return copy.deepcopy({**review, "_revision": digest(review)})
 
@@ -140,7 +142,7 @@ class ReviewRepository:
             raise PipelineError(f"No valid selected/custom form for {term['id']}.")
 
     def evidence(self, term_id: str) -> dict:
-        with self.lock:
+        with self.lock, self.mutation_lock():
             review = self._load_state()
             term = next((term for term in review["terms"] if term.get("id") == term_id), None)
             if term is None:
@@ -154,7 +156,7 @@ class ReviewRepository:
             raise PipelineError("term_ids must be a nonempty list of unique term IDs.")
         if not isinstance(expected_revision, str) or not expected_revision:
             raise PipelineError("Bulk review requires the loaded review revision.")
-        with self.lock:
+        with self.lock, self.mutation_lock():
             review = self._load_state()
             self._check_revision(review, expected_revision)
             indexed = {term["id"]: term for term in review["terms"]}
@@ -181,7 +183,7 @@ class ReviewRepository:
         unknown = set(patch) - allowed
         if unknown:
             raise PipelineError(f"Unsupported review field(s): {', '.join(sorted(unknown))}.")
-        with self.lock:
+        with self.lock, self.mutation_lock():
             review = self._load_state()
             self._check_revision(review, expected_revision)
             term = next((term for term in review["terms"] if term.get("id") == term_id), None)
@@ -228,7 +230,7 @@ class ReviewRepository:
     def set_confirmed(self, confirmed: bool, expected_revision: str | None = None) -> dict:
         if type(confirmed) is not bool:
             raise PipelineError("confirmed must be boolean.")
-        with self.lock:
+        with self.lock, self.mutation_lock():
             review = self._load_state()
             self._check_revision(review, expected_revision)
             if confirmed:
@@ -250,13 +252,11 @@ class ReviewSession:
                  progress: ProgressSink):
         self.dependencies, self.command, self.progress = dependencies, command, progress
         self.project = command.project.resolve()
-        self._scope: OperationScope | None = None
         self._repository: ReviewRepository | None = None
 
     def __enter__(self) -> ReviewSession:
-        scope = OperationScope(self.dependencies, self.project, self.progress)
-        scope.__enter__()
-        try:
+        # Initial draft generation is a mutation, but a browser session is not.
+        with OperationScope(self.dependencies, self.project, self.progress) as scope:
             book = load_valid_book(
                 self.project, self.dependencies.plan_fingerprint, self.dependencies.files,
             )
@@ -265,16 +265,12 @@ class ReviewSession:
             path = scope.store.write_review(book["source_fingerprint"])
             repository = ReviewRepository(path, self.dependencies.files)
             repository.load()
-        except BaseException:
-            scope.__exit__(*__import__("sys").exc_info())
-            raise
-        self._scope, self._repository = scope, repository
+        repository.mutation_lock = lambda: self.dependencies.project_lock(self.project)
+        self._repository = repository
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
-        assert self._scope is not None
-        self._scope.__exit__(exc_type, exc, traceback)
-        self._scope = self._repository = None
+        self._repository = None
 
     @property
     def path(self) -> Path:

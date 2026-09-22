@@ -866,12 +866,34 @@ uv run translate.py status --project "$PROJECT"
 uv run translate.py export --project "$PROJECT"
 ```
 
+## Multi-workspace server
+
+Run one local HTTP server and supervise independent background worker processes:
+
+```bash
+uv run translate.py serve --workspace-root /home/user/translations --bind 127.0.0.1 --port 8780
+```
+
+Each imported child directory is a workspace. Different workspaces may analyze or
+translate concurrently; each workspace has at most one active mutating job.
+Browser navigation, refresh, and disconnects do not stop workers. Status and
+publication queries remain available during translation, and final translation
+still publishes its EPUB automatically. The initial server provides JSON/SSE APIs;
+the final visual UI is not included. Import, human review/approval, and standalone
+Review/Reader commands remain available through the existing CLI.
+
+See [server runtime and API](docs/server-runtime.md) for endpoints, cancellation,
+checkpoint ownership, security, and restart behavior. Runtime jobs live in a
+separate XDG state database; restarting the server marks unfinished records
+`abandoned` and does not re-adopt old workers.
+
 ## Tests and limitations
 
 Run:
 
 ```bash
 uv run --group dev python -m pytest -q
+node --test tests/*.cjs
 ```
 
 The included tests use a local mock HTTP/SSE server. They test orchestration, not

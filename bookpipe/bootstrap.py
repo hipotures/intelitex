@@ -25,6 +25,7 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
     from .util import plan_fingerprint, project_lock, reader_lock
     from .infrastructure.epub_publisher import EpubPublicationBuilder
     from .infrastructure.project_files import LocalProjectFiles
+    from .infrastructure.read_store import ReadStore
     if plan_fingerprint_fn is None:
         plan_fingerprint_fn = plan_fingerprint
     if publication_builder is None:
@@ -35,6 +36,7 @@ def create_application(progress: ProgressSink | None = None, *, provider_factory
             project_lock=project_lock,
             reader_lock=reader_lock,
             store_factory=store_factory,
+            read_store_factory=ReadStore,
             provider_factory=provider_factory,
             bundle=BUNDLE,
             plan_fingerprint=plan_fingerprint_fn,

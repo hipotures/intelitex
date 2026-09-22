@@ -27,6 +27,10 @@ BUNDLE = Path(__file__).resolve().parent.parent
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Persistent five-pass literary translation. Import -> analyze -> human review -> approve -> translate -> publish.")
     sub = p.add_subparsers(dest="command", required=True)
+    server = sub.add_parser("serve", help="Host the workspace API and supervise independent worker processes.")
+    server.add_argument("--workspace-root", type=Path, required=True)
+    server.add_argument("--bind", default="127.0.0.1")
+    server.add_argument("--port", type=int, default=8780)
     pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
@@ -174,6 +178,14 @@ def _render_status(result, ui: Display) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == "serve":
+        from .server import serve
+        try:
+            serve(args.workspace_root, args.bind, args.port)
+            return 0
+        except (PipelineError, OSError, ValueError, sqlite3.Error) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
     root = args.project.resolve()
     try:
         with Display(args.quiet) as ui:

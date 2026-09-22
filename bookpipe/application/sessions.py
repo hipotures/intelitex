@@ -77,3 +77,26 @@ class ReaderScope(OperationScope):
     @property
     def store(self) -> Any:
         raise RuntimeError("ReaderScope does not expose a mutable Store.")
+
+
+class ProjectReadScope:
+    """Short-lived snapshot with no project writer lock or provider resources."""
+
+    def __init__(self, dependencies: ApplicationDependencies, project: Path):
+        self.dependencies = dependencies
+        self.project = project.resolve()
+        self.store = None
+
+    def __enter__(self):
+        from ..util import PipelineError
+        if not self.dependencies.files.is_file(self.project / "book.json"):
+            raise PipelineError("Project not imported. Run import first.")
+        factory = self.dependencies.read_store_factory
+        if factory is None:
+            raise RuntimeError("A read_store_factory must be configured for project queries.")
+        self.store = factory(self.project)
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.store.close()
+        self.store = None

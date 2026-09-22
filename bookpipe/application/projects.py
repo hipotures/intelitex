@@ -14,7 +14,7 @@ from ..util import PipelineError, digest, plan_fingerprint, read_json
 from .commands import ImportBookCommand, ModelOptions, StatusCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .results import ChapterStatus, ChunkStatus, ImportResult, StatusResult
-from .sessions import OperationScope
+from .sessions import OperationScope, ProjectReadScope
 
 
 def validate_pass_profiles(values: Mapping[int, str]) -> dict[int, str]:
@@ -178,7 +178,7 @@ class ProjectsService:
 
     def status(self, command: StatusCommand) -> StatusResult:
         root = command.project.resolve()
-        with OperationScope(self.dependencies, root, self.progress) as scope:
+        with ProjectReadScope(self.dependencies, root) as scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             store = scope.store
             chunks = tuple(ChunkStatus(c["id"], store.chunk(c["id"])["status"]) for c in book["chunks"])
@@ -204,7 +204,6 @@ class ProjectsService:
                 chapters=chapters, readable_output=root / "translation.txt",
                 translation_complete=bool(chunks) and all(chunk.status == "done" for chunk in chunks),
             )
-        if self.publishing is not None:
-            from .commands import PublicationStatusCommand
-            result = replace(result, publication=self.publishing.status(PublicationStatusCommand(root)))
+            if self.publishing is not None:
+                result = replace(result, publication=self.publishing.query_snapshot(root, book, store))
         return result

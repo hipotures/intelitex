@@ -19,7 +19,7 @@ Intelitex is a modular Python application with multiple interface adapters aroun
 CLI -------------------->| Projects             |
 Terminology Review HTTP ->| Review              |
 Reader HTTP ------------>| Reader               |
-Future adapters -------->| Pipeline             |
+Workspace server ------->| Pipeline             |
                          | Operations           |
                          | Exports              |
                          +----------+-----------+
@@ -198,11 +198,11 @@ Resource ownership is explicit in `bookpipe/application/sessions.py`.
 - a lazily created provider pool;
 - deterministic reverse-order cleanup.
 
-Import, analysis, translation, approval, export, publication, status, and operational commands use this scope as appropriate.
+Import, analysis, translation, approval, export, publication, and mutating operational commands use this scope. Status, publication status, and usage use `ProjectReadScope` with a read-only WAL snapshot, without the writer lock.
 
 ### Review
 
-`ReviewSession` keeps the project writer lock for the lifetime of the interactive review session. Review mutations additionally use the session's in-process mutex around revision checking and atomic replacement.
+`ReviewSession` holds the project writer lock during initial draft preparation and individual draft operations only. An open browser session owns no writer lock. Draft operations also use an in-process mutex around revision checking and atomic replacement.
 
 ### Reader
 
@@ -366,3 +366,19 @@ Keep this document focused on the maintained architecture. Do not accumulate com
 Historical design and implementation material remains available through Git history.
 
 Empirical model/profile benchmark data that remains useful for future decisions belongs under `docs/research/` and should be consolidated rather than stored as one report per run.
+
+## Multi-workspace server runtime
+
+The `serve` adapter hosts HTTP, read/query services, one JobSupervisor, and an event
+broker in the same long-lived process. Each long-running job runs the normal
+application graph in a separate synchronous OS worker. At most one mutating job
+per resolved project runs; different projects run concurrently. The project writer
+lock remains authoritative against external writers. Browser lifetimes are
+independent of workers, and automatic publication remains inside translation.
+
+Supervision records and bounded structured events use a separate XDG WAL registry;
+project checkpoints remain domain truth. Graceful shutdown interrupts owned
+workers; restart marks stale jobs abandoned without re-adoption. The new server
+is the target host for future Review/Reader routes; their compatibility servers
+are never supervised jobs. See [server runtime and API](server-runtime.md) for
+module boundaries, read snapshots, SSE replay, exact stop behavior, and endpoints.

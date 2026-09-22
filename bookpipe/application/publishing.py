@@ -18,7 +18,7 @@ from .ports import (
 )
 from .projects import load_valid_book
 from .results import PublicationStatus, PublishResult
-from .sessions import OperationScope
+from .sessions import OperationScope, ProjectReadScope
 
 
 PUBLICATION_RECORD_VERSION = 1
@@ -259,10 +259,13 @@ class PublishingService:
     def status(self, command: PublicationStatusCommand) -> PublicationStatus:
         root = command.project.resolve()
         target = _target_language(command.target_language)
-        with OperationScope(self.dependencies, root, self.progress) as scope:
+        with ProjectReadScope(self.dependencies, root) as scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
-            record = self._read_record(root)
-            return self._status_from(root, book, scope.store, target, record)
+            return self.query_snapshot(root, book, scope.store, target)
+
+    def query_snapshot(self, root: Path, book: dict, store, target: str = "pl") -> PublicationStatus:
+        """Validate publication against the caller's short-lived project snapshot."""
+        return self._status_from(root, book, store, target, self._read_record(root))
 
     def _status_from(self, root: Path, book: dict, store, target: str, record: dict,
                      *, prepared=None) -> PublicationStatus:

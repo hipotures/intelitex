@@ -18,7 +18,7 @@ from .commands import (
 from .ports import ApplicationDependencies, ProgressSink
 from .projects import effective_settings, load_valid_book
 from .results import ReportResult
-from .sessions import OperationScope
+from .sessions import OperationScope, ProjectReadScope
 
 
 class OperationsService:
@@ -43,11 +43,14 @@ class OperationsService:
         return self._offline(command.project, lambda root: attempt_report(root, command.attempt))
 
     def usage(self, command: UsageCommand) -> ReportResult:
-        return self._offline(command.project, usage_report)
+        root = command.project.resolve()
+        with ProjectReadScope(self.dependencies, root):
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            return ReportResult(copy.deepcopy(usage_report(root)))
 
     def usage_by_unit(self, command: UsageByUnitCommand) -> UsageByUnitResult:
         root = command.project.resolve()
-        with OperationScope(self.dependencies, root, self.progress):
+        with ProjectReadScope(self.dependencies, root):
             load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             return usage_by_unit_report(root, command.unit_id)
 
