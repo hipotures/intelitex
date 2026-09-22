@@ -29,7 +29,7 @@ progress:indeterminate { opacity:.4; }
 .pass-mark.error { color:var(--red);border-color:var(--red); }
 .model-grid { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px; }
 .model-slot { min-width:0; }
-.model-slot label { display:block;font-size:12px;color:var(--text-dim);margin-bottom:8px; }
+.model-slot label { display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-dim);margin-bottom:8px; }
 select,input,textarea { background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px;max-width:100%; }
 .model-slot select { width:100%;font-size:12px; }
 .overlay-dialog { color:var(--text);padding:0; }
@@ -38,6 +38,7 @@ dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
 dialog.compact-modal { width:min(520px,94vw); }
 dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw;right:0;left:auto;transform:none; }
 .drawer-model-grid { display:flex;flex-direction:column;gap:8px; }
+.field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:400; }
 .preview-pagination { display:flex;gap:10px;align-items:center;margin-top:16px;font-size:12px; }
 .activity-stream { max-height:250px;overflow:auto; }
 .activity-line { display:flex;gap:15px;font-size:12px;line-height:1.8; }
