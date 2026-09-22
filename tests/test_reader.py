@@ -820,7 +820,11 @@ def test_reader_cli_dispatches_with_reader_options(tmp_path, monkeypatch):
     called = {}
 
     def fake_server(session, bind, port, open_browser, ui):
-        called.update(project=session.project, bind=bind, port=port, open_browser=open_browser)
+        progress = session.progress()
+        called.update(
+            project=session.project, bind=bind, port=port, open_browser=open_browser,
+            total_words=progress["total_words"],
+        )
 
     monkeypatch.setattr(cli_module, "run_reader_server", fake_server)
     monkeypatch.setattr(cli_module, "Store", lambda project: pytest.fail("Reader must not open the read-write Store"))
@@ -829,7 +833,10 @@ def test_reader_cli_dispatches_with_reader_options(tmp_path, monkeypatch):
         assert main([
             "reader", "--project", str(root), "--bind", "0.0.0.0", "--reader-port", "0", "--no-browser", "--quiet",
         ]) == 0
-    assert called == {"project": root.resolve(), "bind": "0.0.0.0", "port": 0, "open_browser": False}
+    assert called == {
+        "project": root.resolve(), "bind": "0.0.0.0", "port": 0, "open_browser": False,
+        "total_words": 6,
+    }
 
 
 def test_reader_lock_allows_pipeline_lock_but_rejects_second_reader(tmp_path):

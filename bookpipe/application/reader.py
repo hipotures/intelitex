@@ -132,14 +132,14 @@ class MarkerRepository:
 class ReaderSession:
     def __init__(self, dependencies: ApplicationDependencies, command: ReaderSessionCommand,
                  progress: ProgressSink):
-        self.dependencies, self.command, self.progress = dependencies, command, progress
+        self.dependencies, self.command, self._progress = dependencies, command, progress
         self.project = command.project.resolve()
         self._scope: ReaderScope | None = None
         self._context: ReaderContext | None = None
         self._markers: MarkerRepository | None = None
 
     def __enter__(self) -> ReaderSession:
-        scope = ReaderScope(self.dependencies, self.project, self.progress)
+        scope = ReaderScope(self.dependencies, self.project, self._progress)
         scope.__enter__()
         try:
             load_valid_book(
