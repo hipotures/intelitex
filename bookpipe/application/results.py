@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..usage import (
+    AttemptUsage, CostEstimate, PassUsage, PreflightInput, UnitUsage, UsageAggregate,
+    UsageByUnitResult,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ImportResult:

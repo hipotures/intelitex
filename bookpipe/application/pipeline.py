@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from ..contracts import InferenceUnitContext
 from ..engine import Runner, analysis_plan, export_text, previous_context, source_blocks
 from ..progress import ProgressEvent
 from ..util import PipelineError, atomic_json, digest, read_json
@@ -34,7 +35,7 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
     plan = analysis_plan(store, book, client, settings)
     runner = Runner(store, client, settings, progress)
     done = sum(bool(store.get("analysis:" + unit["id"])) for unit in plan)
-    for unit in plan:
+    for unit_index, unit in enumerate(plan, 1):
         progress.emit(ProgressEvent(
             kind="analysis_progress", current=done, total=len(plan), values={"pass_no": 1},
         ))
@@ -67,7 +68,10 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
             "pass_no": 1, "task_key": key, "chapter_id": unit["chapter_id"],
             "unit_id": unit["id"],
         }))
-        value, path, fingerprint = runner.run(1, key, inputs)
+        value, path, fingerprint = runner.run(1, key, inputs, unit_context=InferenceUnitContext(
+            unit_id=unit["id"], chapter_id=unit["chapter_id"],
+            analysis_unit_id=unit["id"], unit_index=unit_index,
+        ))
         store.merge_analysis(key, fingerprint, value, unit["blocks"], unit["chapter_id"])
         store.save_analysis_receipt(
             unit["id"], {"key": key, "fingerprint": fingerprint, "path": path},
@@ -133,9 +137,13 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 2, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
         }))
+        unit_context = InferenceUnitContext(
+            unit_id=chunk["id"], chapter_id=chapter["id"], chunk_id=chunk["id"],
+            unit_index=chunk.get("number") or chunk.get("index_in_chapter"),
+        )
         p2, _, _ = runner.run(2, key, {
             **common, "SOURCE_SENTENCES": chunk["sentences"],
-        })
+        }, unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=1, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -145,7 +153,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 3, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
         }))
-        p3, _, _ = runner.run(3, key, {**common, "SEMANTIC_AUDIT": p2})
+        p3, _, _ = runner.run(3, key, {**common, "SEMANTIC_AUDIT": p2}, unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=2, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -158,7 +166,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         p4, _, _ = runner.run(4, key, {
             **common, "SOURCE_SENTENCES": chunk["sentences"],
             "POLISH_DRAFT": p3, "SEMANTIC_AUDIT": p2,
-        })
+        }, unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=3, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -170,7 +178,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         }))
         _, final_path, _ = runner.run(5, key, {
             **common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4,
-        })
+        }, unit_context=unit_context)
         store.finish_chunk(chunk["id"], final_path, dependencies, digest(memory["APPROVED_LEXICON"]))
         export_text(store, book)
         done += 1

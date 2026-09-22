@@ -254,9 +254,20 @@ def test_codex_interleaving_isolation_usage_and_rollout(tmp_path, quiet_ui):
         "executable": str(executable), "options": {"late_usage_wait": 0.2, "p1_wire_format": "canonical"},
         "project_root": str(project),
     }
-    client = CodexAppServerClient(profile, quiet_ui)
+    class CaptureProgress:
+        def __init__(self):
+            self.events = []
+
+        def emit(self, event):
+            self.events.append(event)
+
+    progress = CaptureProgress()
+    client = CodexAppServerClient(profile, progress)
     attempt = project / "artifacts" / "attempt_001"
-    recorder = AttemptRecorder(attempt, {"provider": "codex", "requested_model": "gpt-5.6-luna"})
+    recorder = AttemptRecorder(attempt, {
+        "pass_no": 1, "task_key": "pass1/ch0001_a001", "attempt_number": 1,
+        "provider": "codex", "profile": "codex-low", "requested_model": "gpt-5.6-luna",
+    })
     body = client.body("Trusted pass instructions", {"SOURCE": "payload"}, {"type": "object"}, 1)
     count = client.preflight(body, recorder)
     assert count > 0
@@ -272,6 +283,9 @@ def test_codex_interleaving_isolation_usage_and_rollout(tmp_path, quiet_ui):
     assert (attempt / meta["rollout_copy"]).is_file()
     usage = read_json(attempt / "usage.json")
     assert usage["input_tokens"] == 11 and usage["total_tokens"] == 16
+    updates = [event.values for event in progress.events if event.kind == "provider_usage_update"]
+    assert [event["total_tokens"] for event in updates] == [14, 16]
+    assert all(event["task_key"] == "pass1/ch0001_a001" and event["cumulative"] for event in updates)
     trace = (attempt / "transport.jsonl").read_text(encoding="utf-8")
     assert "unknown/early" in trace
     assert "unsupported_server_request_reply" in trace

@@ -162,6 +162,7 @@ class OpenAIResponsesClient:
         started = time.monotonic()
         expired = threading.Event()
         response_ref: list[httpx.Response] = []
+        last_emitted_usage: tuple[Any, ...] | None = None
 
         def cancel() -> None:
             expired.set()
@@ -211,6 +212,7 @@ class OpenAIResponsesClient:
                         answer.append(delta)
                         recorder.append_text("answer.partial.txt", delta)
                         self.ui.emit(ProgressEvent(kind="generation_progress", values={
+                            **dict(recorder.progress_values),
                             "answer_chars": sum(map(len, answer)),
                             "reasoning_chars": sum(map(len, reasoning)),
                         }))
@@ -220,7 +222,27 @@ class OpenAIResponsesClient:
                             reasoning.append(delta)
                             recorder.append_text("reasoning.partial.txt", delta)
                     if event.get("response", {}).get("usage") is not None:
-                        usage_events.append(event["response"]["usage"])
+                        event_usage = event["response"]["usage"]
+                        usage_events.append(event_usage)
+                        input_details = event_usage.get("input_tokens_details") or {}
+                        output_details = event_usage.get("output_tokens_details") or {}
+                        signature = tuple(event_usage.get(key) for key in (
+                            "input_tokens", "output_tokens", "total_tokens",
+                        )) + (input_details.get("cached_tokens"), input_details.get("cache_write_tokens"),
+                              output_details.get("reasoning_tokens"))
+                        if signature != last_emitted_usage:
+                            last_emitted_usage = signature
+                            self.ui.emit(ProgressEvent(kind="provider_usage_update", values={
+                                **dict(recorder.progress_values),
+                                "input_tokens": event_usage.get("input_tokens"),
+                                "cached_input_tokens": input_details.get("cached_tokens"),
+                                "cache_write_input_tokens": input_details.get("cache_write_tokens"),
+                                "output_tokens": event_usage.get("output_tokens"),
+                                "reasoning_output_tokens": output_details.get("reasoning_tokens"),
+                                "total_tokens": event_usage.get("total_tokens"),
+                                "source": "openai_terminal_response", "status": "reported",
+                                "cumulative": True,
+                            }))
                     if kind == "error":
                         raise PipelineError(f"OpenAI streaming error: {event.get('error') or event}")
                     if kind in {"response.completed", "response.failed", "response.incomplete"}:

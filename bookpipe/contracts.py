@@ -4,6 +4,20 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
+@dataclass(frozen=True, slots=True)
+class InferenceUnitContext:
+    """Stable application identity for one semantic pipeline unit."""
+
+    unit_id: str
+    chapter_id: str | None = None
+    chunk_id: str | None = None
+    analysis_unit_id: str | None = None
+    unit_index: int | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass(frozen=True)
 class SemanticRequest:
     """Provider-neutral description of one physical inference attempt."""

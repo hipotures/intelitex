@@ -14,6 +14,7 @@ from typing import Any
 from .contracts import normalized_usage
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
+from .progress import ProgressEvent
 from .util import PipelineError, atomic_text, dumps
 
 
@@ -42,9 +43,10 @@ def app_server_argv(executable: str) -> list[str]:
 
 
 class _RpcSession:
-    def __init__(self, proc: subprocess.Popen, recorder: AttemptRecorder):
+    def __init__(self, proc: subprocess.Popen, recorder: AttemptRecorder, progress: Any | None = None):
         self.proc = proc
         self.recorder = recorder
+        self.progress = progress
         self.lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
         self.next_id = 0
         self.stderr = bytearray()
@@ -54,6 +56,7 @@ class _RpcSession:
             "reported_model": None, "reported_effort": None, "model_provider": None, "cli_version": None,
             "terminal": None, "terminal_error": None, "final_messages": [],
             "fallback_messages": [], "usage_events": [], "context_altered": False,
+            "last_emitted_usage": None,
         }
         self._threads = [
             threading.Thread(target=self._read, args=("stdout", proc.stdout), daemon=True),
@@ -144,7 +147,27 @@ class _RpcSession:
         if params.get("turnId"):
             self.state["turn_id"] = params["turnId"]
         if method == "thread/tokenUsage/updated":
-            self.state["usage_events"].append(params.get("tokenUsage"))
+            usage = params.get("tokenUsage")
+            self.state["usage_events"].append(usage)
+            last = (usage or {}).get("last") or {}
+            signature = tuple(last.get(key) for key in (
+                "inputTokens", "cachedInputTokens", "cacheWriteInputTokens",
+                "outputTokens", "reasoningOutputTokens", "totalTokens",
+            ))
+            progress = getattr(self, "progress", None)
+            if progress is not None and signature != self.state.get("last_emitted_usage"):
+                self.state["last_emitted_usage"] = signature
+                progress.emit(ProgressEvent(kind="provider_usage_update", values={
+                    **dict(self.recorder.progress_values),
+                    "input_tokens": last.get("inputTokens"),
+                    "cached_input_tokens": last.get("cachedInputTokens"),
+                    "cache_write_input_tokens": last.get("cacheWriteInputTokens"),
+                    "output_tokens": last.get("outputTokens"),
+                    "reasoning_output_tokens": last.get("reasoningOutputTokens"),
+                    "total_tokens": last.get("totalTokens"),
+                    "source": "codex_thread_token_usage_last",
+                    "status": "reported", "cumulative": True,
+                }))
         elif method == "item/completed":
             item = params.get("item") or {}
             if item.get("type") == "agentMessage" and isinstance(item.get("text"), str):
@@ -421,7 +444,7 @@ class CodexAppServerClient:
                 argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 cwd=work, env=self._process_env(home, sqlite_home), start_new_session=True,
             )
-            rpc = _RpcSession(proc, recorder)
+            rpc = _RpcSession(proc, recorder, self.ui)
             deadline = time.monotonic() + self.timeout
             rpc.request("initialize", {
                 "clientInfo": {"name": "intelitex", "title": "Intelitex", "version": "1.11.0"},

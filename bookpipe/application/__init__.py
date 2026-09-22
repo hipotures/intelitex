@@ -18,6 +18,7 @@ from .commands import (
     SmokeCommand,
     StatusCommand,
     TranslateCommand,
+    UsageByUnitCommand,
     UsageCommand,
 )
 from .ports import NullProgress, ProgressEvent, ProgressSink
@@ -26,6 +27,8 @@ from .review import ReviewConflict, ReviewSession
 from .results import (
     ApprovalResult, ExportResult, ImportResult, PipelineResult, PublicationStatus,
     PublishResult, ReportResult, StatusResult,
+    AttemptUsage, CostEstimate, PassUsage, PreflightInput, UnitUsage, UsageAggregate,
+    UsageByUnitResult,
 )
 
 __all__ = [
@@ -35,5 +38,7 @@ __all__ = [
     "ProfilesCommand", "ProgressEvent", "ProgressSink", "ReaderSession", "ReaderSessionCommand",
     "PublicationStatus", "PublicationStatusCommand", "PublishCommand", "PublishResult",
     "ReportResult", "ReviewConflict", "ReviewSession", "ReviewSessionCommand", "SmokeCommand",
-    "StatusCommand", "StatusResult", "TranslateCommand", "UsageCommand",
+    "StatusCommand", "StatusResult", "TranslateCommand", "UsageByUnitCommand", "UsageCommand",
+    "AttemptUsage", "CostEstimate", "PassUsage", "PreflightInput", "UnitUsage",
+    "UsageAggregate", "UsageByUnitResult",
 ]

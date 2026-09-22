@@ -6,6 +6,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from .util import PipelineError, atomic_json, atomic_text
@@ -58,6 +59,12 @@ class AttemptRecorder:
         self.started_monotonic = time.monotonic()
         self.order = 0
         self.identity = redact(identity)
+        self.progress_values = MappingProxyType({
+            key: self.identity.get(key) for key in (
+                "pass_no", "task_key", "attempt_number", "chapter_id", "unit_id",
+                "chunk_id", "analysis_unit_id", "unit_index", "provider", "profile", "requested_model",
+            )
+        })
         self.manifest: dict[str, Any] = {
             "format_version": ARTIFACT_FORMAT_VERSION,
             "identity": self.identity,
@@ -79,6 +86,11 @@ class AttemptRecorder:
                 os.fsync(handle.fileno())
         except OSError as exc:
             raise EvidenceError(f"Cannot create attempt evidence: {exc}") from exc
+
+    def preflight(self, measurement: dict[str, Any]) -> None:
+        """Persist truthful pre-submission sizing before provider generation."""
+        self.manifest["preflight_input"] = redact(measurement)
+        self._write_json("attempt.json", self.manifest)
 
     def _path(self, name: str) -> Path:
         path = self.directory / name

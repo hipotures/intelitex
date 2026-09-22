@@ -113,6 +113,12 @@ class UsageCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class UsageByUnitCommand:
+    project: Path
+    unit_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogImportCommand:
     project: Path
     source: Path

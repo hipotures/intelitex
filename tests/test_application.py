@@ -8,7 +8,8 @@ import pytest
 
 from bookpipe.application.api import Application
 from bookpipe.application import (
-    AnalyzeCommand, AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand, UsageCommand,
+    AnalyzeCommand, AttemptsCommand, ExportCommand, ImportBookCommand, StatusCommand,
+    UsageByUnitCommand, UsageCommand,
 )
 from bookpipe.application.ports import ApplicationDependencies
 from bookpipe.application.sessions import OperationScope, ReaderScope
@@ -223,3 +224,4 @@ def test_direct_project_operations_need_no_cli_or_http(tmp_path):
     assert exported.internal_output.read_bytes() == b""
     assert app.operations.attempts(AttemptsCommand(project)).value == {"attempts": []}
     assert app.operations.usage(UsageCommand(project)).value["groups"] == []
+    assert app.operations.usage_by_unit(UsageByUnitCommand(project)).units == ()

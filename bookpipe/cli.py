@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import json
 import sqlite3
 import sys
@@ -9,7 +10,8 @@ from pathlib import Path
 from .application import (
     AnalyzeCommand, ApproveCommand, AttemptsCommand, CatalogImportCommand, DiscoverCommand,
     DoctorCommand, ExportCommand, ImportBookCommand, ProfilesCommand, ReaderSessionCommand,
-    PublishCommand, ReviewSessionCommand, SmokeCommand, StatusCommand, TranslateCommand, UsageCommand,
+    PublishCommand, ReviewSessionCommand, SmokeCommand, StatusCommand, TranslateCommand,
+    UsageByUnitCommand, UsageCommand,
 )
 from .bootstrap import create_application
 from .provider_registry import ProviderPool
@@ -94,6 +96,10 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--quiet", action="store_true")
         if name == "attempts":
             command.add_argument("--attempt", help="Project-relative attempt directory; omit to list all.")
+        if name == "usage":
+            command.add_argument("--by-unit", action="store_true",
+                                 help="Group immutable usage details by P1 analysis unit or P2-P5 chunk.")
+            command.add_argument("--unit", help="Limit --by-unit output to one analysis unit/chunk ID.")
         if name == "catalog-import":
             command.add_argument("file", type=Path)
         if name in {"discover", "smoke"}:
@@ -228,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
                 elif args.command == "attempts":
                     report = app.operations.attempts(AttemptsCommand(root, args.attempt))
                 elif args.command == "usage":
+                    if args.by_unit or args.unit:
+                        print(json.dumps(asdict(app.operations.usage_by_unit(
+                            UsageByUnitCommand(root, args.unit)
+                        )), ensure_ascii=False, indent=2))
+                        return 0
                     report = app.operations.usage(UsageCommand(root))
                 elif args.command == "catalog-import":
                     report = app.operations.import_catalog(CatalogImportCommand(root, args.file))

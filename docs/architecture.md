@@ -125,6 +125,7 @@ app.operations.profiles(...)
 app.operations.doctor(...)
 app.operations.attempts(...)
 app.operations.usage(...)
+app.operations.usage_by_unit(...)
 app.operations.import_catalog(...)
 app.operations.discover(...)
 app.operations.smoke(...)
@@ -168,6 +169,15 @@ Events carry structured fields such as:
 - completed/total counts;
 - provider input measurement;
 - received answer/reasoning character counts.
+
+`provider_waiting` carries pass/task/attempt, generic unit plus optional
+chapter/chunk/analysis-unit identity, provider/profile/requested-model identity,
+and the preflight value, unit, quality, and method. A native/tokenizer count
+therefore remains `tokens`, while Codex's conservative preflight remains
+`utf8_bytes`; adapters must not relabel bytes as tokens. Transports that receive
+real cumulative usage publish deduplicated `provider_usage_update` events through
+the same `ProgressEvent` sink. They do not synthesize live usage for providers
+that did not report it.
 
 Human terminal labels are created only in `Display.emit()`.
 
@@ -269,6 +279,29 @@ Current provider families include:
 Model/profile selection is configuration data. Application commands can override semantic profile selection without changing accepted historical work.
 
 Physical attempts retain durable communication evidence. Generation completion, output validation, evidence durability, and checkpoint acceptance are distinct states.
+
+Live progress and persisted usage are separate views of the same inference
+boundary. Live events are transient provider/request activity. Persisted
+`UsageByUnitResult` values are immutable, detached application DTOs assembled by
+the operations service; CLI or future HTTP adapters never traverse artifact
+paths or consume provider-specific raw usage.
+
+The per-unit report correlates prospective attempts from `AttemptRecorder`
+identity. For old attempts it narrowly decodes the stable `passN/unit` task key
+inside reporting: P1 suffixes become analysis-unit IDs with nullable chunk IDs,
+while P2-P5 suffixes become chunk IDs. Book/analysis-plan metadata supplies
+chapter and ordering when available.
+
+Accounting totals describe physical consumption. Submitted failed attempts with
+reported usage count; preflight failures do not. Accepted/checkpoint-producing
+attempt identity is separate from recovery status, and later checkpoint reuse
+does not create or duplicate a physical row. Preflight size is not provider
+usage: exact/native and tokenizer-derived token measurements retain their
+quality, and conservative UTF-8 byte upper bounds retain their byte unit.
+Missing usage or elapsed timing remains null with explicit coverage rather than
+being inferred from filesystem timestamps or converted to zero. Optional costs
+retain the pricing snapshot's estimate labels; Codex API-equivalent estimates
+are not invoices or subscription charges.
 
 Never infer missing usage as zero, and never expose credentials through reports or evidence.
 

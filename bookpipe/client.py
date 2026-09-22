@@ -142,6 +142,8 @@ class Client:
                 n = response.json().get("input_tokens")
                 if isinstance(n, int):
                     self.count_endpoint = True
+                    self.preflight_input_quality = "provider_exact"
+                    self.preflight_input_method = "llama.cpp POST /v1/chat/completions/input_tokens"
                     return n
                 raise PipelineError("Unexpected input_tokens response.")
             if response.status_code not in (404, 405, 501):
@@ -157,8 +159,12 @@ class Client:
             recorder.event("inbound", "http_response", {"path": "/apply-template", "status": response.status_code,
                                                           "body": response.text[:2000]})
         if response.is_success and isinstance(response.json().get("prompt"), str):
+            self.preflight_input_quality = "verified_tokenizer_with_estimated_wrapper"
+            self.preflight_input_method = "llama.cpp /apply-template then /tokenize plus wrapper margin"
             return self.count(response.json()["prompt"], recorder) + 512
         # This fallback still tokenizes real input; it is conservative, not chars/4.
+        self.preflight_input_quality = "verified_tokenizer_with_estimated_wrapper"
+        self.preflight_input_method = "llama.cpp serialized messages /tokenize plus wrapper margin"
         return self.count(dumps(body["messages"]), recorder) + 2048
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict:
@@ -200,8 +206,8 @@ class Client:
         if recorder:
             recorder.event("inbound", "token_count_result", {"input_tokens": count})
             recorder.context({
-                "method": "llama.cpp native complete-request count or documented tokenizer fallback",
-                "quality": "provider_exact" if self.count_endpoint else "verified_tokenizer_with_estimated_wrapper",
+                "method": self.preflight_input_method,
+                "quality": self.preflight_input_quality,
                 "tokenizer_identity": {"provider": "llamacpp", "model": self.model},
                 "input_tokens": count,
                 "capacity_tokens": self.context,
@@ -235,6 +241,7 @@ class Client:
         timer.daemon = True
         timer.start()
         n_answer = n_thought = 0
+        last_emitted_usage: tuple[Any, ...] | None = None
         try:
             with (directory / "stream.jsonl").open("w", encoding="utf-8") as events, \
                  (directory / "answer.partial.txt").open("w", encoding="utf-8") as visible, \
@@ -276,6 +283,28 @@ class Client:
                         for field in ("usage", "timings", "id"):
                             if event.get(field) is not None:
                                 info[field] = event[field]
+                        event_usage = event.get("usage")
+                        if isinstance(event_usage, dict) and event_usage:
+                            details = event_usage.get("prompt_tokens_details") or {}
+                            output_details = event_usage.get("completion_tokens_details") or {}
+                            signature = tuple(event_usage.get(key) for key in (
+                                "prompt_tokens", "completion_tokens", "total_tokens",
+                            )) + (details.get("cached_tokens"), details.get("cache_write_tokens"),
+                                  output_details.get("reasoning_tokens"))
+                            if signature != last_emitted_usage:
+                                last_emitted_usage = signature
+                                context = dict(recorder.progress_values) if recorder else {}
+                                self.ui.emit(ProgressEvent(kind="provider_usage_update", values={
+                                    **context,
+                                    "input_tokens": event_usage.get("prompt_tokens"),
+                                    "cached_input_tokens": details.get("cached_tokens"),
+                                    "cache_write_input_tokens": details.get("cache_write_tokens"),
+                                    "output_tokens": event_usage.get("completion_tokens"),
+                                    "reasoning_output_tokens": output_details.get("reasoning_tokens"),
+                                    "total_tokens": event_usage.get("total_tokens"),
+                                    "source": "llamacpp_sse_usage", "status": "reported",
+                                    "cumulative": True,
+                                }))
                         for choice in event.get("choices", []):
                             if choice.get("index", 0) != 0:
                                 continue
@@ -297,6 +326,7 @@ class Client:
                                     else:
                                         n_thought += len(text)
                             self.ui.emit(ProgressEvent(kind="generation_progress", values={
+                                **(dict(recorder.progress_values) if recorder else {}),
                                 "answer_chars": n_answer, "reasoning_chars": n_thought,
                             }))
             usage = info.get("usage") or {}

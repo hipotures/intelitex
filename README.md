@@ -46,7 +46,48 @@ uv run translate.py doctor --project "$PROJECT"
 uv run translate.py attempts --project "$PROJECT"
 uv run translate.py attempts --project "$PROJECT" --attempt artifacts/pass1/ch0001_a001/<fingerprint>/attempt_001
 uv run translate.py usage --project "$PROJECT"
+uv run translate.py usage --project "$PROJECT" --by-unit
+uv run translate.py usage --project "$PROJECT" --by-unit --unit ch0016_c0004
 uv run translate.py catalog-import --project "$PROJECT" /path/to/validated-models.json
+```
+
+The original `usage` output remains grouped by pass/provider/model. `--by-unit`
+uses the detached `app.operations.usage_by_unit(UsageByUnitCommand(...))`
+application result; adapters do not scan attempt directories. It groups P1
+analysis units and P2-P5 chunks without pretending that P1 has a chunk ID.
+Each pass retains provider, configured profile, requested model, physical
+attempts, the checkpoint-producing attempt, recovery status, elapsed time,
+preflight measurement and normalized provider usage.
+
+Physical totals include every submitted attempt with reported usage, including
+failed or invalid-output attempts. A preflight failure did not submit a model
+request and contributes no consumption. Recovering or reusing a checkpoint adds
+no new physical attempt. When any submitted attempt lacks a measurement, totals
+sum the known values and explicitly report `unknown_attempts`; unknown is never
+silently represented as zero. For example (abridged):
+
+```json
+{
+  "units": [{
+    "unit_id": "ch0016_c0004",
+    "chapter_id": "ch0016",
+    "chunk_id": "ch0016_c0004",
+    "analysis_unit_id": null,
+    "passes": [{
+      "pass_no": 2,
+      "task_key": "pass2/ch0016_c0004",
+      "provider": "codex",
+      "profile": "codex-sol-medium",
+      "requested_model": "gpt-5.6-sol",
+      "reported_model": "gpt-5.6-sol",
+      "physical_attempt_count": 1,
+      "accepted_attempt_id": "<fingerprint>-001",
+      "input_tokens": {"value": 27318, "known_attempts": 1, "unknown_attempts": 0},
+      "elapsed_seconds": {"value": 31.8, "known_attempts": 1, "unknown_attempts": 0}
+    }],
+    "input_tokens": {"value": 112244, "known_attempts": 4, "unknown_attempts": 0}
+  }]
+}
 ```
 
 `catalog-import` validates a versioned JSON catalog and atomically activates it
@@ -114,8 +155,9 @@ mode is not advertised as a completely bare model request.
 Codex app-server does not expose a verified no-turn input-token counter in the
 installed protocol. Before submission, Intelitex therefore reports a
 conservative upper bound measured in UTF-8 bytes and uses it for context
-safety. Exact provider-reported token usage is shown only after a completed
-turn and retained in `usage.json`. The historical `memory_tokens` setting is
+safety. Real cumulative app-server token-usage notifications are exposed live
+as structured progress and the final normalized snapshot is retained in
+`usage.json`. The historical `memory_tokens` setting is
 measured with this same conservative byte counter when a Codex profile is used.
 
 ### Compact Codex Pass-1 wire format

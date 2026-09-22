@@ -10,7 +10,7 @@ import jsonschema
 
 from .client import Client, ContextFull
 from .catalog import apply_estimate, load_catalog, pricing_snapshot
-from .contracts import SemanticRequest, preflight_measurement, preflight_metadata
+from .contracts import InferenceUnitContext, SemanticRequest, preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
 from .p1_compact import decode_output as decode_compact_p1
@@ -401,7 +401,8 @@ class Runner:
     def __init__(self, store: Store, client: Client, settings: dict, ui: Any):
         self.store, self.client, self.settings, self.ui = store, client, settings, ui
 
-    def run(self, pass_no: int, key: str, inputs: dict) -> tuple[dict, str, str]:
+    def run(self, pass_no: int, key: str, inputs: dict, *,
+            unit_context: InferenceUnitContext | None = None) -> tuple[dict, str, str]:
         prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
         schema = response_schema(pass_no, inputs)
         fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
@@ -497,11 +498,13 @@ class Runner:
                 timeout_seconds=float(getattr(provider, "timeout", self.settings.get("request_timeout", 1200))),
                 resolved_profile=getattr(provider, "resolved_profile", {}), retry_additions=retry_additions,
             )
+            unit_identity = unit_context.as_dict() if unit_context is not None else {}
             recorder = AttemptRecorder(attempt, {
                 "project": str(self.store.root), "command": "pipeline", "pass": pass_no,
+                "pass_no": pass_no,
                 "task_key": key, "task_fingerprint": fingerprint, "attempt_id": f"{fingerprint[:20]}-{number:03d}",
                 "attempt_number": number, "provider": semantic.provider, "profile": semantic.profile,
-                "requested_model": semantic.requested_model,
+                "requested_model": semantic.requested_model, **unit_identity,
             })
             recorder.semantic(semantic.as_dict(), schema)
             catalog, catalog_path = load_catalog(self.store.root)
@@ -523,8 +526,16 @@ class Runner:
                                 error={"type": type(exc).__name__, "message": str(exc)})
                 raise
             measurement = preflight_measurement(provider, input_count)
+            recorder.preflight(measurement)
             self.ui.emit(ProgressEvent(kind="provider_waiting", values={
                 "pass_no": pass_no, "task_key": key, "attempt_number": number,
+                "chapter_id": unit_identity.get("chapter_id"),
+                "unit_id": unit_identity.get("unit_id"),
+                "chunk_id": unit_identity.get("chunk_id"),
+                "analysis_unit_id": unit_identity.get("analysis_unit_id"),
+                "unit_index": unit_identity.get("unit_index"),
+                "provider": semantic.provider, "profile": semantic.profile,
+                "requested_model": semantic.requested_model,
                 "input_value": measurement["value"], "input_unit": measurement["unit"],
                 "input_quality": measurement["quality"], "input_method": measurement["method"],
             }))

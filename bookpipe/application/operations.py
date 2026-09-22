@@ -9,10 +9,11 @@ from ..catalog import import_catalog, load_catalog, pricing_snapshot
 from ..contracts import preflight_measurement, preflight_metadata
 from ..evidence import AttemptRecorder
 from ..operations import attempt_report, doctor_report, profile_report, usage_report
+from ..usage import UsageByUnitResult, usage_by_unit_report
 from ..util import PipelineError
 from .commands import (
     AttemptsCommand, CatalogImportCommand, DiscoverCommand, DoctorCommand, ProfilesCommand,
-    SmokeCommand, UsageCommand,
+    SmokeCommand, UsageByUnitCommand, UsageCommand,
 )
 from .ports import ApplicationDependencies, ProgressSink
 from .projects import effective_settings, load_valid_book
@@ -43,6 +44,12 @@ class OperationsService:
 
     def usage(self, command: UsageCommand) -> ReportResult:
         return self._offline(command.project, usage_report)
+
+    def usage_by_unit(self, command: UsageByUnitCommand) -> UsageByUnitResult:
+        root = command.project.resolve()
+        with OperationScope(self.dependencies, root, self.progress):
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            return usage_by_unit_report(root, command.unit_id)
 
     def import_catalog(self, command: CatalogImportCommand) -> ReportResult:
         return self._offline(command.project, lambda root: import_catalog(command.source, root))
