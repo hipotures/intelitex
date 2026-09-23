@@ -37,7 +37,6 @@ export const debugRegions = [
   { id: 'SMC', description: 'Section model override · Pass 3', source: 'features/pipeline/Workspace.tsx' },
   { id: 'SMD', description: 'Section model override · Pass 4', source: 'features/pipeline/Workspace.tsx' },
   { id: 'SME', description: 'Section model override · Pass 5', source: 'features/pipeline/Workspace.tsx' },
-  { id: 'MCM', description: 'Model change confirmation modal', source: 'features/pipeline/Workspace.tsx' },
   { id: 'ACM', description: 'Archive confirmation modal', source: 'features/pipeline/Workspace.tsx' },
   { id: 'REV', description: 'Review page', source: 'features/review/Review.tsx' },
   { id: 'RVH', description: 'Review heading and approval', source: 'features/review/Review.tsx' },

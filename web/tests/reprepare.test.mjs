@@ -7,6 +7,7 @@ import { chromium } from 'playwright'
 const dist = resolve('dist')
 const output = '/tmp/intelitex-reprepare-evidence'
 const profile = { name: 'local', stable_palette_index: 0, provider: 'llamacpp', model: null, enabled: true }
+const otherProfile = { ...profile, name: 'local-other', stable_palette_index: 1 }
 const passes = Object.fromEntries([1, 2, 3, 4, 5].map(n => [String(n), {
   state: 'pending', completed: 0, required: n === 1 ? 0 : 1, retained: 0, provenance: [],
 }]))
@@ -36,7 +37,7 @@ const pipeline = { workspace_id: 'w-1', stage: 'analysis', active_job: null, las
 const workspaces = { workspaces: [{ workspace_id: 'w-1', source_id: 'book.epub', prepared: true,
   metadata, active_job: null, last_job: null, progress }] }
 const profiles = { source: 'project', revision: 'settings', assignments: {}, default_profile: 'local',
-  profiles: [profile], resolved_passes: Object.fromEntries([1, 2, 3, 4, 5].map(n => [String(n), profile])) }
+  profiles: [profile, otherProfile], resolved_passes: Object.fromEntries([1, 2, 3, 4, 5].map(n => [String(n), profile])) }
 
 test('Prepare rebuild is explicit and F/T/E responds before slow background reads', { timeout: 60000 }, async () => {
   await mkdir(output, { recursive: true })
@@ -44,7 +45,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
     page.setDefaultTimeout(8000)
-    const errors = [], failed = [], mutations = []
+    const errors = [], failed = [], mutations = [], modelMutations = []
     let slowReads = 0, globalReadsAfterPatch = 0, patchReplies = 0, previewReads = 0, expectedConflictConsole = 0
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => {
@@ -79,6 +80,17 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       }
       else if (path === '/api/workspaces/w-1/pipeline') body = pipeline
       else if (path === '/api/workspaces/w-1/profiles') body = profiles
+      else if (path === '/api/workspaces/w-1/settings' && request.method() === 'PATCH') {
+        const payload = request.postDataJSON()
+        assert.equal(payload.revision, pipeline.config.revision)
+        assert.equal(payload.allow_model_change, true)
+        modelMutations.push({ path, payload })
+        profiles.assignments = { ...profiles.assignments, ...payload.pass_profiles }
+        profiles.resolved_passes['1'] = otherProfile
+        pipeline.config.revision = 'rev-model-1'
+        pipeline.config.pass_profiles = profiles.assignments
+        body = pipeline.config
+      }
       else if (path === '/api/workspaces/w-1/preparation') body = { checks: ['Frozen source/chunk manifest verified'],
         unavailable: null, reading_order: 'opf_spine', source_id: 'book.epub' }
       else if (path === '/api/workspaces/w-1/sections/ch0001/0') {
@@ -92,20 +104,27 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       else if (path === '/api/workspaces/w-1/sections/ch0001' && request.method() === 'PATCH') {
         const payload = request.postDataJSON()
         assert.equal(payload.revision, pipeline.config.revision)
-        if (payload.processing === 'full') {
+        if (payload.profiles) {
+          assert.equal(payload.allow_model_change, true)
+          modelMutations.push({ path, payload })
+          section.profiles = { ...section.profiles, ...payload.profiles }
+          pipeline.config.revision = 'rev-model-2'
+          body = { ...pipeline.config, sections: { ch0001: { profiles: section.profiles } } }
+        } else if (payload.processing === 'full') {
           await new Promise(resolve => setTimeout(resolve, 350))
           return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: {
             code: 'revision_conflict', message: 'Configuration changed.', details: {},
           } }) })
+        } else {
+          assert.equal(payload.processing, 'translate')
+          mutations.push({ method: 'PATCH', path, payload })
+          await new Promise(resolve => setTimeout(resolve, 1200))
+          pipeline.config.revision = 'rev-2'
+          pipeline.sections[0].processing = 'translate'
+          body = { revision: 'rev-2', sections: { ch0001: { processing: 'translate' } }, pass_profiles: profiles.assignments }
+          patchReplies++
+          slowReads = 2
         }
-        assert.equal(payload.processing, 'translate')
-        mutations.push({ method: 'PATCH', path, payload })
-        await new Promise(resolve => setTimeout(resolve, 1200))
-        pipeline.config.revision = 'rev-2'
-        pipeline.sections[0].processing = 'translate'
-        body = { revision: 'rev-2', sections: { ch0001: { processing: 'translate' } }, pass_profiles: {} }
-        patchReplies++
-        slowReads = 2
       } else if (path === '/api/workspaces/w-1/reprepare' && request.method() === 'POST') {
         const payload = request.postDataJSON()
         assert.equal(payload.revision, 'rev-2')
@@ -138,6 +157,23 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       assert.equal(await page.locator('.processing-switch').count(), 0, 'workspace Processing is read-only')
       assert.equal(await page.locator('[data-ui-debug-id="SCT"] .processing-readonly').first().textContent(), 'F',
         'overview shows one compact Processing letter, not F plus Full')
+      await page.getByRole('button', { name: /Pipeline models/ }).click()
+      const pipelineModelSave = page.waitForResponse(response => response.url().endsWith('/settings') && response.request().method() === 'PATCH')
+      await page.getByRole('combobox', { name: 'Pass 1' }).selectOption('local-other')
+      await pipelineModelSave
+      await page.waitForFunction(() => document.querySelector('#profile-1')?.value === 'local-other')
+      assert.deepEqual(modelMutations[0]?.payload.pass_profiles, { '1': 'local-other' })
+      assert.equal(await page.getByRole('dialog', { name: 'Change model assignment?' }).count(), 0)
+      await page.locator('.sections-table tbody tr').first().click()
+      await page.locator('[data-ui-debug-id="PVD"]').waitFor()
+      const sectionModelSave = page.waitForResponse(response => response.url().endsWith('/sections/ch0001') && response.request().method() === 'PATCH')
+      await page.getByRole('combobox', { name: 'Pass 2' }).last().selectOption('local-other')
+      await sectionModelSave
+      await page.waitForFunction(() => document.querySelector('#override-2')?.value === 'local-other')
+      assert.deepEqual(modelMutations[1]?.payload.profiles, { '2': 'local-other' })
+      assert.equal(await page.locator('[data-ui-debug-id="PVD"]').count(), 1, 'section stays open while its model saves')
+      await page.locator('[data-ui-debug-id="PVD"]').getByRole('button', { name: 'Close' }).click()
+      previewReads = 0
       await page.getByRole('button', { name: /Prepare.*Source structure frozen/ }).click()
       assert.equal(previewReads, 0, 'Prepare does not fetch source text before selection')
       const metadataTop = () => page.locator('[data-ui-debug-id="PSM"]').evaluate(element =>

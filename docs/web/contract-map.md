@@ -103,8 +103,8 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
 | Translate | GET pipeline/usage/activity | Existing P2→P3→P4→P5 chunk execution, actual attempt diagnostics and section aggregates |
 | Publish | GET pipeline/activity; POST publish job; GET publication/download | Real validation/size, disabled automatic Publishing, explicit retry without retranslating |
-| Section drawer | GET sections/id/page; PATCH sections/id | Escaped bounded source, F/T/E/content type, confirmed profile overrides |
-| Pipeline models | GET settings; PATCH settings | Five configured pass assignments, inheritance and explicit model-change confirmation |
+| Section drawer | GET sections/id/page; PATCH sections/id | Escaped bounded source, F/T/E/content type; selecting a profile override saves immediately |
+| Pipeline models | GET profiles; PATCH settings | Five configured pass assignments and inheritance; selecting a model saves immediately |
 | Archive | POST archive/restore with lifecycle revision | Metadata-only archive for drafts and prepared projects; busy/cleanup rejection; Reader access retained |
 | Reader | GET reader/chapters/markers; POST context/markers; DELETE marker | Verified P5, stale/unavailable explanation, canonical Unicode offsets and marker revisions |
 | Settings | GET capabilities/profiles | Real read-only scope/identity; theme and UI preference reset; unavailable diagnostics explained |

@@ -49,7 +49,6 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | SMC | Section model override · Pass 3 | `web/src/features/pipeline/Workspace.tsx` |
 | SMD | Section model override · Pass 4 | `web/src/features/pipeline/Workspace.tsx` |
 | SME | Section model override · Pass 5 | `web/src/features/pipeline/Workspace.tsx` |
-| MCM | Model change confirmation modal | `web/src/features/pipeline/Workspace.tsx` |
 | ACM | Archive confirmation modal | `web/src/features/pipeline/Workspace.tsx` |
 | REV | Review page | `web/src/features/review/Review.tsx` |
 | RVH | Review heading and approval | `web/src/features/review/Review.tsx` |
