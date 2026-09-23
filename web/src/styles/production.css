@@ -148,6 +148,13 @@ body:has(dialog.drawer[open])::before { display:none; }
 @media (max-width:820px) { .p1-metrics,.analyse-generated-facts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (prefers-reduced-motion:reduce) { .p1-counting { animation:none; } }
 .pass-summary { min-width:760px; }.pass-summary th:nth-child(2) { width:24%; }
+.translate-summary-heading { margin:12px 14px 8px;color:var(--text-soft);font-size:12px;font-weight:650; }
+.translate-model-grid { min-width:740px; }
+.translate-model-grid th:first-child { width:24%; }
+.translate-model-grid td { vertical-align:top;white-space:normal;overflow-wrap:anywhere; }
+.translate-model-grid td small { display:block;margin-top:4px;color:var(--text-dim);font-size:10px; }
+.translate-model-grid td.inherited { opacity:.65; }
+.translate-model-grid td.overridden small { color:var(--accent); }
 .translate-content { display:flex;flex-direction:column;gap:14px; }
 .translate-detail-grid { grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr); }
 .translate-chunk-table { min-width:530px; }

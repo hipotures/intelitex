@@ -1,11 +1,11 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
-import { endpoint, Scope, useApi } from '../../api/client'
-import { activitySchema, configSchema, lifecycleSchema, pipelineSchema, previewSchema, profilesSchema, workspacesSchema, type Pipeline, type Section } from '../../api/schema'
+import { endpoint, matchesWorkspaceResource, queryClient, Scope, useApi } from '../../api/client'
+import { activitySchema, configSchema, lifecycleSchema, pipelineSchema, previewSchema, profilesSchema, workspacesSchema, type Pipeline, type Profiles, type Section } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Back, Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
-import { useLive } from '../../realtime/coordinator'
+import { useConnection, useLive } from '../../realtime/coordinator'
 import { preference, savePreference } from '../../app/preferences'
 import { announce } from '../../app/notifications'
 import { Action } from './Action'
@@ -59,6 +59,7 @@ export function WorkspacePage() {
   const query = useApi(endpoint(id, 'pipeline'), pipelineSchema, !!workspace?.prepared)
   const profiles = useApi(endpoint(id, 'profiles'), profilesSchema, !!workspace)
   const command = useCommand(id)
+  const connection = useConnection()
   const navigate = useNavigate()
   const search = useSearch({ strict: false })
   const scope = useContext(Scope)
@@ -67,8 +68,13 @@ export function WorkspacePage() {
   const [models, setModels] = useState(() => preference(scope, `${id}.models`) === 'true')
   const [draftModels, setDraftModels] = useState(true)
   const [archive, setArchive] = useState(false)
-  const [assignment, setAssignment] = useState<{ section?: string; number: string; value: string | null } | null>(null)
+  type Assignment = { section?: string; number: string; value: string | null }
+  const [assignmentIntents, setAssignmentIntents] = useState<Record<string, string | null>>({})
+  const assignmentQueue = useRef<Assignment[]>([])
+  const assignmentProcessing = useRef(false)
+  const assignmentRevision = useRef<string | null>(null)
   const p = query.data
+  if (!assignmentProcessing.current) assignmentRevision.current = p?.config.revision ?? (!workspace?.prepared ? profiles.data?.revision ?? null : null)
   const displayedTitles = p ? sectionTitles(p.sections, p.metadata.creators) : new Map<string, string>()
   const draftJob = !workspace?.prepared && workspace?.last_job?.operation === 'import' ? workspace.last_job : null
   const draftPreparing = !!workspace && !workspace.prepared && !!workspace.active_job && workspace.active_job.operation === 'import'
@@ -84,17 +90,61 @@ export function WorkspacePage() {
     return command.send(endpoint(id, sectionId ? `sections/${encodeURIComponent(sectionId)}` : 'settings'), configSchema,
       { revision, ...body }, 'PATCH')
   }
-  async function saveAssignment(next: { section?: string; number: string; value: string | null }) {
-    setAssignment(next)
-    await configure({ [next.section ? 'profiles' : 'pass_profiles']: { [next.number]: next.value }, allow_model_change: true }, next.section)
-    setAssignment(null)
+  const assignmentKey = (item: Assignment) => `${item.section ?? 'global'}:${item.number}`
+  async function flushAssignments() {
+    if (assignmentProcessing.current) return
+    assignmentProcessing.current = true
+    while (assignmentQueue.current.length) {
+      const next = assignmentQueue.current.shift()!
+      const revision = assignmentRevision.current
+      if (!revision) { assignmentQueue.current = []; setAssignmentIntents({}); break }
+      const result = await command.send(endpoint(id, next.section ? `sections/${encodeURIComponent(next.section)}` : 'settings'),
+        configSchema, { revision, [next.section ? 'profiles' : 'pass_profiles']: { [next.number]: next.value },
+          allow_model_change: true }, 'PATCH', true)
+      if (!result) { assignmentQueue.current = []; setAssignmentIntents({}); break }
+      assignmentRevision.current = result.revision
+      await queryClient.cancelQueries({ predicate: item => item.queryKey[0] === scope &&
+        [endpoint(id, 'pipeline'), endpoint(id, 'profiles')].includes(String(item.queryKey[1])) })
+      queryClient.setQueryData<Pipeline>([scope, endpoint(id, 'pipeline')], old => old ? {
+        ...old, config: result,
+        sections: next.section ? old.sections.map(section => section.id === next.section
+          ? { ...section, profiles: { ...section.profiles, [next.number]: next.value } } : section) : old.sections,
+      } : old)
+      queryClient.setQueryData<Profiles>([scope, endpoint(id, 'profiles')], old => {
+        if (!old) return old
+        const selected = next.value ? old.profiles.find(profile => profile.name === next.value) : null
+        return { ...old, revision: result.revision,
+          assignments: next.section ? old.assignments : { ...old.assignments, [next.number]: next.value },
+          resolved_passes: !next.section && selected ? { ...old.resolved_passes, [next.number]: selected } : old.resolved_passes }
+      })
+      const key = assignmentKey(next)
+      setAssignmentIntents(old => {
+        if (old[key] !== next.value) return old
+        const updated = { ...old }; delete updated[key]; return updated
+      })
+    }
+    assignmentProcessing.current = false
+    void queryClient.invalidateQueries({ predicate: item => item.queryKey[0] === scope &&
+      matchesWorkspaceResource(String(item.queryKey[1]), id) })
+    void queryClient.invalidateQueries({ queryKey: [scope, '/api/workspaces'], refetchType: 'none' })
+  }
+  function saveAssignment(next: Assignment) {
+    const key = assignmentKey(next)
+    assignmentQueue.current = [...assignmentQueue.current.filter(item => assignmentKey(item) !== key), next]
+    setAssignmentIntents(old => ({ ...old, [key]: next.value }))
+    void flushAssignments()
   }
   if (!workspace) return <main className="main"><Back /><ErrorNote error={all.error} /><Empty>{all.isPending ? 'Loading workspace…' : 'Workspace not found.'}</Empty></main>
   const modelsOpen = workspace.prepared ? models : draftModels
   const modelPanel = <section className="accordion" {...debugTag('PMA')}><button className="accordion-head" aria-expanded={modelsOpen} onClick={() => {
     if (workspace.prepared) { setModels(!models); savePreference(scope, `${id}.models`, String(!models)) }
     else setDraftModels(!draftModels)
-  }}><span><span className="accordion-title">Pipeline models</span><span className="accordion-sub">{workspace.prepared ? 'Assign configured profiles to P1–P5' : 'Change saved profiles before Prepare'}</span></span><ChevronDown size={16} /></button>{modelsOpen && <div className="accordion-body"><ErrorNote error={profiles.error} retry={() => void profiles.refetch()} /><div className="model-grid">{[1,2,3,4,5].map(n => <div className="model-slot" key={n} {...debugTag(pipelineModelIds[n - 1]!)}><label htmlFor={`profile-${n}`}><ProfileSwatch index={profiles.data?.resolved_passes[String(n)]?.stable_palette_index} name={profiles.data?.resolved_passes[String(n)]?.name ?? 'Unknown profile'} /><span>Pass {n}</span></label><select id={`profile-${n}`} disabled={!profiles.data || command.disabled || !!p?.busy || workspace.metadata.lifecycle.archived || !!workspace.active_job} value={assignment && !assignment.section && assignment.number === String(n) ? assignment.value ?? '' : profiles.data?.assignments[String(n)] ?? ''} onChange={e => void saveAssignment({ number: String(n), value: e.target.value || null })}>{workspace.prepared ? <option value="">Inherit — {profiles.data?.default_profile ?? '—'}</option> : !profiles.data ? <option value="">Loading profiles…</option> : null}{profiles.data?.profiles.map(profile => <option key={profile.name} disabled={!profile.enabled} value={profile.name}>{profile.name}</option>)}</select></div>)}</div></div>}</section>
+  }}><span><span className="accordion-title">Pipeline models</span><span className="accordion-sub">{workspace.prepared ? 'Assign configured profiles to P1–P5' : 'Change saved profiles before Prepare'}</span></span><ChevronDown size={16} /></button>{modelsOpen && <div className="accordion-body"><ErrorNote error={profiles.error ?? command.error} retry={() => void profiles.refetch()} /><div className="model-grid">{[1,2,3,4,5].map(n => {
+    const key = `global:${n}`
+    const hasIntent = Object.prototype.hasOwnProperty.call(assignmentIntents, key)
+    const value = hasIntent ? assignmentIntents[key] : profiles.data?.assignments[String(n)]
+    return <div className="model-slot" key={n} {...debugTag(pipelineModelIds[n - 1]!)}><label htmlFor={`profile-${n}`}><ProfileSwatch index={profiles.data?.resolved_passes[String(n)]?.stable_palette_index} name={profiles.data?.resolved_passes[String(n)]?.name ?? 'Unknown profile'} /><span>Pass {n}</span></label><select id={`profile-${n}`} disabled={!profiles.data || (workspace.prepared && !p) || (command.pending && !assignmentProcessing.current) || connection !== 'Live' || !!p?.busy || workspace.metadata.lifecycle.archived || !!workspace.active_job} value={value ?? ''} onChange={e => saveAssignment({ number: String(n), value: e.target.value || null })}>{workspace.prepared ? <option value="">Inherit — {profiles.data?.default_profile ?? '—'}</option> : !profiles.data ? <option value="">Loading profiles…</option> : null}{profiles.data?.profiles.map(profile => <option key={profile.name} disabled={!profile.enabled} value={profile.name}>{profile.name}</option>)}</select></div>
+  })}</div></div>}</section>
   return <main className="main workspace-page" {...debugTag('WSP', id)}><Back /><div className="workspace-head" {...debugTag('WHH')}><div className="workspace-heading"><Cover title={workspace.metadata.title} /><div><div className="eyebrow">Workspace</div><h1>{workspace.metadata.title}</h1>{workspace.metadata.label && <div className="workspace-label">{workspace.metadata.label}</div>}<div className="workspace-meta-line"><span>{workspace.metadata.creators.join(', ') || '—'}</span><span>·</span><span>{workspace.metadata.source_language ?? workspace.metadata.language ?? 'Source language unconfirmed'} → {workspace.metadata.target_language ?? 'target unknown'}</span>{workspace.metadata.word_count != null && <><span>·</span><span>{workspace.metadata.word_count.toLocaleString()} words</span></>}<span className="workspace-debug-identity">Workspace ID: <code>{id}</code></span></div></div></div>{workspace.prepared && <div className="workspace-head-actions"><Action workspace={workspace} pipeline={p} /></div>}</div>
     <ErrorNote error={query.error ?? command.error} retry={() => void query.refetch()} />
     {draftFailed && <div className="notice error" role="alert"><span>Prepare failed before the source structure was saved. Check the source and retry. The draft is still available.</span></div>}
@@ -119,7 +169,13 @@ export function WorkspacePage() {
     </>}
     {!workspace.prepared && !workspace.metadata.lifecycle.archived && <div className="workspace-bottom-actions"><button className="archive-workspace-btn" disabled={command.disabled || !!workspace.active_job} onClick={() => setArchive(true)}>Archive workspace</button></div>}
     {section && <Overlay drawer title={displayedTitles.get(section.id) ?? 'Untitled section'} eyebrow="Section" debugId="PVD" close={() => setSearch({ section: undefined })}><div className="drawer-body"><div className="field-row"><div className="field"><label>Processing · change in Prepare</label><div className="readonly-field">{modes.find(([mode]) => mode === section.processing)?.[2]}</div></div><div className="field"><label htmlFor="section-type">Content type · metadata only</label><select id="section-type" value={section.content_type} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => void configure({ content_type: e.target.value }, section.id)}>{[...new Set([...contentTypes, section.content_type])].map(t => <option key={t} value={t}>{t.replaceAll('_',' ')}</option>)}</select></div></div><div className="autosave-note">Review source and change Processing in Prepare. Content type is descriptive metadata.</div><ErrorNote error={command.error} />
-      <div className="field"><label>Model overrides · optional</label><div className="drawer-model-grid" {...debugTag('SMG')}>{[1,2,3,4,5].map(n => <div className="drawer-model-slot" key={n} {...debugTag(sectionModelIds[n - 1]!)}><label className="drawer-model-label" htmlFor={`override-${n}`}><ProfileSwatch index={profiles.data?.profiles.find(v => v.name === (section.profiles[String(n)] ?? profiles.data?.resolved_passes[String(n)]?.name))?.stable_palette_index} name={section.profiles[String(n)] ?? profiles.data?.resolved_passes[String(n)]?.name ?? 'Unknown profile'} /><span>Pass {n}</span></label><select id={`override-${n}`} value={assignment?.section === section.id && assignment.number === String(n) ? assignment.value ?? '' : section.profiles[String(n)] ?? ''} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => void saveAssignment({ section: section.id, number: String(n), value: e.target.value || null })}><option value="">Inherit — {profiles.data?.resolved_passes[String(n)]?.name ?? '—'}</option>{profiles.data?.profiles.map(profile => <option key={profile.name} value={profile.name} disabled={!profile.enabled}>{profile.name}</option>)}</select></div>)}</div></div><ErrorNote error={preview.error} /><div className="preview-text">{preview.data?.blocks.map((b, i) => <p key={`${previewPage}-${b.id}-${i}`}>{b.text}</p>)}</div><div className="preview-pagination"><Button disabled={previewPage === 0} onClick={() => setPreviewPage(previewPage - 1)}>Previous</Button><span>Source preview · page {previewPage + 1}</span><Button disabled={preview.data?.next_page == null} onClick={() => setPreviewPage(preview.data!.next_page!)}>Load more</Button></div></div></Overlay>}
+      <div className="field"><label>Model overrides · optional</label><div className="drawer-model-grid" {...debugTag('SMG')}>{[1,2,3,4,5].map(n => {
+        const key = `${section.id}:${n}`
+        const hasIntent = Object.prototype.hasOwnProperty.call(assignmentIntents, key)
+        const value = hasIntent ? assignmentIntents[key] : section.profiles[String(n)]
+        const displayName = value ?? profiles.data?.resolved_passes[String(n)]?.name ?? 'Unknown profile'
+        return <div className="drawer-model-slot" key={n} {...debugTag(sectionModelIds[n - 1]!)}><label className="drawer-model-label" htmlFor={`override-${n}`}><ProfileSwatch index={profiles.data?.profiles.find(profile => profile.name === displayName)?.stable_palette_index} name={displayName} /><span>Pass {n}</span></label><select id={`override-${n}`} value={value ?? ''} disabled={(command.pending && !assignmentProcessing.current) || connection !== 'Live' || !!p?.busy || !!p?.metadata.lifecycle.archived} onChange={e => saveAssignment({ section: section.id, number: String(n), value: e.target.value || null })}><option value="">Inherit — {profiles.data?.resolved_passes[String(n)]?.name ?? '—'}</option>{profiles.data?.profiles.map(profile => <option key={profile.name} value={profile.name} disabled={!profile.enabled}>{profile.name}</option>)}</select></div>
+      })}</div></div><ErrorNote error={preview.error} /><div className="preview-text">{preview.data?.blocks.map((b, i) => <p key={`${previewPage}-${b.id}-${i}`}>{b.text}</p>)}</div><div className="preview-pagination"><Button disabled={previewPage === 0} onClick={() => setPreviewPage(previewPage - 1)}>Previous</Button><span>Source preview · page {previewPage + 1}</span><Button disabled={preview.data?.next_page == null} onClick={() => setPreviewPage(preview.data!.next_page!)}>Load more</Button></div></div></Overlay>}
     {archive && (p || !workspace.prepared) && <Overlay title="Archive workspace?" eyebrow="Workspace" debugId="ACM" compact close={() => { if (!command.pending) setArchive(false) }}><div className="modal-body"><p className="subtitle"><strong>{workspace.metadata.title}</strong> will be removed from active workspaces. Its state will be kept in the archive and can be restored later.</p><ErrorNote error={command.error} /></div><div className="modal-foot"><Button onClick={() => setArchive(false)}>Cancel</Button><Button variant="danger" disabled={command.disabled} onClick={async () => { if (await command.send(endpoint(id, 'archive'), lifecycleSchema, { revision: (p?.metadata ?? workspace.metadata).lifecycle.revision })) { setArchive(false); announce('Workspace moved to archive.'); await navigate({ to: '/work' }) } }}>Archive workspace</Button></div></Overlay>}
   </main>
 }
