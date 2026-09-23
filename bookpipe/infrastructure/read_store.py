@@ -35,3 +35,13 @@ class ReadStore:
         for row in self.db.execute("SELECT key,fingerprint FROM jobs"):
             result.setdefault(row['key'], []).append(row['fingerprint'])
         return result
+
+    def latest_job(self, key: str) -> dict | None:
+        row = self.db.execute('SELECT fingerprint FROM jobs WHERE key=? ORDER BY rowid DESC LIMIT 1',
+                              (key,)).fetchone()
+        return self.job(key, row['fingerprint']) if row else None
+
+    def job_for_path(self, key: str, relative_path: str) -> dict | None:
+        row = self.db.execute('SELECT fingerprint FROM jobs WHERE key=? AND result_path=?',
+                              (key, relative_path)).fetchone()
+        return self.job(key, row['fingerprint']) if row else None

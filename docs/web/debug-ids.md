@@ -88,9 +88,11 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PRM | P1 reset confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PGD | Analyse generated data card | `web/src/features/pipeline/Phase.tsx` |
 | PAR | Analyse artifacts card | `web/src/features/pipeline/Phase.tsx` |
-| PTS | Translate pass summary card | `web/src/features/pipeline/Phase.tsx` |
-| PSC | Translate section progress card | `web/src/features/pipeline/Phase.tsx` |
-| PDG | Translate diagnostics card | `web/src/features/pipeline/Phase.tsx` |
+| PTS | Translate pass summary card | `web/src/features/pipeline/TranslateContent.tsx` |
+| PSC | Translate chunk progress card | `web/src/features/pipeline/TranslateContent.tsx` |
+| TPV | Translate pass source and result preview | `web/src/features/pipeline/TranslateContent.tsx` |
+| TCM | Translate targeted pass confirmation | `web/src/features/pipeline/TranslateContent.tsx` |
+| PDG | Translate diagnostics card | `web/src/features/pipeline/TranslateContent.tsx` |
 | PPO | Publish output card | `web/src/features/pipeline/Phase.tsx` |
 | PPV | Publish validation card | `web/src/features/pipeline/Phase.tsx` |
 | PMD | Publish metadata card | `web/src/features/pipeline/Phase.tsx` |

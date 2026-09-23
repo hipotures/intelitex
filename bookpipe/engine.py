@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from uuid import uuid4
 from pathlib import Path
 from typing import Any, Callable
 
@@ -401,15 +402,28 @@ class Runner:
     def __init__(self, store: Store, client: Client, settings: dict, ui: Any):
         self.store, self.client, self.settings, self.ui = store, client, settings, ui
 
-    def run(self, pass_no: int, key: str, inputs: dict, *,
-            unit_context: InferenceUnitContext | None = None) -> tuple[dict, str, str]:
+    def fingerprint(self, pass_no: int, inputs: dict) -> str:
         prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
         schema = response_schema(pass_no, inputs)
-        fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
-        cached = self.store.job(key, fingerprint)
-        if cached:
-            validate_result(pass_no, cached["value"], inputs)
-            return cached["value"], cached["path"], fingerprint
+        return digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+
+    def run(self, pass_no: int, key: str, inputs: dict, *,
+            unit_context: InferenceUnitContext | None = None,
+            force: bool = False, allow_generate: bool = True) -> tuple[dict, str, str]:
+        prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
+        schema = response_schema(pass_no, inputs)
+        base_fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+        selected = self.store.get('selected_pass:' + key) if pass_no > 1 else None
+        fingerprint = (digest({'base': base_fingerprint, 'rerun': uuid4().hex}) if force else
+                       selected['fingerprint'] if isinstance(selected, dict) and
+                       selected.get('base_fingerprint') == base_fingerprint else base_fingerprint)
+        if not force:
+            cached = self.store.job(key, fingerprint)
+            if cached:
+                validate_result(pass_no, cached["value"], inputs)
+                return cached["value"], cached["path"], fingerprint
+        if not allow_generate:
+            raise PipelineError(f'P{pass_no} has no current saved result for this chunk. Run P{pass_no} first.')
         hold = self.store.get("observability_hold")
         if hold and not self.settings.get("allow_incomplete_observability", False):
             raise PipelineError(
@@ -445,7 +459,7 @@ class Runner:
             resolved_profile=getattr(provider, "resolved_profile", {}),
         ).as_dict()
         key_root = self.store.root / "artifacts" / key
-        for attempt in _compatible_completed_attempts(key_root, recovery_body, base_semantic):
+        for attempt in ([] if force else _compatible_completed_attempts(key_root, recovery_body, base_semantic)):
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
                 clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)

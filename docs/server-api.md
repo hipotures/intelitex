@@ -88,11 +88,28 @@ as a heuristic and requires the user to verify the language before Save.
 
 ## Jobs and current state
 
-Job input is `{operation:"analyze"|"translate"|"publish",profile?,chunk_limit?,target_language?}`.
+Job input is `{operation:"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,pass_no?,rerun?,target_language?}`.
 `profile` selects an existing profile for analyze/translate. `chunk_limit` is a
 nonnegative integer, only for translation; omitted/zero processes all unfinished
 units. `target_language` is only for publication, defaults to `pl`, and must be a
 BCP-47-style language identifier. Publication does not accept `profile`.
+For one translation pass, send `chunk_id` with `pass_no` (2–5), optional boolean
+`rerun`, and no nonzero `chunk_limit`. The chunk must belong to the current eligible
+plan. Earlier passes for that chunk must have current saved results. Only the
+requested pass may call a model. A targeted P5 can be previewed even when earlier
+chunks in the same section or thread are unfinished; its final stays stale until
+rerun with complete context.
+`rerun:true` creates a new versioned attempt even when a compatible result exists.
+P2–P4 invalidate an already finished chunk until P5 runs again. P5 updates the
+registered final translation and follows the existing automatic publication rule.
+Use a `request_key` for safe retries, as with other supervised jobs.
+
+`GET /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}` returns
+a bounded source/result preview for one eligible chunk and P2–P5. The response
+contains `available`, `current` (verified final P5 only), `source`, `translations`,
+`checks`, `findings`, and `truncated`. Saved P2–P4 artifacts are historical until
+their inputs are checked during execution; the preview does not claim they are
+current. No provider is contacted by this read.
 
 A job contains `job_id`, `workspace_id`, `operation`, `state`, `pid`, `started_at`,
 `finished_at`, `exit_code`, `sequence`, `last_event`, `error`. Nullable fields are

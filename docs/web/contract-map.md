@@ -101,7 +101,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | Prepare | GET workspaces/draft profiles; PATCH draft settings; POST workspace prepare/reprepare; GET preparation after import | Real provider-free web import with marked 4-character token estimates; saved pass profiles can change before Prepare; an untouched prepared plan can be rebuilt in place with its old version retained; failed draft import remains visible, empty-lock retry works |
 | Analyse | GET pipeline/usage | Whole-book P1 units, live recorded usage, per-unit and running total cost estimates, and artifact availability; historical P1 attempts without a saved rate use current catalog rates at read time |
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
-| Translate | GET pipeline/usage/activity | Existing P2→P3→P4→P5 chunk execution, actual attempt diagnostics and section aggregates |
+| Translate | GET pipeline/usage/activity and translation/chunks/id/passes/n; POST jobs with chunk_id/pass_no/rerun | One supervised pass per eligible chunk with confirmation, saved source/result previews, retained attempt diagnostics and full Run still available from Workspace |
 | Publish | GET pipeline/activity; POST publish job; GET publication/download | Real validation/size, disabled automatic Publishing, explicit retry without retranslating |
 | Section drawer | GET sections/id/page; PATCH sections/id | Escaped bounded source, F/T/E/content type; selecting a profile override saves immediately |
 | Pipeline models | GET profiles; PATCH settings | Five configured pass assignments and inheritance; selecting a model saves immediately |
@@ -113,6 +113,12 @@ Profile definitions/credentials are not edited in the browser. Persistent palett
 identify actual recorded profile provenance; future assignments do not recolor history.
 Mixed provenance stays explicit. P2–P4 legacy retained receipts are not misrepresented as
 validated current completions. Runtime `running` is a separate cell decoration.
+Translate's P2–P4 previews identify saved output without claiming current input
+compatibility. P5 alone can show a verified current final. A targeted pass reuses
+saved prior-pass inputs or stops before a model call; `rerun` stores a new attempt,
+and a changed P2–P4 marks a finished chunk stale until P5 completes again.
+A later chunk may run alone for inspection; its P5 stays stale while earlier
+context chunks in the same section or thread remain unfinished.
 
 ## State synchronization
 

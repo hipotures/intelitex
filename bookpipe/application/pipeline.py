@@ -221,6 +221,79 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
     return PipelineResult(store.root, completed_units=len(todo))
 
 
+def validate_target_pass(store: Any, book: dict, chunk_id: str, pass_no: int, rerun: bool) -> None:
+    chunk = next((item for item in book['chunks'] if item['id'] == chunk_id), None)
+    if chunk is None or pass_no not in (2, 3, 4, 5):
+        raise PipelineError('Unknown translation chunk or pass.')
+    if store.has_job(f'pass{pass_no}/{chunk_id}') and not rerun:
+        raise PipelineError('This pass already has a saved result. Confirm a rerun to replace it.')
+
+
+def target_context_complete(store: Any, book: dict, chunk_id: str) -> bool:
+    chunk = next(item for item in book['chunks'] if item['id'] == chunk_id)
+    chapters = {item['id']: item for item in book['chapters']}
+    current = chapters[chunk['chapter_id']]
+    for prior in book['chunks']:
+        if prior['id'] == chunk_id:
+            break
+        parent = chapters[prior['chapter_id']]
+        same_thread = current.get('thread_id') and current['thread_id'] == parent.get('thread_id')
+        if (prior['chapter_id'] == chunk['chapter_id'] or same_thread) and store.chunk(prior['id'])['status'] != 'done':
+            return False
+    return True
+
+
+def execute_target_pass(store: Any, book: dict, client: Any, settings: dict,
+                        progress: ProgressSink, chunk_id: str, pass_no: int,
+                        rerun: bool) -> PipelineResult:
+    """Run exactly one requested pass; earlier passes must already be saved."""
+    validate_target_pass(store, book, chunk_id, pass_no, rerun)
+    chunk = next(item for item in book['chunks'] if item['id'] == chunk_id)
+    chapters = {item['id']: item for item in book['chapters']}
+    current = chapters[chunk['chapter_id']]
+    runner = Runner(store, client, settings, progress)
+    context = previous_context(store, book, chunk, client, settings['continuity_tokens'])
+    memory, dependencies = store.translation_memory(
+        chunk, context['english'], client.count, settings['memory_tokens'])
+    common = {'CHUNK_ID': chunk_id, 'SOURCE_BLOCKS': source_blocks(chunk['blocks']),
+              **memory, 'PREVIOUS_CONTEXT': context}
+    unit_context = InferenceUnitContext(
+        unit_id=chunk_id, chapter_id=chunk['chapter_id'], chunk_id=chunk_id,
+        unit_index=chunk.get('number') or chunk.get('index_in_chapter'))
+    values = {}
+    for number in range(2, pass_no + 1):
+        inputs = {**common}
+        if number in (2, 4):
+            inputs['SOURCE_SENTENCES'] = chunk['sentences']
+        if number in (3, 4):
+            inputs['SEMANTIC_AUDIT'] = values[2]
+        if number in (4, 5):
+            inputs['POLISH_DRAFT'] = values[3]
+        if number == 5:
+            inputs['CORRECTION_LEDGER'] = values[4]
+        key = f'pass{number}/{chunk_id}'
+        if number == pass_no:
+            progress.emit(ProgressEvent(kind='pass_started', values={
+                'pass_no': number, 'task_key': key, 'chapter_id': chunk['chapter_id'], 'chunk_id': chunk_id}))
+        value, path, fingerprint = runner.run(number, key, inputs,
+            unit_context=unit_context, force=rerun and number == pass_no,
+            allow_generate=number == pass_no)
+        values[number] = value
+        if number == pass_no:
+            store.accept_target_pass(key, runner.fingerprint(number, inputs), fingerprint, chunk_id,
+                                     final_path=path if number == 5 else None,
+                                     deps=dependencies if number == 5 else None,
+                                     lexical_hash=digest(memory['APPROVED_LEXICON']) if number == 5 else None,
+                                     final_current=target_context_complete(store, book, chunk_id))
+            export_text(store, book)
+            progress.emit(ProgressEvent(kind='translation_unit_progress', current=number - 1, total=4,
+                values={'chapter_id': chunk['chapter_id'], 'chapter_number': current['number'],
+                        'chapter_total': len(book['chapters']), 'chunk_id': chunk_id,
+                        'chunk_index': chunk['index_in_chapter'],
+                        'chunk_total': len(current['chunk_ids']), 'pass_no': number}))
+    return PipelineResult(store.root, completed_units=1 if pass_no == 5 else 0)
+
+
 class PipelineService:
     def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink,
                  publishing=None):
@@ -267,6 +340,8 @@ class PipelineService:
                 raise PipelineError('Confirm and approve the latest terminology before translation.')
             book = effective_book(book, root)
             scope.store.register_chunks(book)
+            if command.chunk_id is not None:
+                validate_target_pass(scope.store, book, command.chunk_id, command.pass_no, command.rerun)
             settings = effective_settings(
                 self.dependencies.bundle, root, command, files=self.dependencies.files,
             )
@@ -274,19 +349,24 @@ class PipelineService:
                 settings, profile=command.profile,
                 pass_profiles=validate_pass_profiles(command.pass_profiles),
             )
-            client.planning_pass = 2
-            selected = client.for_pass(2)
+            if command.chunk_id is not None and hasattr(client, 'select_section'):
+                target = next(chunk for chunk in book['chunks'] if chunk['id'] == command.chunk_id)
+                client.select_section(target['chapter_id'])
+            planning_pass = command.pass_no if command.chunk_id is not None else 2
+            client.planning_pass = planning_pass
+            selected = client.for_pass(planning_pass)
             if getattr(selected, "provider", "llamacpp") == "llamacpp":
-                client.discover(2)
+                client.discover(planning_pass)
             else:
                 client.identity = {
                     "provider": selected.provider, "requested_model": selected.model,
                     "profile": selected.profile_name,
                 }
             check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
-            result = execute_translate(
-                scope.store, book, client, settings, self.progress, command.chunk_limit,
-            )
+            result = (execute_target_pass(scope.store, book, client, settings, self.progress,
+                        command.chunk_id, command.pass_no, command.rerun)
+                      if command.chunk_id is not None else execute_translate(
+                        scope.store, book, client, settings, self.progress, command.chunk_limit))
             became_complete = result.completed_units > 0 and all(
                 scope.store.chunk(chunk["id"])["status"] == "done" for chunk in book["chunks"]
             )

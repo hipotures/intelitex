@@ -64,6 +64,10 @@ const profile = z.object({ name: text, stable_palette_index: count.nullable(), p
 export const profilesSchema = z.object({ source: text, revision: text, assignments: z.record(text, nullableText), profiles: z.array(profile),
   default_profile: text, resolved_passes: z.record(text, profile) })
 export const previewSchema = z.object({ id: text, blocks: z.array(z.object({ id: text, text })), next_page: count.nullable() })
+export const translationPassPreviewSchema = z.object({ chunk_id: text, pass_no: count,
+  available: z.boolean(), current: z.boolean(), truncated: z.boolean(),
+  source: z.array(z.object({ id: text, text })), translations: z.array(z.object({ id: text, text })),
+  checks: z.array(z.record(text, z.unknown())), findings: z.array(z.record(text, z.unknown())) })
 const aggregate = z.object({ value: z.number().nullable(), known_attempts: count, unknown_attempts: count })
 const costEstimate = z.object({ status: text, amount: count.nullable(), currency: nullableText,
   estimate_type: nullableText, note: nullableText })

@@ -963,3 +963,109 @@ def test_complete_workflow_through_direct_application_api(project):
     assert all(event.values.get("chapter_id") for event in started)
     translated = [event for event in started if event.values["pass_no"] > 1]
     assert all(event.values.get("chunk_id") and event.values.get("task_key") for event in translated)
+
+
+def test_targeted_translation_passes_require_prerequisites_and_preview(project):
+    from bookpipe.processing import effective_book
+    root, _args, state = project
+    app = create_application(Display(True))
+    app.pipeline.analyze(AnalyzeCommand(root))
+    with app.review.open_session(ReviewSessionCommand(root)) as review:
+        draft = review.load()
+        marked = review.review_terms([term['id'] for term in draft['terms']], draft['_revision'])
+        review.set_confirmed(True, marked['revision'])
+    app.review.approve(ApproveCommand(root))
+    chunk_id = effective_book(read_json(root / 'book.json'), root)['chunks'][0]['id']
+
+    with pytest.raises(PipelineError, match='Run P2 first'):
+        app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=3))
+    assert state.calls[2] == state.calls[3] == 0
+
+    for number in (2, 3, 4, 5):
+        before = state.calls.copy()
+        app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=number))
+        assert state.calls[number] == before[number] + 1
+        assert all(state.calls[other] == before[other] for other in (2, 3, 4, 5) if other != number)
+        preview = app.web.translation_pass_preview(root, chunk_id, number)
+        assert preview['available'] and preview['source']
+        if number in (3, 5):
+            assert preview['translations']
+    before = state.calls.copy()
+    with pytest.raises(PipelineError, match='Confirm a rerun'):
+        app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=2))
+    assert state.calls == before
+    assert app.web.translation_pass_preview(root, chunk_id, 5)['current']
+
+
+def test_full_run_resumes_targeted_p2_and_rerun_keeps_artifacts(project):
+    from bookpipe.processing import effective_book
+    root, _args, state = project
+    app = create_application(Display(True))
+    app.pipeline.analyze(AnalyzeCommand(root))
+    with app.review.open_session(ReviewSessionCommand(root)) as review:
+        draft = review.load()
+        marked = review.review_terms([term['id'] for term in draft['terms']], draft['_revision'])
+        review.set_confirmed(True, marked['revision'])
+    app.review.approve(ApproveCommand(root))
+    chunk_id = effective_book(read_json(root / 'book.json'), root)['chunks'][0]['id']
+    app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=2))
+    before = state.calls.copy()
+    app.pipeline.translate(TranslateCommand(root, chunk_limit=1))
+    assert state.calls[2] == before[2]
+    assert all(state.calls[number] == before[number] + 1 for number in (3, 4, 5))
+    assert app.web.translation_pass_preview(root, chunk_id, 5)['current']
+
+    store = Store(root)
+    try:
+        before_checkpoints = store.db.execute('SELECT COUNT(*) FROM jobs WHERE key=?',
+                                              (f'pass2/{chunk_id}',)).fetchone()[0]
+    finally:
+        store.close()
+    before = state.calls.copy()
+    app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=2, rerun=True))
+    assert state.calls[2] == before[2] + 1
+    assert state.calls[3] == before[3]
+    assert app.web.translation_pass_preview(root, chunk_id, 5)['current'] is False
+    store = Store(root)
+    try:
+        assert store.db.execute('SELECT COUNT(*) FROM jobs WHERE key=?',
+                                (f'pass2/{chunk_id}',)).fetchone()[0] == before_checkpoints + 1
+    finally:
+        store.close()
+    for number in (3, 4, 5):
+        before = state.calls[number]
+        app.pipeline.translate(TranslateCommand(root, chunk_id=chunk_id, pass_no=number, rerun=True))
+        assert state.calls[number] == before + 1
+    assert app.web.translation_pass_preview(root, chunk_id, 5)['current']
+
+
+def test_later_chunk_can_run_alone_but_p5_stays_stale_until_context_is_complete(tmp_path, server):
+    from bookpipe.processing import effective_book
+    state, port = server
+    source = tmp_path / 'split-source'
+    source.mkdir()
+    (source / 'chapter.html').write_text(
+        '<h1>Chapter 1</h1>'
+        '<p>Relay moved steadily through the dark corridor. The crew waited for a response.</p>'
+        '<p class="calibre19">Relay returned with a clear answer. The crew continued its journey.</p>',
+        encoding='utf-8')
+    root = tmp_path / 'split-project'
+    assert main(['import', str(source), '--project', str(root), '--quiet',
+                 '--host', '127.0.0.1', '--port', str(port), '--whole-section-limit', '100']) == 0
+    app = create_application(Display(True))
+    app.pipeline.analyze(AnalyzeCommand(root))
+    with app.review.open_session(ReviewSessionCommand(root)) as review:
+        draft = review.load()
+        marked = review.review_terms([term['id'] for term in draft['terms']], draft['_revision'])
+        review.set_confirmed(True, marked['revision'])
+    app.review.approve(ApproveCommand(root))
+    chunks = effective_book(read_json(root / 'book.json'), root)['chunks']
+    later = next(chunk for chunk in chunks[1:] if chunk['chapter_id'] == chunks[0]['chapter_id'])
+    for number in (2, 3, 4, 5):
+        app.pipeline.translate(TranslateCommand(root, chunk_id=later['id'], pass_no=number))
+    assert app.web.translation_pass_preview(root, later['id'], 5)['available']
+    assert app.web.translation_pass_preview(root, later['id'], 5)['current'] is False
+    before = state.calls.copy()
+    app.pipeline.translate(TranslateCommand(root, chunk_limit=2))
+    assert app.web.translation_pass_preview(root, later['id'], 5)['current']
+    assert all(state.calls[number] > before[number] for number in (2, 3, 4, 5))

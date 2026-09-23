@@ -323,10 +323,12 @@ class ServerService:
         payload, key, fingerprint, previous = self.receipt(payload, workspace_id)
         if previous is not None:
             return previous.public()
-        fields(payload, {'operation', 'profile', 'chunk_limit', 'target_language'}, {'operation'})
+        fields(payload, {'operation', 'profile', 'chunk_limit', 'chunk_id', 'pass_no', 'rerun', 'target_language'}, {'operation'})
         operation = payload['operation']
         if operation != 'translate' and 'chunk_limit' in payload:
             raise ValueError('chunk_limit only applies to translate.')
+        if operation != 'translate' and any(field in payload for field in ('chunk_id', 'pass_no', 'rerun')):
+            raise ValueError('Targeted passes only apply to translate.')
         if operation != 'publish' and 'target_language' in payload:
             raise ValueError('target_language only applies to publish.')
         if operation == 'publish' and 'profile' in payload:

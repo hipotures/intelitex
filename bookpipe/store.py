@@ -54,6 +54,24 @@ class Store:
         with self.db:
             self.db.executemany("UPDATE chunks SET status='stale' WHERE id=? AND status='done'", [(i,) for i in identifiers])
 
+    def accept_target_pass(self, key: str, base_fingerprint: str, fingerprint: str,
+                           chunk_id: str, *, final_path: str | None = None,
+                           deps: list[str] | None = None, lexical_hash: str | None = None,
+                           final_current: bool = True) -> None:
+        """Select a pass and update final validity in one durable transaction."""
+        with self.db:
+            self.set('selected_pass:' + key, {
+                'base_fingerprint': base_fingerprint, 'fingerprint': fingerprint})
+            if final_path is None:
+                self.db.execute("UPDATE chunks SET status='stale' WHERE id=? AND status='done'", (chunk_id,))
+            else:
+                self.db.execute("UPDATE chunks SET status=?,final_path=?,deps=?,lexical_hash=? WHERE id=?",
+                                ('done' if final_current else 'stale', final_path,
+                                 dumps(deps or []), lexical_hash, chunk_id))
+
+    def has_job(self, key: str) -> bool:
+        return self.db.execute('SELECT 1 FROM jobs WHERE key=? LIMIT 1', (key,)).fetchone() is not None
+
     def reset_unattempted_analysis(self):
         with self.db:
             self.set('analysis_done', False)

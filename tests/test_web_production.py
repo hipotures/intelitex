@@ -780,7 +780,7 @@ def test_archive_restore_revision_and_job_gate(api):
 
 
 def test_preview_and_progress_are_application_facts(api):
-    app, root, service, _ = api
+    app, root, service, server = api
     preview = app.web.preview(root, 'ch0001')
     assert any('Ada visits' in b['text'] for b in preview['blocks'])
     progress = service.pipeline('book')['progress']
@@ -792,6 +792,11 @@ def test_preview_and_progress_are_application_facts(api):
     approve(service)
     translate(root, 1)
     assert service.pipeline('book')['progress']['percent'] == 64
+    chunk_id = service.pipeline('book')['units'][0]['id']
+    code, saved = request(server, 'GET',
+                          f'/api/workspaces/book/translation/chunks/{chunk_id}/passes/5')
+    assert code == 200 and saved['available'] and saved['current']
+    assert saved['translations'] and saved['source']
 
 
 def test_asgi_guards_and_static_route_isolation(api, tmp_path):

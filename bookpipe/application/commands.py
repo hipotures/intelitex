@@ -50,6 +50,9 @@ class AnalyzeCommand(ModelOptions):
 class TranslateCommand(ModelOptions):
     project: Path
     chunk_limit: int = 5
+    chunk_id: str | None = None
+    pass_no: int | None = None
+    rerun: bool = False
 
 
 @dataclass(frozen=True, slots=True)

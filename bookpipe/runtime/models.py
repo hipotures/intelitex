@@ -22,6 +22,9 @@ class JobSpec:
     operation: str
     profile: str | None = None
     chunk_limit: int = 0
+    chunk_id: str | None = None
+    pass_no: int | None = None
+    rerun: bool = False
     target_language: str = "pl"
 
     def __post_init__(self):
@@ -31,6 +34,15 @@ class JobSpec:
             raise ValueError("Invalid profile name.")
         if type(self.chunk_limit) is not int or self.chunk_limit < 0:
             raise ValueError("chunk_limit must be a nonnegative integer (0 means all).")
+        if self.chunk_id is not None:
+            if (self.operation != 'translate' or not isinstance(self.chunk_id, str)
+                    or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', self.chunk_id)
+                    or self.pass_no not in {2, 3, 4, 5} or self.chunk_limit != 0):
+                raise ValueError('Targeted translation requires a chunk ID and pass 2–5.')
+        elif self.pass_no is not None:
+            raise ValueError('A targeted pass requires a chunk ID.')
+        if type(self.rerun) is not bool or (self.rerun and self.chunk_id is None):
+            raise ValueError('Rerun applies only to a targeted translation pass.')
         if not isinstance(self.target_language, str) or not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", self.target_language):
             raise ValueError("Invalid target_language.")
         root = Path(self.workspace_root).resolve()

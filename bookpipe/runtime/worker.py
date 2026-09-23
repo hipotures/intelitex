@@ -53,7 +53,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
         elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile))
         elif spec.operation == "translate":
-            app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit))
+            app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit,
+                                                    chunk_id=spec.chunk_id, pass_no=spec.pass_no, rerun=spec.rerun))
         elif spec.operation == "publish":
             app.publishing.publish(PublishCommand(project, spec.target_language))
         sink.send({"type": "result", "status": "succeeded"})
