@@ -1,5 +1,33 @@
 # Executed production web verification
 
+## Work-home read cost (2026-09-23)
+
+The Work page now loads only active workspaces and reads compact backend pipeline
+summaries for its prepared cards. The Archive drawer loads archived workspaces only
+when opened. A disposable, model-free profile with three 230,000-word books (two
+archived) measured 0.069 s for the full list and 0.023 s for the active list. With
+1,000 synthetic physical-attempt manifests, the full pipeline projection took
+0.238 s and the compact summary 0.027 s under `cProfile`. These are local fixture
+measurements, not timings of the user's server or books.
+
+| Executed command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 908 passed, 3 dependency/fixture warnings. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm run test:unit && npm run lint && npm run build` (`web/`) | 19 unit tests passed in 7 files; lint, strict TypeScript and production build passed. Vite reported its existing uncompressed chunk-size warning. |
+| `FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu npm run test:browser` (`web/`) | 10 browser tests passed, including production same-origin offline workflow and Work card request assertions. No unexpected console/page errors in checked scenarios. |
+| Same browser environment with `npm run test:visual` (`web/`) | 12 Work comparisons against unchanged v33 passed; maximum difference 0.3901% at light 390 px, below the 1% budget; zero console errors and no horizontal overflow. |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and implementation contract untouched. |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual source/route review and blob update. |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed. |
+
+No active translation workspace, live model provider or non-loopback server was
+opened. The tested browser flow shows no `/pipeline` request from Work cards; the
+16-second idle interval also re-fetches only compact summaries and the active list.
+The full endpoint remains available on workspace detail pages. The Library source chip
+now says **active workspace** because Work's initial list no longer includes the
+archive. The original v33 asset remains unchanged.
+
 ## Source inspection correction (2026-09-22)
 
 Inspect now displays bounded real excerpts from distributed reading-order files.

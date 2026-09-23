@@ -40,6 +40,11 @@ export const pipelineSchema = z.object({ workspace_id: text, stage: text, active
   approved: z.boolean(), translation_complete: z.boolean(), sections: z.array(sectionSchema), config: configSchema,
   units: z.array(z.object({ id: text, chapter_id: text, status: text, passes: z.record(text, z.object({ checkpoint_state: text, retained_count: count,
     attempt_result: nullableText, failed_attempt_count: count })) })), publication: publicationSchema, actions: z.record(text, action) })
+export const pipelineSummarySchema = z.object({ workspace_id: text, stage: text, progress: workflowProgress,
+  analysis: z.object({ complete: z.boolean() }), approved: z.boolean(),
+  publication: z.object({ current: z.boolean(), last_failure: nullableText }),
+  actions: z.record(text, action), metadata: z.object({ lifecycle }), publishing: z.boolean(),
+  active_job: jobSchema.nullable(), last_job: jobSchema.nullable() })
 const note = z.object({ text, confidence: text.optional(), evidence: z.array(text).optional() })
 export const termSchema = z.object({ id: text, source: text, aliases: z.array(text), category: text, select: z.number(), custom: text,
   reviewed: z.boolean(), user_notes: text, meaning_notes: z.array(note),
@@ -85,6 +90,7 @@ export const lifecycleSchema = lifecycle
 export type Job = z.infer<typeof jobSchema>
 export type Envelope = z.infer<typeof eventSchema>
 export type Pipeline = z.infer<typeof pipelineSchema>
+export type PipelineSummary = z.infer<typeof pipelineSummarySchema>
 export type Section = z.infer<typeof sectionSchema>
 export type Workspace = z.infer<typeof workspaceSchema>
 export type Term = z.infer<typeof termSchema>

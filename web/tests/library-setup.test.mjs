@@ -195,7 +195,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       workspaces[0].active_job = null
       await page.getByRole('link', { name: 'Library', exact: true }).click()
       await page.locator('[data-source-id="book.epub"]').waitFor()
-      await page.getByText('1 workspace', { exact: true }).waitFor()
+      await page.getByText('1 active workspace', { exact: true }).waitFor()
       await page.locator('[data-source-id="book.epub"]').click()
       await page.getByRole('button', { name: 'Add to workspace' }).click()
       await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -203,7 +203,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       assert.equal(new URL(page.url()).pathname, '/work/workspaces/w-2')
       assert.equal(saves.length, 2)
       await page.getByRole('link', { name: 'Library', exact: true }).click()
-      await page.getByText('2 workspaces', { exact: true }).waitFor()
+      await page.getByText('2 active workspaces', { exact: true }).waitFor()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.locator('[data-source-id="book.epub"]').click()
       await page.getByRole('button', { name: 'Add to workspace' }).click()

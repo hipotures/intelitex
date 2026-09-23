@@ -3,12 +3,12 @@ import { useNavigate } from '@tanstack/react-router'
 import { Play, Square } from 'lucide-react'
 import { z } from 'zod'
 import { endpoint, useApi, request, reconcile, Scope, queryClient } from '../../api/client'
-import { jobSchema, pipelineSchema, workspacesSchema, type Workspace, type Pipeline } from '../../api/schema'
+import { jobSchema, pipelineSchema, workspacesSchema, type Workspace, type Pipeline, type PipelineSummary } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
 import { Button, ErrorNote } from '../../components/ui/common'
 import { useLive } from '../../realtime/coordinator'
-export function primaryAction(p: Pipeline) {
+export function primaryAction(p: Pipeline | PipelineSummary) {
   const active = p.active_job
   const publication = p.publishing || active?.last_event?.event.kind === 'publication_started'
   if (active?.state === 'starting') return { label: 'Starting…', allowed: false }
@@ -22,8 +22,8 @@ export function primaryAction(p: Pipeline) {
   if (p.actions.publish?.allowed) return { label: p.publication.last_failure ? 'Retry publish' : 'Publish', allowed: true, operation: 'publish' }
   return { label: p.publication.current ? 'Finished' : 'Unavailable', allowed: false }
 }
-export function Action({ workspace, pipeline, row = false }: { workspace: Workspace; pipeline?: Pipeline; row?: boolean }) {
-  const query = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared && !pipeline)
+export function Action({ workspace, pipeline, row = false }: { workspace: Workspace; pipeline?: Pipeline | PipelineSummary; row?: boolean }) {
+  const query = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared && !pipeline && !row)
   const command = useCommand(workspace.workspace_id)
   const [localError, setLocalError] = useState<unknown>(null)
   const [checking, setChecking] = useState(false)

@@ -77,6 +77,33 @@ def test_configured_setup_is_explicit_durable_and_allows_multiple_workspaces(api
         service.save_setup({**setup, 'request_key': 'setup-request-2222222222'})
 
 
+def test_workspace_list_filter_skips_archived_book_reads(api, monkeypatch):
+    app, root, service, server = api
+    original_book = app.web.book
+    reads = []
+
+    def counted_book(path):
+        reads.append(path)
+        return original_book(path)
+
+    monkeypatch.setattr(app.web, 'book', counted_book)
+    assert request(server, 'GET', '/api/workspaces?archived=false')[0] == 200
+    assert reads == [root], 'legacy source linkage and metadata must share one validated book'
+    revision = app.web.lifecycle(root)['revision']
+    service.archive('book', {'revision': revision})
+    reads.clear()
+    code, active = request(server, 'GET', '/api/workspaces?archived=false')
+    assert code == 200 and active['workspaces'] == []
+    assert reads == [], 'the Work page must not validate archived source plans'
+    code, archived = request(server, 'GET', '/api/workspaces?archived=true')
+    assert code == 200 and [w['workspace_id'] for w in archived['workspaces']] == ['book']
+    assert reads == [root]
+    assert request(server, 'GET', '/api/workspaces')[1]['workspaces'][0]['workspace_id'] == 'book'
+    for path in ('/api/workspaces?archived=1', '/api/workspaces?archived=false&other=x',
+                 '/api/workspaces?archived=false&archived=true'):
+        assert request(server, 'GET', path)[0] == 400
+
+
 def test_prepare_retry_accepts_only_the_empty_lock_left_by_a_failed_draft_import(api):
     _, root, service, _ = api
     source = service.imports.root / 'retry-book'

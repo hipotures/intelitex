@@ -53,8 +53,9 @@ class WorkflowQueries:
     def pipeline(self, root: Path, *, busy: bool = False) -> dict:
         return self.pipeline_with_evidence(root, busy=busy)[0]
 
-    def pipeline_with_evidence(self, root: Path, *, busy: bool = False) -> tuple[dict, dict, object, dict]:
-        """Build one authoritative snapshot and retain its validated inputs for the HTTP projection."""
+    def pipeline_with_evidence(self, root: Path, *, busy: bool = False,
+                               include_usage: bool = True) -> tuple[dict, dict, object, dict]:
+        """Build a checkpoint-validated snapshot; omit attempt history for compact summaries."""
         files = self.dependencies.files
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
@@ -63,8 +64,8 @@ class WorkflowQueries:
             book = effective_book(source_book, root, config=config)
             analyzed, approved = bool(store.get('analysis_done')), approval_current(store, files)
             plan = files.read_json(root / 'analysis_plan.json') if files.is_file(root / 'analysis_plan.json') else []
-            usage_report = usage_by_unit_report(root, book=source_book, plan=plan)
-            usage = {unit.unit_id: unit for unit in usage_report.units}
+            usage_report = usage_by_unit_report(root, book=source_book, plan=plan) if include_usage else None
+            usage = {unit.unit_id: unit for unit in usage_report.units} if usage_report else {}
             analysis = []
             for unit in plan:
                 receipt = store.get('analysis:' + unit['id'])

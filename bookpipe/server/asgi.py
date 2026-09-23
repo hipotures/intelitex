@@ -109,7 +109,7 @@ def create_app(service, allowed_hosts, *, frontend=None):
             if path == 'api/events' and request.method == 'GET':
                 return await stream(request, service)
             if path.startswith('api/') or path == 'api':
-                if request.url.query and not (path == 'api/library' and request.method == 'GET'):
+                if request.url.query and not (path in {'api/library', 'api/workspaces'} and request.method == 'GET'):
                     raise ValueError('Unexpected query parameters.')
                 parts = [unquote(part) for part in request.scope['raw_path'].decode('ascii').split('/')[1:]]
                 if request.method == 'GET' and len(parts) == 5 and parts[:2] == ['api', 'workspaces'] and parts[3:] == ['publication', 'download']:

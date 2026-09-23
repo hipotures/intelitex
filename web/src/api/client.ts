@@ -10,6 +10,7 @@ export const matchesWorkspaceResource = (path: string, workspace: string) => {
   const base = endpoint(workspace)
   return path === base || path.startsWith(`${base}/`)
 }
+export const isWorkspaceList = (path: string) => path === '/api/workspaces' || path.startsWith('/api/workspaces?')
 export async function request<T>(path: string, schema: z.ZodType<T>, options: { signal?: AbortSignal; method?: string; body?: unknown } = {}): Promise<T> {
   let response: Response
   try {
@@ -39,5 +40,5 @@ export function useApi<T>(path: string, schema: z.ZodType<T>, enabled = true) {
   return useQuery({ queryKey: [scope, path], queryFn: ({ signal }) => request(path, schema, { signal }), enabled })
 }
 export async function reconcile(workspace?: string) {
-  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || matchesWorkspaceResource(String(q.queryKey[1]), workspace) || ['/api/workspaces', '/api/jobs'].includes(String(q.queryKey[1]))) })
+  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || matchesWorkspaceResource(String(q.queryKey[1]), workspace) || isWorkspaceList(String(q.queryKey[1])) || String(q.queryKey[1]) === '/api/jobs') })
 }

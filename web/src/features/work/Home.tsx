@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { endpoint, useApi, reconcile, queryClient, request, Scope } from '../../api/client'
-import { libraryPageSchema, lifecycleSchema, pipelineSchema, workspacesSchema, type LibraryPage, type Workspace } from '../../api/schema'
+import { libraryPageSchema, lifecycleSchema, pipelineSummarySchema, workspacesSchema, type LibraryPage, type Workspace } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Button, Cover, Empty, ErrorNote, Overlay } from '../../components/ui/common'
 import { announce } from '../../app/notifications'
@@ -19,7 +19,7 @@ function libraryPageLimit(grid: HTMLDivElement | null, loaded = 0) {
 }
 
 export function WorkspaceRow({ workspace }: { workspace: Workspace }) {
-  const p = useApi(endpoint(workspace.workspace_id, 'pipeline'), pipelineSchema, workspace.prepared)
+  const p = useApi(endpoint(workspace.workspace_id, 'summary'), pipelineSummarySchema, workspace.prepared)
   return <div className="workspace-row" {...debugTag('WRC', workspace.workspace_id)} onClick={e => { if (!(e.target as HTMLElement).closest('button,a')) e.currentTarget.querySelector<HTMLAnchorElement>('a')?.click() }}>
     <Cover title={workspace.metadata.title} />
     <div><Link className="workspace-title" to="/work/workspaces/$workspaceId" params={{ workspaceId: workspace.workspace_id }}>{workspace.metadata.title}</Link>{workspace.metadata.label && <div className="workspace-label">{workspace.metadata.label}</div>}<div className="workspace-author">{workspace.metadata.creators.join(', ') || '—'} · {workspace.metadata.source_language ?? workspace.metadata.language ?? 'Source language unconfirmed'} → {workspace.metadata.target_language ?? 'target unknown'}</div></div>
@@ -29,7 +29,7 @@ export function WorkspaceRow({ workspace }: { workspace: Workspace }) {
   </div>
 }
 export function Home() {
-  const workspaces = useApi('/api/workspaces', workspacesSchema)
+  const workspaces = useApi('/api/workspaces?archived=false', workspacesSchema)
   const command = useCommand()
   const scope = useContext(Scope)
   const libraryGrid = useRef<HTMLDivElement>(null)
@@ -38,6 +38,7 @@ export function Home() {
     initialPageParam: null as string | null, getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: false, staleTime: Infinity })
   const [archive, setArchive] = useState(false)
+  const archivedWorkspaces = useApi('/api/workspaces?archived=true', workspacesSchema, archive)
   const [refreshingLibrary, setRefreshingLibrary] = useState(false)
   const [refreshError, setRefreshError] = useState<unknown>(null)
   const [sourceDetails, setSourceDetails] = useState<LibraryPage['sources'][number] | null>(null)
@@ -57,8 +58,8 @@ export function Home() {
     observer.observe(moreSources.current)
     return () => observer.disconnect()
   }, [hasNextPage, loadingLibrary, libraryFailed, refreshingLibrary, fetchNextPage, libraryData])
-  const active = workspaces.data?.workspaces.filter(w => !w.metadata.lifecycle.archived) ?? []
-  const archived = workspaces.data?.workspaces.filter(w => w.metadata.lifecycle.archived) ?? []
+  const active = workspaces.data?.workspaces ?? []
+  const archived = archivedWorkspaces.data?.workspaces ?? []
   const sources = libraryData?.pages.flatMap(page => page.sources) ?? []
   const configured = libraryData?.pages[0]?.configured
   const libraryError = refreshError ?? library.error
@@ -80,14 +81,14 @@ export function Home() {
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
     <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions"><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
       {libraryError && <div className="notice error" role="alert"><span>{libraryError instanceof Error ? libraryError.message : 'Unable to load Library.'} {libraryData && 'Showing the last successful Library contents.'}</span><Button onClick={() => { if (libraryFailed && libraryData && hasNextPage) void fetchNextPage(); else void refreshLibrary() }} disabled={refreshingLibrary || loadingLibrary}>Retry Library refresh</Button></div>}
-      <div className="library-grid" ref={libraryGrid}>{sources.map(source => { const linked = workspaces.data?.workspaces.filter(workspace => workspace.source_id === source.source_id).length ?? 0; return <button className="book-card" data-source-id={source.source_id} {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => setSourceDetails(source)} aria-label={`Open ${source.title}`}><Cover title={source.title} large /><div className="book-meta"><div className="book-name">{source.title}</div><div className="book-detail"><span>{source.creators.join(', ') || '—'}</span>{linked > 0 && <span className="workspace-chip">{linked} {linked === 1 ? 'workspace' : 'workspaces'}</span>}</div></div></button> })}</div>
+      <div className="library-grid" ref={libraryGrid}>{sources.map(source => { const linked = workspaces.data?.workspaces.filter(workspace => workspace.source_id === source.source_id).length ?? 0; return <button className="book-card" data-source-id={source.source_id} {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => setSourceDetails(source)} aria-label={`Open ${source.title}`}><Cover title={source.title} large /><div className="book-meta"><div className="book-name">{source.title}</div><div className="book-detail"><span>{source.creators.join(', ') || '—'}</span>{linked > 0 && <span className="workspace-chip">{linked} active {linked === 1 ? 'workspace' : 'workspaces'}</span>}</div></div></button> })}</div>
       <div ref={moreSources} className="library-load-more" aria-hidden="true" />
       {!sources.length && !libraryData && !loadingLibrary && !refreshingLibrary && !libraryError && <Empty>Scroll here to discover source books, or select Refresh.</Empty>}
       {!sources.length && libraryData && !libraryError && <Empty>{!configured ? 'Source library is not configured' : 'No source books found'}</Empty>}</section>
-    {archive && <Overlay drawer title="Archive" eyebrow="Workspaces" debugId="ARD" close={() => setArchive(false)}><div className="drawer-body"><p className="subtitle">Completed or parked workspaces stay available here.</p><div className="archive-list">{archived.map(w => <div className="archive-item" {...debugTag('ARI', w.workspace_id)} key={w.workspace_id}><div><strong>{w.metadata.title}</strong><ArchivedProgress workspace={w} /></div><Button disabled={command.disabled} onClick={async () => { if (await command.send(endpoint(w.workspace_id, 'restore'), lifecycleSchema, { revision: w.metadata.lifecycle.revision })) { setArchive(false); announce('Workspace restored.') } }}>Restore</Button></div>)}</div>{!archived.length && <Empty>Archive is empty.</Empty>}<ErrorNote error={command.error} /></div></Overlay>}
+    {archive && <Overlay drawer title="Archive" eyebrow="Workspaces" debugId="ARD" close={() => setArchive(false)}><div className="drawer-body"><p className="subtitle">Completed or parked workspaces stay available here.</p><ErrorNote error={archivedWorkspaces.error} retry={() => void archivedWorkspaces.refetch()} /><div className="archive-list">{archived.map(w => <div className="archive-item" {...debugTag('ARI', w.workspace_id)} key={w.workspace_id}><div><strong>{w.metadata.title}</strong><ArchivedProgress workspace={w} /></div><Button disabled={command.disabled} onClick={async () => { if (await command.send(endpoint(w.workspace_id, 'restore'), lifecycleSchema, { revision: w.metadata.lifecycle.revision })) { setArchive(false); announce('Workspace restored.') } }}>Restore</Button></div>)}</div>{!archived.length && !archivedWorkspaces.isPending && !archivedWorkspaces.error && <Empty>Archive is empty.</Empty>}{archivedWorkspaces.isPending && <Empty>Loading archive…</Empty>}<ErrorNote error={command.error} /></div></Overlay>}
     {sourceDetails && <SourceDetails source={sourceDetails} close={() => setSourceDetails(null)} add={() => { setSetupSource(sourceDetails); setSourceDetails(null) }} />}
     {setupSource && <SetupWorkspace source={setupSource} close={() => setSetupSource(null)} />}
   </main>
 }
 
-function ArchivedProgress({workspace}:{workspace:Workspace}) { const p=useApi(endpoint(workspace.workspace_id,'pipeline'),pipelineSchema,workspace.prepared);const percent=p.data?.progress.percent ?? workspace.progress?.percent;return <div className="subtitle">Archived · {percent == null ? '—' : `${percent}%`} workflow progress</div> }
+function ArchivedProgress({workspace}:{workspace:Workspace}) { const p=useApi(endpoint(workspace.workspace_id,'summary'),pipelineSummarySchema,workspace.prepared);const percent=p.data?.progress.percent ?? workspace.progress?.percent;return <div className="subtitle">Archived · {percent == null ? '—' : `${percent}%`} workflow progress</div> }

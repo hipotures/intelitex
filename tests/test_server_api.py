@@ -109,6 +109,36 @@ def test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage(api,
     assert len(reads) == 1
 
 
+def test_work_card_summary_uses_checkpoint_truth_without_attempt_history(api, monkeypatch):
+    app, root, service, server = api
+    from bookpipe.application import workflow
+
+    def assert_summary():
+        expected = service.pipeline('book')
+        with monkeypatch.context() as patch:
+            patch.setattr(workflow, 'usage_by_unit_report', lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError('Work summary must not scan physical attempts')))
+            code, summary = request(server, 'GET', '/api/workspaces/book/summary')
+        assert code == 200
+        assert summary['stage'] == expected['stage']
+        assert summary['progress'] == expected['progress']
+        assert summary['actions'] == expected['actions']
+        assert summary['analysis']['complete'] == expected['analysis']['complete']
+        assert summary['approved'] == expected['approved']
+        assert summary['publication']['current'] == expected['publication']['current']
+        assert summary['publication']['last_failure'] == expected['publication']['last_failure']
+        assert 'sections' not in summary and 'units' not in summary
+        return summary
+
+    assert assert_summary()['stage'] == 'analysis'
+    analyze(root)
+    assert assert_summary()['stage'] == 'review'
+    approve(service)
+    assert assert_summary()['stage'] == 'translation'
+    translate(root)
+    assert assert_summary()['stage'] == 'publication'
+
+
 def test_pipeline_lifecycle_and_stale_approval(api):
     app, root, service, server = api
     first = service.pipeline('book')

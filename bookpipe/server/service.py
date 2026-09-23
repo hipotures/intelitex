@@ -62,15 +62,18 @@ class ServerService:
         return {'workspace_id': workspace_id, 'metadata': self.application.web.metadata(workspace.status.project), 'status': dto.status(workspace.status),
                 'active_job': active.public() if active else None}
 
-    def list_workspaces(self) -> list[dict]:
+    def list_workspaces(self, archived: bool | None = None) -> list[dict]:
         result = []
         imported = self.workspaces.list()
         for ident in imported:
             root = self.workspaces.resolve(ident)
+            if archived is not None and self.application.web.lifecycle(root)['archived'] != archived:
+                continue
             active = self.supervisor.active_for_project(root)
             from ..application.workspace_setup import read_workspace_setup
             setup = read_workspace_setup(root)
             source_id = setup.get('source_id')
+            book = None
             if source_id is None and self.imports.root is not None:
                 book = self.application.web.book(root)
                 path = Path(book.get('source_archive', book['source_root'])).resolve()
@@ -78,10 +81,12 @@ class ServerService:
                     source_id = path.name
             result.append({'workspace_id': ident, 'prepared': True,
                            **({'source_id': source_id} if source_id else {}),
-                           'metadata': self.application.web.metadata(root),
+                           'metadata': self.application.web.metadata(root, book=book),
                            'active_job': active.public() if active else None, 'last_job': self.last_job(ident)})
         for entry in self.catalog.entries():
             if entry['workspace_id'] not in imported:
+                if archived is not None and entry.get('archived', False) != archived:
+                    continue
                 active = self.supervisor.active_for_project(self.workspaces.root / entry['workspace_id'])
                 manifest = self.catalog.setup_metadata(entry['workspace_id'])
                 result.append({'workspace_id': entry['workspace_id'], 'source_id': entry['source_id'],
@@ -393,6 +398,31 @@ class ServerService:
                           publication_events and publication_events[-1]['event']['kind'] == 'publication_started'))
         return {'workspace_id': workspace_id, **result, 'publishing': publishing, 'busy': busy,
                 'active_job': active.public() if active else None, 'last_job': self.last_job(workspace_id)}
+
+    def pipeline_summary(self, workspace_id):
+        """Work-card state without scanning physical attempt history or section details."""
+        root = self.workspaces.resolve(workspace_id)
+        active = self.supervisor.active_for_project(root)
+        busy = active is not None or self.supervisor.owns_project(root)
+        result, book, _, _ = self.application.workflow.pipeline_with_evidence(
+            root, busy=busy, include_usage=False)
+        metadata = self.application.web.metadata(root, book=book)
+        if metadata['lifecycle']['archived']:
+            for value in result['actions'].values():
+                value.update(allowed=False, reason='workspace_archived')
+        events = self.supervisor.registry.recent_events(
+            workspace_root=self.supervisor.workspace_root, workspace_id=workspace_id,
+            job_id=active.job_id, limit=120) if active else []
+        publication_events = [event for event in events if event['event']['kind'].startswith('publication_')]
+        publishing = bool(active and (active.operation == 'publish' or
+                          publication_events and publication_events[-1]['event']['kind'] == 'publication_started'))
+        publication = dto.publication(result['publication'])
+        return {'workspace_id': workspace_id, 'stage': result['stage'], 'progress': result['progress'],
+                'analysis': {'complete': result['analysis']['complete']}, 'approved': result['approved'],
+                'publication': {'current': publication['current'], 'last_failure': publication['last_failure']},
+                'actions': result['actions'], 'metadata': {'lifecycle': metadata['lifecycle']},
+                'publishing': publishing, 'active_job': active.public() if active else None,
+                'last_job': self.last_job(workspace_id)}
 
     def settings(self, workspace_id):
         try:

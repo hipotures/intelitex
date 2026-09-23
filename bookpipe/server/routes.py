@@ -83,6 +83,8 @@ def dispatch(service, method, parts, body=None, query=None):
             ident, tail = parts[2], parts[3:]
             if tail == ['pipeline']:
                 return response(200, service.pipeline(ident))
+            if tail == ['summary']:
+                return response(200, service.pipeline_summary(ident))
             if tail in (['profiles'], ['settings']):
                 return response(200, service.settings(ident))
             if tail == ['review']:
@@ -98,7 +100,10 @@ def dispatch(service, method, parts, body=None, query=None):
         if parts == ["api", "health"]:
             return response(200, {"status": "ok"})
         if parts == ["api", "workspaces"]:
-            return response(200, {"workspaces": service.list_workspaces()})
+            if query is not None and (set(query) != {'archived'} or query['archived'] not in {'true', 'false'}):
+                raise ValueError('Invalid workspace filter.')
+            archived = None if query is None else query['archived'] == 'true'
+            return response(200, {"workspaces": service.list_workspaces(archived)})
         if len(parts) == 3 and parts[:2] == ["api", "workspaces"]:
             return response(200, service.workspace(parts[2]))
         if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "usage":

@@ -25,6 +25,16 @@ The CLI owns SIGINT/SIGTERM shutdown: it closes SSE and new-job admission, drain
 HTTP, then invokes the supervisor's bounded worker cancellation before closing the registry.
 No Node production server, reload worker, upload endpoint or CLI-output parser is used.
 
+Work home requests `GET /api/workspaces?archived=false`, so previously archived
+projects are not opened or validated on every list refresh. Its Archive drawer
+requests `?archived=true` only when opened. Prepared rows poll
+`GET /api/workspaces/{id}/summary`: Python derives stage, weighted progress, action
+gates and publication currency from validated book/checkpoint state but omits the
+physical-attempt history scan and section/detail projection. Opening a workspace
+still reads the full `/pipeline` snapshot. The existing unfiltered list route remains
+for other screens and compatibility. The two HTTP adapters share identical strict
+filter parsing; successful mutations invalidate both filtered lists.
+
 `state.sqlite3`, validated checkpoint receipts and atomic project JSON remain durable
 pipeline truth. Runtime jobs/events are execution history, not completion truth. Web
 metadata lives in `.intelitex-web.json` at the workspace root,

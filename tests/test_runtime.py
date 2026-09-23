@@ -100,6 +100,9 @@ def test_concurrency_conflict_and_isolated_cancellation(runtime):
     assert all(supervisor.get(job.job_id).state == "running" for job in jobs[1:])
     with project_lock(root / "a"):
         pass
+    # A terminal registry state can precede detached-child cleanup; ownership is
+    # intentionally retained until the supervisor finishes that cleanup.
+    wait_for(lambda: not supervisor.owns_project(root / "a"))
     resumed = supervisor.start(spec(root, "a"))
     running(supervisor, resumed)
 

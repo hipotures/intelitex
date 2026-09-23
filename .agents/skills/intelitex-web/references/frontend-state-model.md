@@ -11,6 +11,11 @@ Scope query keys by actual server context, workspace ID, resource and child ID.
 Evidence includes term ID; chapter includes chapter/book identity. Cancel/ignore
 obsolete results on navigation. Reuse current typed DTOs; runtime-validate wire data
 at one API adapter boundary. Missing metadata is unknown, not a fabricated default.
+Work home observes the active-only workspace list and the compact, backend-calculated
+summary for each prepared row. The Archive drawer observes the archived list only
+while open. A summary has authoritative stage/progress/actions but no attempt or
+section details; opening a workspace requests the full pipeline. Reconciliation
+must invalidate both filtered lists after a relevant mutation.
 
 Backend permissions drive commands. Frontend may format/group explicit facts but
 cannot invent workflow gates or widen a false action. A disabled control has a safe

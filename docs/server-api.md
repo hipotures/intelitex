@@ -16,9 +16,11 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | --- | --- | --- |
 | GET | `/api/health` | `{status:"ok"}` |
 | GET | `/api/capabilities` | `{import_enabled,review,reader,sse,multi_workspace}` booleans |
-| GET | `/api/workspaces` | `{workspaces:[{workspace_id,active_job}]}` |
+| GET | `/api/workspaces` | All prepared and draft workspaces; `{workspaces:[{workspace_id,prepared,metadata,active_job,last_job}]}` |
+| GET | `/api/workspaces?archived=false` or `?archived=true` | Active or archived workspaces only; excluded prepared projects are not opened or validated |
 | GET | `/api/workspaces/{id}` | `{workspace_id,status,active_job}` |
 | GET | `/api/workspaces/{id}/pipeline` | Pipeline snapshot below |
+| GET | `/api/workspaces/{id}/summary` | Compact checkpoint-validated stage, progress, action gates, publication currency and runtime job for Work cards; no section or physical-attempt details |
 | GET | `/api/workspaces/{id}/usage` | Retained usage by unit/pass/physical attempt |
 | GET | `/api/workspaces/{id}/profiles` | Sanitized effective settings (same as `/settings`) |
 | GET | `/api/workspaces/{id}/settings` | Settings schema below |

@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "5d3f4674d6978bf3003988dc152227ae04e9074b",
+  "inspected_commit": "3cb49a65fdc8deb1a1132a0f36dab35cf00b156a",
   "audit_date": "2026-09-23",
-  "audit_basis": "Manually re-audited the current worktree on the inspected commit for versioned P1 reset, Store-backed reset records and backup, project-operation recovery guard, legacy source reprepare verification, and shared HTTP/ASGI error mappings. Source hashes guard drift; full Python and offline browser regressions test behavior separately. Re-audited ASGI lifetime after the Ctrl-C regression: SSE closes first, a 30-second bounded HTTP drain precedes worker cancellation, and the adapter waits through the same bound.",
+  "audit_basis": "Manually re-audited the current worktree for active/archive workspace-list filtering and compact checkpoint-validated summary. ASGI and compatibility HTTP permit only the exact archived=true/false list query; shared dispatch rejects extra or duplicate fields. The summary uses ProjectReadScope, validates book/checkpoint/publication state, omits physical-attempt usage scan and section details, and has stage/progress/action parity tests at analysis, review, translation and publication. Existing source hashes guard drift, not runtime correctness; offline Python and browser regressions test behavior separately. The earlier P1 reset and bounded HTTP-drain audits remain applicable.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -12,7 +12,8 @@
       "ASGIServer",
       "ReprepareLocked error mapping",
       "AnalysisResetLocked error mapping",
-      "ASGIServer bounded HTTP drain"
+      "ASGIServer bounded HTTP drain",
+      "workspace-list query allowance"
     ],
     "bookpipe/server/__init__.py": [
       "serve",
@@ -24,12 +25,14 @@
       "library preflight and inspect routes",
       "workspace setup route",
       "workspace reprepare route",
-      "analysis-reset GET/POST routes"
+      "analysis-reset GET/POST routes",
+      "filtered workspace list and compact summary routes"
     ],
     "bookpipe/server/http.py": [
       "Handler",
       "ReprepareLocked error mapping",
-      "AnalysisResetLocked error mapping"
+      "AnalysisResetLocked error mapping",
+      "workspace-list query allowance"
     ],
     "bookpipe/server/service.py": [
       "ServerService",
@@ -48,7 +51,8 @@
       "analysis_reset_status",
       "reset_analysis",
       "last_job reset projection",
-      "legacy reprepare source resolution"
+      "legacy reprepare source resolution",
+      "active/archive list exclusion and compact summary projection"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -79,7 +83,8 @@
       "WorkflowQueries",
       "pipeline",
       "settings",
-      "pipeline_with_evidence"
+      "pipeline_with_evidence",
+      "compact summary without physical-attempt usage report"
     ],
     "bookpipe/application/review.py": [
       "approval_current",
@@ -237,15 +242,15 @@
     "tests/test_cli_entrypoint.py::test_ctrl_c_drains_inflight_http_request_without_cancelling_it"
   ],
   "source_blobs": {
-    "bookpipe/server/asgi.py": "f55e955b3780e0fd55ec57cacedd3b31d416f4d5",
+    "bookpipe/server/asgi.py": "91619b093062509249666b60cebb54a74986492e",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
-    "bookpipe/server/routes.py": "a32e17b534440531251902763eeb33169e93e382",
-    "bookpipe/server/http.py": "550e07a7d877fcf6e60bd4c50917fc31b4bb5f5b",
-    "bookpipe/server/service.py": "d78986df613dc003f8ab5c2ff363036a441da357",
+    "bookpipe/server/routes.py": "ec0784449732d07196cacb4228bbcf2f9235b6b2",
+    "bookpipe/server/http.py": "ab9ef33762631e7440c8b4d7d65231916a243ba0",
+    "bookpipe/server/service.py": "8107bcd1f9a80b56b5cde6bbfc311e826e87c381",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
     "bookpipe/application/catalog.py": "c48e64d755374b622ff60c6d219f543e2e66c327",
     "bookpipe/application/web.py": "3e394bace20db570c1b81c3a81edb84335a7b868",
-    "bookpipe/application/workflow.py": "eab2c6f4ecb4d38f68cdf1e1f3c1a242b5f2e031",
+    "bookpipe/application/workflow.py": "e18aae40550ad4285dc5dcafb9495aa85863c008",
     "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
     "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
     "bookpipe/application/publishing.py": "fbb703d308631918128d7d2581d10ac66c2c997f",
