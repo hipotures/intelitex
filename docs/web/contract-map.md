@@ -173,7 +173,9 @@ query still loading shows a disabled loading action, not another Prepare command
 The prepared Prepare detail screen offers `Rebuild` behind a confirmation
 that says section choices reset and the old plan is versioned. It is disabled after
 persisted P1 work and while a job owns the workspace; the backend rechecks all
-conditions. The Prepare detail layout narrows Source structure and shows an on-demand
+conditions. When disabled, the screen shows the snapshot reason, including an
+unlinked Library source, archived workspace, busy operation or unavailable connection.
+The Prepare detail layout narrows Source structure and shows an on-demand
 source preview beside it; the existing read-only section-preview API supplies the
 text, of which the UI displays at most the first 1 KiB of UTF-8. Metadata and checks
 remain below the preview. F/T/E choices are edited in this table after reading the
@@ -186,7 +188,10 @@ workspace with its original source directly inside the configured Library can al
 rebuild; the application verifies the imported file fingerprint before switching
 plans. An external or unlinked source remains ineligible.
 Analyse is labeled P1 whole-book analysis; it is explicitly
-Ready until an `analyze` job is active, avoiding an apparent running state.
+Ready until an `analyze` job is active, avoiding an apparent running state. Before
+the first running P1 job, saved plan or attempt, its phase tile is noninteractive
+and says to start P1 with the workspace `Run` action; while P1 runs or after it has
+saved details, the tile opens the diagnostic page.
 For F/T/E, the chosen mode appears immediately as pending local intent; no durable
 pipeline counts or readiness are inferred from it. A failed mutation clears the
 intent and shows the server error. The successful PATCH revision updates the

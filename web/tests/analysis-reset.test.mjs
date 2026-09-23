@@ -87,22 +87,32 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       assert.equal(await page.locator('.topbar').count(), 1, 'refresh has visible application chrome while connecting')
       await page.locator('[data-ui-debug-id="PAE"]').waitFor()
       await page.evaluate(() => window.testStream.emitSnapshot())
-      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor()
+      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor({ state: 'attached' })
       await page.getByText('P1 has not been started').waitFor()
       assert.equal(await page.locator('[data-ui-debug-id="PHM"]').count(), 0, 'unknown usage is not shown as four empty metrics')
       assert.equal(await page.getByRole('button', { name: 'Clear P1' }).count(), 0, 'no fake reset for an empty P1')
       await page.screenshot({ path: '/tmp/intelitex-analysis-reset-evidence/empty-dark-1440.png', animations: 'disabled' })
       await page.getByRole('button', { name: 'Return to workspace' }).click()
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
+      const unopenedP1 = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
+      assert.equal(await unopenedP1.isDisabled(), true, 'empty P1 has no detail page to open from the phase rail')
+      assert.equal(await unopenedP1.getAttribute('title'), 'Start P1 with Run to view analysis details.')
+      assert.equal(await unopenedP1.locator('.phase-sub').textContent(), 'Start P1 with Run')
+      assert.equal(await page.getByRole('button', { name: 'Run', exact: true }).isEnabled(), true,
+        'disabling the empty detail tile does not block the primary P1 action')
 
       pipeline.analysis = { complete: false, membership_locked: true, planned: true,
         units: [{ id: 'ch0001_a001', chapter_id: 'ch0001', state: 'pending', attempt_result: 'failed', failed_attempt_count: 1 }] }
       pipeline.progress.analysis.required = 1
       reset.revision = 'p1-planned'; reset.has_data = true
-      await page.goto('http://localhost/work/workspaces/w-1/analyse')
+      await page.reload()
+      await page.locator('[data-ui-debug-id="WSP"]').waitFor()
+      const savedP1 = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
+      assert.equal(await savedP1.isEnabled(), true, 'saved P1 work opens its diagnostic detail')
+      await savedP1.click()
       await page.locator('[data-ui-debug-id="PAC"]').getByRole('button', { name: 'Clear P1' }).waitFor()
       await page.evaluate(() => window.testStream.emitSnapshot())
-      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor()
+      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor({ state: 'attached' })
       await page.getByRole('button', { name: 'Clear P1' }).click()
       await page.locator('[data-ui-debug-id="PRM"]').waitFor()
       assert.equal(resetPosts, 0, 'opening confirmation does not mutate P1')

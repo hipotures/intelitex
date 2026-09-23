@@ -28,6 +28,11 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
   const selected = pipeline.sections.find(section => section.id === selectedId)
   const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selected?.id ?? '')}/0`), previewSchema, !!selected)
   const excerpt = preview.data ? prepareExcerpt(preview.data.blocks) : null
+  const rebuildUnavailable = pipeline.metadata.lifecycle.archived ? 'Restore this workspace before rebuilding Prepare.'
+    : pipeline.busy ? 'Wait for the current workspace operation to finish before rebuilding Prepare.'
+    : pipeline.analysis.membership_locked ? 'P1 has saved work. Clear P1 in Analyse first if the backend permits it.'
+    : !workspace?.source_id ? 'This workspace is not linked to its original Library source, so Prepare cannot rebuild it.'
+    : commandDisabled ? 'Wait for the current change or reconnect to the server before rebuilding Prepare.' : null
 
   return <div className="phase-detail-grid prepare-detail-grid">
     <div className="phase-detail-stack">
@@ -73,9 +78,8 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
         {preparation?.unavailable && <p className="subtitle">{preparation.unavailable}</p>}
         <p className="subtitle">Reading order: {preparation?.reading_order?.replaceAll('_', ' ') ?? '—'}</p>
         <div className="prepare-rerun"><p className="subtitle">Rebuild the source sections in this workspace. The previous plan is kept in versioned history; section F/T/E choices must be reviewed again.</p>
-          <div className="prepare-rerun-actions"><Button variant="primary" disabled={!canReprepare || commandDisabled} onClick={onReprepare}>{pipeline.active_job?.operation === 'import' ? 'Rebuilding…' : 'Rebuild'}</Button></div>
-          {pipeline.analysis.membership_locked && <p className="subtitle">P1 has persisted work, so this plan cannot be replaced in place.</p>}
-          {!workspace?.source_id && <p className="subtitle">This workspace has no saved Library source for another Prepare.</p>}
+          <div className="prepare-rerun-actions"><Button variant="primary" disabled={!canReprepare || commandDisabled} title={rebuildUnavailable ?? undefined} aria-describedby={rebuildUnavailable ? 'prepare-rebuild-reason' : undefined} onClick={onReprepare}>{pipeline.active_job?.operation === 'import' ? 'Rebuilding…' : 'Rebuild'}</Button></div>
+          {rebuildUnavailable && <p id="prepare-rebuild-reason" className="subtitle">{rebuildUnavailable}</p>}
           {pipeline.last_job?.operation === 'import' && pipeline.last_job.state === 'failed' && <p className="subtitle">The rebuild failed. The previous source plan remains available.</p>}
         </div>
       </Panel>

@@ -293,6 +293,7 @@
     .phase.active { border-color:var(--accent);background:var(--accent-soft); }
     .phase.done { background:var(--green-soft); }
     .phase.blocked { opacity:.55; }
+    .phase.unopened { opacity:.72; }
     .phase.error { background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 45%,transparent); }
     .phase-top { display:flex;align-items:center;gap:8px;min-width:0; }
     .phase-icon { width:20px;height:20px;border-radius:50%;border:2px solid var(--line-strong);display:grid;place-items:center;font-size:11px;flex:0 0 auto;color:var(--text-dim); }

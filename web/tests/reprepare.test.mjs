@@ -132,9 +132,9 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       await page.goto('http://localhost/work/workspaces/w-1')
       await page.locator('[data-ui-debug-id="SCT"]').waitFor()
       await page.evaluate(() => window.testStream.emitSnapshot())
-      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor()
+      await page.getByRole('status').filter({ hasText: 'Live' }).waitFor({ state: 'attached' })
       await page.getByText('Analyse · P1').waitFor()
-      await page.getByText('Ready to start · whole book').waitFor()
+      await page.getByText('Start P1 with Run').waitFor()
       assert.equal(await page.locator('.processing-switch').count(), 0, 'workspace Processing is read-only')
       assert.equal(await page.locator('[data-ui-debug-id="SCT"] .processing-readonly').first().textContent(), 'F',
         'overview shows one compact Processing letter, not F plus Full')
@@ -222,6 +222,14 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         table.parentElement.scrollWidth > table.parentElement.clientWidth), false,
       'all four Prepare columns fit at a 390px viewport')
       assert.equal(expectedConflictConsole, 1, 'only the intentionally tested 409 appears in console')
+      pipeline.active_job = null; pipeline.busy = false
+      workspaces.workspaces[0].active_job = null
+      delete workspaces.workspaces[0].source_id
+      await page.goto('http://localhost/work/workspaces/w-1/prepare')
+      await page.locator('[data-ui-debug-id="PCK"]').waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Rebuild', exact: true }).isDisabled(), true)
+      await page.getByText('This workspace is not linked to its original Library source, so Prepare cannot rebuild it.').waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Rebuild', exact: true }).getAttribute('aria-describedby'), 'prepare-rebuild-reason')
       assert.deepEqual(errors, [])
       assert.deepEqual(failed, [])
     } finally { await page.close() }

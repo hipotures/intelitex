@@ -49,8 +49,10 @@ local mock route objects; actual typed route names are in the supplied implement
 contract section 3. Map to existing equivalent routes once rather than create duplicates.
 Never confuse browser routes with /api endpoints.
 
-All unblocked phase tiles navigate; blocked links expose prerequisites, never execute
-on entry. Source preview is a right drawer. Settings/archive confirmation are dialogs.
+Phase tiles with saved details navigate; Analyse stays noninteractive until P1 is
+running or has a saved plan or attempt, while the workspace Run action starts P1.
+Blocked links expose prerequisites and never execute on entry. Source preview is a right drawer.
+Settings/archive confirmation are dialogs.
 Work/Reader remember independent locations. One active overlay, accessible focus/return,
 Escape/scrim behavior, no unnoticed draft loss. Table controls stop row-click propagation.
 
