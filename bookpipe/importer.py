@@ -225,6 +225,43 @@ def _semantic_lower_heading(block: dict) -> bool:
     return label in {"prologue", "epilogue", "about the author"} or _numbered_chapter_label(label)
 
 
+def _opening_label(blocks: list[dict], metadata: dict) -> str | None:
+    """Use an explicit opening label when a converter made the filename the only title."""
+    first = _structure_title(blocks[0]["text"])
+    if not first:
+        return None
+    if (first.casefold().startswith("this book is a work of fiction") or
+            any("copyright ©" in _structure_title(block["text"]).casefold()
+                for block in blocks[:2])):
+        return "Copyright"
+    contents = re.fullmatch(r"(.{2,80})\s+Contents", first, re.I)
+    if contents:
+        return f"{contents.group(1)} · Contents"
+    if first.casefold() in {"contents", "cast of characters", "principal characters", "prologue", "epilogue", "timeline"}:
+        return first
+    if re.fullmatch(r"Part\s+\d+\s*:\s*[^.]{1,70}", first, re.I):
+        if len(blocks) > 1:
+            second = _structure_title(blocks[1]["text"])
+            if re.fullmatch(r"\d{1,3}", second):
+                return f"{first} · Chapter {second}"
+        return first
+    if re.fullmatch(r"\d{1,3}", first):
+        return f"Chapter {first}"
+    if _numbered_chapter_label(first):
+        return first
+    creator_names = {str(name).casefold() for name in metadata.get("creators", [])}
+    if first.isupper() and len(first) <= 70 and creator_names:
+        pieces = []
+        for block in blocks[:5]:
+            part = _structure_title(block["text"])
+            if part.casefold() in creator_names or not part.isupper() or len(part) > 70:
+                break
+            pieces.append(part)
+        if len(pieces) > 1 and 5 <= len(" ".join(pieces)) <= 80:
+            return " ".join(pieces)
+    return None
+
+
 def _extract_document(raw: bytes, *, encoding: str | None = None,
                       chapter_selector: str | None = None):
     """Extract readable blocks plus conservative literary-structure hints.
@@ -486,6 +523,7 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
 
         toc = [e for e in metadata["toc"] if e["file"] == relative]
         file_label = next((e["label"] for e in toc if not e["anchor"]), None)
+        opening_label = _opening_label(blocks, metadata) if not file_label else None
         current = None
         for block in blocks:
             matching = next((e for e in toc if e["anchor"] and e["anchor"] in block["anchors"]), None)
@@ -512,7 +550,7 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
                     label = _structure_title(block["text"])
                     structure = "major_section" if major_boundary and not heading_boundary else "heading"
                 else:
-                    label = file_label or path.stem
+                    label = file_label or opening_label or path.stem
                     structure = "file_section"
                 current = {
                     "title": label,

@@ -4,6 +4,7 @@ import { previewSchema, type Pipeline, type Section, type Workspace } from '../.
 import { Button, Empty, ErrorNote, Panel } from '../../components/ui/common'
 import { useConnection } from '../../realtime/coordinator'
 import { prepareExcerpt } from './prepareExcerpt'
+import { sectionTitles } from './sectionTitles'
 
 const shortTypes: Record<string, string> = {
   narrative: 'Narr.', contents: 'Contents', glossary: 'Gloss.', footnotes: 'Notes',
@@ -28,6 +29,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const connection = useConnection()
   const selected = pipeline.sections.find(section => section.id === selectedId)
+  const displayedTitles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selected?.id ?? '')}/0`), previewSchema, !!selected)
   const excerpt = preview.data ? prepareExcerpt(preview.data.blocks) : null
   const rebuildUnavailable = pipeline.metadata.lifecycle.archived ? 'Restore this workspace before rebuilding Prepare.'
@@ -45,7 +47,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
           <colgroup><col className="prepare-section-col" /><col className="prepare-type-col" /><col className="prepare-processing-col" /><col className="prepare-p1-col" /></colgroup>
           <thead><tr><th>Section</th><th>Content type</th><th>Processing</th><th>P1</th></tr></thead>
           <tbody>{pipeline.sections.map(section => {
-            const name = section.title || section.fallback_excerpt || 'Untitled section'
+            const name = displayedTitles.get(section.id) ?? 'Untitled section'
             const type = section.content_type.replaceAll('_', ' ')
             const pending = pendingProcessing?.sectionId === section.id ? pendingProcessing : null
             const displayedMode = pending?.mode ?? section.processing
@@ -66,7 +68,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
           <div id="prepare-source-preview" className="prepare-source-preview">
             {!selected ? <Empty>Select a section to read the first 1 KiB of its source text.</Empty> : <>
               <div className="prepare-preview-kicker">Section {String(selected.ordinal).padStart(2, '0')} · first 1 KiB</div>
-              <h3 title={selected.title ?? undefined}>{selected.title || selected.fallback_excerpt || 'Untitled section'}</h3>
+              <h3 title={selected.title ?? undefined}>{displayedTitles.get(selected.id) ?? 'Untitled section'}</h3>
               <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
               {preview.isPending ? <p className="subtitle" role="status">Loading source text…</p> :
                 excerpt?.text ? <div className="prepare-preview-text">{excerpt.text}</div> :

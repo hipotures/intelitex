@@ -826,6 +826,42 @@ def test_auto_import_recognizes_numbered_h4_chapters_inside_spine_files(tmp_path
     assert imported == extracted
 
 
+def test_auto_import_uses_opening_labels_in_split_files_without_heading_tags(tmp_path):
+    source = tmp_path / 'split_epub'
+    source.mkdir()
+    documents = {
+        'split_001.html': '<p>This book is a work of fiction.</p><p>Copyright © 2000.</p>',
+        'split_002.html': '<p>Contents</p><p>Chapter 1</p>',
+        'split_003.html': '<p>THE</p><p>RIVER</p><p>BOOK</p><p>ADA WRITER</p>',
+        'split_004.html': '<p><strong>The River Book<br/>Contents</strong></p><p>Chapter 1</p>',
+        'split_005.html': '<p><strong>Part 1: Dawn</strong></p><p><strong>1</strong></p><p>Opening prose.</p>',
+        'split_006.html': '<p><strong>2</strong></p><p>Next prose.</p>',
+    }
+    for name, content in documents.items():
+        (source / name).write_text(content)
+    (source / 'content.opf').write_text(
+        '<package><metadata><title>River Book</title><creator>Ada Writer</creator></metadata><manifest>'
+        + ''.join(f'<item id="f{i}" href="{name}" media-type="application/xhtml+xml"/>'
+                  for i, name in enumerate(documents))
+        + '</manifest><spine>'
+        + ''.join(f'<itemref idref="f{i}"/>' for i in range(len(documents)))
+        + '</spine></package>')
+    with Display(True) as ui:
+        book = import_folder(source, tmp_path / 'prepared', lambda text: (len(text) + 3) // 4,
+                             {'whole_section_char_limit': 10000}, ui)
+    labels = {section['source_file']: section['title']
+              for section in [*book['chapters'], *book['non_narrative_sections']]}
+    assert labels == {
+        'split_001.html': 'Copyright',
+        'split_002.html': 'Contents',
+        'split_003.html': 'THE RIVER BOOK',
+        'split_004.html': 'The River Book · Contents',
+        'split_005.html': 'Part 1: Dawn · Chapter 1',
+        'split_006.html': 'Chapter 2',
+    }
+    assert len([*book['chapters'], *book['non_narrative_sections']]) == len(documents)
+
+
 def test_large_scene_is_never_size_split(tmp_path):
     source = tmp_path / "src_large"
     source.mkdir()

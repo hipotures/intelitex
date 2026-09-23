@@ -175,6 +175,21 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       await page.locator('[data-ui-debug-id="PVD"]').getByRole('button', { name: 'Close' }).click()
       previewReads = 0
       await page.getByRole('button', { name: /Prepare.*Source structure frozen/ }).click()
+      await page.setViewportSize({ width: 1920, height: 1080 })
+      const prepareWidth = await page.locator('main.phase-detail-page').evaluate(element => element.getBoundingClientRect().width)
+      assert.ok(Math.abs(prepareWidth - 1520) < 2, 'Prepare uses the same desktop width as Workspace')
+      const structureHeight = await page.locator('.prepare-structure-scroll').evaluate(element => {
+        const body = element.querySelector('tbody'), row = body.querySelector('tr')
+        const extras = Array.from({ length: 100 }, () => row.cloneNode(true))
+        body.append(...extras)
+        const result = { height: element.clientHeight, hasInnerScroll: element.scrollHeight > element.clientHeight + 1 }
+        extras.forEach(extra => extra.remove())
+        return result
+      })
+      assert.ok(structureHeight.height > 1000 && !structureHeight.hasInnerScroll,
+        'a long source structure grows with the page instead of getting an inner vertical scrollbar')
+      await page.screenshot({ path: `${output}/prepare-dark-1920.png`, animations: 'disabled' })
+      await page.setViewportSize({ width: 1440, height: 1000 })
       assert.equal(previewReads, 0, 'Prepare does not fetch source text before selection')
       const metadataTop = () => page.locator('[data-ui-debug-id="PSM"]').evaluate(element =>
         element.getBoundingClientRect().top + window.scrollY)
