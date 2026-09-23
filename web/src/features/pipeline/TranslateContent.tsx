@@ -63,6 +63,12 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
       (pipeline.last_job?.job_id === startedTarget.jobId && ['succeeded', 'failed', 'cancelled', 'abandoned'].includes(pipeline.last_job.state)))
   const working = activeTarget ?? (!startedFinished ? startedTarget : null)
   const attempt = activeEvent?.event.values.attempt_number ?? active?.last_event?.event.values.attempt_number
+  const failedJob = pipeline.last_job?.operation === 'translate' && pipeline.last_job.state === 'failed' && !pipeline.busy
+    ? pipeline.last_job : null
+  const failureTime = failedJob?.finished_at ? new Date(failedJob.finished_at).toLocaleString() : null
+  const failureDetail = failedJob?.error?.message
+  const knownFailure = failureDetail && failureDetail !== 'Operation failed; inspect locally.'
+  const localPasses = passNumbers.filter(number => profiles?.resolved_passes[String(number)]?.provider === 'llamacpp')
   const selectedSection = unit ? sections.get(unit.chapter_id) : undefined
 
   async function startTarget() {
@@ -117,8 +123,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   }
 
   return <div className="translate-content">
-    {pipeline.last_job?.operation === 'translate' && pipeline.last_job.state === 'failed' && !pipeline.busy &&
-      <div className="notice error" role="alert">{pipeline.last_job.error?.message ?? 'The last translation job failed.'} Saved passes remain available. Review the affected chunk before another paid run.</div>}
+    {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : 'This older job did not record a detailed reason.'} Saved passes remain available.{localPasses.length > 0 && !knownFailure ? ` P${localPasses.join(', P')} use the local llama.cpp profile; start that server before running those passes.` : ''}</div>}
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <Panel debugId="PTS" title="Pass summary"><div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Default profile</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{passNumbers.map(number => {
       const profile = profiles?.resolved_passes[String(number)]
