@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { endpoint, useApi } from '../../api/client'
 import { previewSchema, type Pipeline, type Section, type Workspace } from '../../api/schema'
 import { Button, Empty, ErrorNote, Panel } from '../../components/ui/common'
@@ -23,11 +23,29 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
   onReprepare: () => void
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const rightStack = useRef<HTMLDivElement>(null)
   const connection = useConnection()
   const selected = pipeline.sections.find(section => section.id === selectedId)
   const displayedTitles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selected?.id ?? '')}/0`), previewSchema, !!selected)
   const excerpt = preview.data ? prepareExcerpt(preview.data.blocks) : null
+  useLayoutEffect(() => {
+    const stack = rightStack.current
+    if (!stack) return
+    const updateTop = () => {
+      const top = stack.getBoundingClientRect().top + window.scrollY
+      stack.style.setProperty('--prepare-right-top', `${top}px`)
+    }
+    const observer = new ResizeObserver(updateTop)
+    const main = stack.closest('main')
+    if (main) observer.observe(main)
+    window.addEventListener('resize', updateTop)
+    updateTop()
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateTop)
+    }
+  }, [])
   const rebuildUnavailable = pipeline.metadata.lifecycle.archived ? 'Restore this workspace before rebuilding Prepare.'
     : pipeline.busy ? 'Wait for the current workspace operation to finish before rebuilding Prepare.'
     : pipeline.analysis.membership_locked ? 'P1 has saved work. Clear P1 in Analyse first if the backend permits it.'
@@ -59,21 +77,19 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
         <ErrorNote error={processingError} />
       </Panel>
     </div>
-    <div className="phase-detail-stack">
-      <div>
-        <Panel debugId="PPR" title="Source preview">
-          <div id="prepare-source-preview" className="prepare-source-preview">
-            {!selected ? <Empty>Select a section to read the first 1 KiB of its source text.</Empty> : <>
-              <div className="prepare-preview-kicker">Section {String(selected.ordinal).padStart(2, '0')} · first 1 KiB</div>
-              <h3 title={selected.title ?? undefined}>{displayedTitles.get(selected.id) ?? 'Untitled section'}</h3>
-              <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
-              {preview.isPending ? <p className="subtitle" role="status">Loading source text…</p> :
-                excerpt?.text ? <div className="prepare-preview-text">{excerpt.text}</div> :
-                  !preview.error && <Empty>No source text in this section.</Empty>}
-            </>}
-          </div>
-        </Panel>
-      </div>
+    <div className="phase-detail-stack prepare-right-stack" ref={rightStack}>
+      <Panel debugId="PPR" title="Source preview">
+        <div id="prepare-source-preview" className="prepare-source-preview">
+          {!selected ? <Empty>Select a section to read the first 1 KiB of its source text.</Empty> : <>
+            <div className="prepare-preview-kicker">Section {String(selected.ordinal).padStart(2, '0')} · first 1 KiB</div>
+            <h3 title={selected.title ?? undefined}>{displayedTitles.get(selected.id) ?? 'Untitled section'}</h3>
+            <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
+            {preview.isPending ? <p className="subtitle" role="status">Loading source text…</p> :
+              excerpt?.text ? <div className="prepare-preview-text">{excerpt.text}</div> :
+                !preview.error && <Empty>No source text in this section.</Empty>}
+          </>}
+        </div>
+      </Panel>
       <Panel debugId="PSM" title="Source metadata"><dl className="phase-kv"><dt>Title</dt><dd>{pipeline.metadata.title}</dd><dt>Author</dt><dd>{pipeline.metadata.creators.join(', ') || 'Not recorded'}</dd><dt>Source language</dt><dd>{pipeline.metadata.source_language ?? pipeline.metadata.language ?? 'Not recorded'}</dd><dt>{workspace?.source_id ? 'Library source' : 'Import folder'}</dt><dd>{workspace?.source_id ?? pipeline.preparation.source_id}</dd></dl></Panel>
       <Panel debugId="PCK" title="Checks">
         {(preparation?.checks ?? []).map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>)}
