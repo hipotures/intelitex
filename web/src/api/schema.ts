@@ -64,10 +64,13 @@ export const profilesSchema = z.object({ source: text, revision: text, assignmen
   default_profile: text, resolved_passes: z.record(text, profile) })
 export const previewSchema = z.object({ id: text, blocks: z.array(z.object({ id: text, text })), next_page: count.nullable() })
 const aggregate = z.object({ value: z.number().nullable(), known_attempts: count, unknown_attempts: count })
+const costEstimate = z.object({ status: text, amount: count.nullable(), currency: nullableText,
+  estimate_type: nullableText, note: nullableText })
 const usagePass = z.object({ pass_no: count, profile: nullableText, provider: nullableText, requested_model: nullableText, reported_model: nullableText,
   input_tokens: aggregate, cached_input_tokens: aggregate, reasoning_output_tokens: aggregate, output_tokens: aggregate,
   elapsed_seconds: aggregate, attempts: z.array(z.object({attempt_id:text,attempt_number:count.nullable(),generation_status:text,validation_status:text,acceptance_status:text,reported_model:nullableText,elapsed_seconds:count.nullable()})),
-  result_status: text, physical_attempt_count: count, failed_attempt_count: count, retry_count: count })
+  result_status: text, physical_attempt_count: count, provider_call_count: count, unknown_provider_call_count: count,
+  failed_attempt_count: count, retry_count: count, cost: costEstimate.nullable() })
 export const usageSchema = z.object({ scope: text, warning: nullableText, units: z.array(z.object({ unit_id: text, chapter_id: nullableText, passes: z.array(usagePass) })) })
 export const readerSchema = z.object({ title: text, book_fingerprint: text, chapters: z.array(z.object({ id: text, title: text }).passthrough()) })
 export const readerProgressSchema = z.object({ total_words: count, last_chapter: z.object({ id: text, title: text }).nullable() })

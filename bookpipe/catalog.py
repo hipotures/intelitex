@@ -44,7 +44,7 @@ def validate_catalog(value: Any) -> dict[str, Any]:
         if pricing is not None:
             if not isinstance(pricing, dict):
                 raise PipelineError(f"Invalid pricing for {provider}/{model_id}.")
-            allowed = {"currency", "unit", "input", "cached_input", "cache_write_input", "output", "reasoning_output", "estimate_type", "source"}
+            allowed = {"currency", "unit", "input", "cached_input", "cache_write_input", "output", "reasoning_output", "estimate_type", "source", "long_context_threshold", "long_context"}
             if set(pricing) - allowed:
                 raise PipelineError(f"Unknown pricing fields for {provider}/{model_id}: {sorted(set(pricing)-allowed)}")
             if pricing.get("currency") is None or pricing.get("unit") != "million_tokens":
@@ -53,6 +53,17 @@ def validate_catalog(value: Any) -> dict[str, Any]:
                 rate = pricing.get(key)
                 if rate is not None and (not isinstance(rate, (int, float)) or rate < 0):
                     raise PipelineError(f"Invalid {key} rate for {provider}/{model_id}.")
+            threshold = pricing.get("long_context_threshold")
+            long_context = pricing.get("long_context")
+            if (threshold is None) != (long_context is None):
+                raise PipelineError(f"Long-context pricing for {provider}/{model_id} needs threshold and rates.")
+            if threshold is not None:
+                if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
+                    raise PipelineError(f"Invalid long-context threshold for {provider}/{model_id}.")
+                if not isinstance(long_context, dict) or set(long_context) != {"input", "cached_input", "cache_write_input", "output"}:
+                    raise PipelineError(f"Invalid long-context rates for {provider}/{model_id}.")
+                if any(not isinstance(rate, (int, float)) or isinstance(rate, bool) or rate < 0 for rate in long_context.values()):
+                    raise PipelineError(f"Invalid long-context rate for {provider}/{model_id}.")
     return value
 
 
@@ -105,6 +116,14 @@ def apply_estimate(snapshot: dict[str, Any], usage: dict[str, Any]) -> dict[str,
     if not rate or usage.get("status") != "reported":
         value["estimate"] = {"status": "unknown", "reason": "pricing or measured usage unavailable"}
         return value
+    input_tokens = usage.get("input_tokens")
+    threshold = rate.get("long_context_threshold")
+    if threshold is not None:
+        if not isinstance(input_tokens, int):
+            value["estimate"] = {"status": "unknown", "reason": "input tokens needed to choose pricing tier"}
+            return value
+        if input_tokens > threshold:
+            rate = {**rate, **rate["long_context"]}
     categories = {
         "input": usage.get("input_tokens"),
         "cached_input": usage.get("cached_input_tokens"),
@@ -112,11 +131,18 @@ def apply_estimate(snapshot: dict[str, Any], usage: dict[str, Any]) -> dict[str,
         "output": usage.get("output_tokens"),
         "reasoning_output": usage.get("reasoning_output_tokens"),
     }
+    unknown = []
     if isinstance(categories["input"], int):
-        categories["input"] = max(0, categories["input"] - (categories["cached_input"] or 0) - (categories["cache_write_input"] or 0))
+        if categories["cached_input"] is None or categories["cache_write_input"] is None:
+            categories["input"] = None
+            unknown.append("input_breakdown")
+        else:
+            categories["input"] = max(0, categories["input"] - categories["cached_input"] - categories["cache_write_input"])
     if rate.get("reasoning_output") is not None and isinstance(categories["output"], int):
         categories["output"] = max(0, categories["output"] - (categories["reasoning_output"] or 0))
-    components, unknown, total = {}, [], 0.0
+    if rate.get("reasoning_output") is None:
+        categories.pop("reasoning_output")
+    components, total = {}, 0.0
     for name, tokens in categories.items():
         if not tokens:
             continue

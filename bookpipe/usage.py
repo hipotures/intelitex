@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .catalog import apply_estimate
+from .catalog import apply_estimate, load_catalog, model_entry, pricing_snapshot
+from .util import PipelineError
 
 
 _TASK_KEY = re.compile(r"^pass([1-5])/([^/]+)$")
@@ -267,15 +268,17 @@ def _aggregate_cost(attempts: Iterable[AttemptUsage]) -> CostEstimate | None:
         return None
     known = [cost for cost in costs if cost.amount is not None]
     identities = {(cost.currency, cost.estimate_type) for cost in known}
-    if known and len(known) == len(eligible) and len(identities) == 1:
+    fallback_note = " Current catalog rates were used for saved P1 usage without a historical rate." if any(
+        "Current catalog rates" in (cost.note or "") for cost in costs) else ""
+    if known and len(known) == len(eligible) and len(identities) == 1 and all(cost.status == "complete" for cost in known):
         currency, estimate_type = next(iter(identities))
         return CostEstimate("complete", sum(cost.amount or 0.0 for cost in known), currency, estimate_type,
-                            "Estimate aggregated across physical attempts; not a provider invoice.")
+                            "Estimate aggregated across physical attempts; not a provider invoice." + fallback_note)
     return CostEstimate("partial" if known else "unknown",
                         sum(cost.amount or 0.0 for cost in known) if known else None,
                         known[0].currency if known else None,
                         known[0].estimate_type if known else None,
-                        "Some physical attempts have unknown pricing or usage.")
+                        "Some physical attempts have unknown pricing or usage." + fallback_note)
 
 
 def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
@@ -285,6 +288,7 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
     known_units = _project_units(project, book=book, plan=plan)
     recovered_sources = _recovery_sources(project)
     records: list[_AttemptRecord] = []
+    current_catalog: tuple[dict[str, Any], Path] | None = None
     for manifest_path in sorted(project.glob("artifacts/**/attempt_*/attempt.json")):
         manifest = _optional_json(manifest_path)
         if not isinstance(manifest, dict):
@@ -316,6 +320,21 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
         pricing = _optional_json(manifest_path.parent / "pricing.json")
         usage_json = usage_json if isinstance(usage_json, dict) else None
         pricing = pricing if isinstance(pricing, dict) else None
+        if pass_no == 1 and usage_json and usage_json.get("status") == "reported" and not (pricing or {}).get("rate"):
+            provider = identity.get("provider")
+            reported_model = response.get("reported_model") or response.get("model")
+            if isinstance(provider, str) and isinstance(reported_model, str) and reported_model:
+                try:
+                    if current_catalog is None:
+                        current_catalog = load_catalog(project)
+                    catalog, catalog_path = current_catalog
+                    entry = model_entry(catalog, provider, reported_model)
+                    if entry and entry.get("pricing"):
+                        pricing = pricing_snapshot(catalog, catalog_path, provider, reported_model)
+                        pricing["note"] = ("Current catalog rates applied to saved P1 token usage because its historical "
+                                           "pricing snapshot had no rate. This is an estimate, not an invoice.")
+                except (OSError, PipelineError):
+                    pass
         generation = str(lifecycle.get("generation") or "unknown")
         validation = str(lifecycle.get("validation") or "unknown")
         acceptance = str(lifecycle.get("acceptance") or "not_accepted")

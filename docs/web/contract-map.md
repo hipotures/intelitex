@@ -99,7 +99,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts; visible Library loads bounded pages on scroll, while explicit Refresh restarts discovery and retains its last successful result on error |
 | Workspace | GET pipeline/settings/activity; jobs/stop | Five-phase rail, seven-column sections table, counts, actual provenance, supervised Run/Stop |
 | Prepare | GET workspaces/draft profiles; PATCH draft settings; POST workspace prepare/reprepare; GET preparation after import | Real provider-free web import with marked 4-character token estimates; saved pass profiles can change before Prepare; an untouched prepared plan can be rebuilt in place with its old version retained; failed draft import remains visible, empty-lock retry works |
-| Analyse | GET pipeline/usage | Whole-book P1 units, recorded usage and artifact availability |
+| Analyse | GET pipeline/usage | Whole-book P1 units, live recorded usage, per-unit and running total cost estimates, and artifact availability; historical P1 attempts without a saved rate use current catalog rates at read time |
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
 | Translate | GET pipeline/usage/activity | Existing P2→P3→P4→P5 chunk execution, actual attempt diagnostics and section aggregates |
 | Publish | GET pipeline/activity; POST publish job; GET publication/download | Real validation/size, disabled automatic Publishing, explicit retry without retranslating |

@@ -194,13 +194,14 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
     atomic_json(recovery, {"source_attempt": str(second.relative_to(root)), "repairs": []})
 
     # Legacy identity has no new unit/chapter fields. Reporting alone performs the narrow task-key fallback.
-    _attempt(
+    p1_attempt = _attempt(
         root, "pass1/ch0001_a001", 1, pass_no=1,
         usage={"input_tokens": 7, "cached_input_tokens": None, "cache_write_input_tokens": None,
                "output_tokens": 3, "reasoning_output_tokens": None, "total_tokens": 10},
         elapsed=0.75, accepted=True,
         preflight={"value": 7, "unit": "tokens", "quality": "provider_exact", "method": "native"},
     )
+    atomic_json(p1_attempt / "pricing.json", {"rate": None, "estimate_status": "unknown"})
 
     result = usage_by_unit_report(root)
     assert isinstance(result, UsageByUnitResult)
@@ -210,6 +211,10 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
     assert p1.chapter_id == "ch0001" and p1.chunk_id is None
     assert p1.analysis_unit_id == "ch0001_a001"
     assert p1.passes[0].preflight_input.unit == "tokens"
+    assert p1.passes[0].cost.status == "partial"  # Missing cache breakdown stays unknown.
+    assert p1.passes[0].cost.amount == 3 * 20 / 1_000_000
+    assert "Current catalog rates" in p1.passes[0].cost.note
+    assert read_json(p1_attempt / "pricing.json") == {"rate": None, "estimate_status": "unknown"}
 
     chunk = result.units[1]
     assert chunk.chapter_id == "ch0016" and chunk.chunk_id == "ch0016_c0004"
@@ -220,6 +225,7 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
         "codex", "codex-sol-medium", "gpt-5.6-sol",
     )
     assert row.reported_model == "gpt-5.6-sol"
+    assert row.cost is None  # Current-rate fallback is deliberately limited to P1.
     assert row.physical_attempt_count == 4 and row.provider_call_count == 3
     assert row.retry_count == 3 and row.failed_attempt_count == 2
     assert row.failed_before_submission_count == 1

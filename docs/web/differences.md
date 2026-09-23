@@ -46,6 +46,10 @@ and responsive breakpoints. The following differences carry real application sem
 - The Analyse phase explicitly says `P1` and `whole book`; section P1 cells still
   report only real per-section unit evidence rather than fabricated progress. A ready
   Analyse phase is neutral and says Ready; only an active `analyze` job says Running.
+- Analyse adds a fifth summary metric and a Cost column after Output. The metric
+  gently pulses only while P1 runs; incomplete usage is described in tooltips instead
+  of appending `(partial)` to the visible totals. The Cost tooltip explains saved
+  versus current catalog rates and the API-equivalent nature of Codex estimates.
 - Before P1 has a saved plan, Analyse shows one clear empty state and a return action
   rather than empty token and artifact panels. Saved P1 can be cleared through a
   confirmed, revision-controlled action when no dependent work exists; historical

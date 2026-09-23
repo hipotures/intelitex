@@ -95,6 +95,11 @@ under the project. A failed import leaves the previous catalog untouched. Price
 changes never rewrite historical `pricing.json` snapshots. Unknown prices do not
 block inference. Codex API-equivalent estimates are labeled estimates, not
 subscription invoices or provider-reported charges.
+The bundled catalog includes dated public API-equivalent rates for built-in Codex
+profiles. The web Analyse/P1 view shows the cost of recorded attempts as they
+arrive. Older P1 attempts whose saved snapshot has no rate are estimated at read
+time with the current catalog and labeled accordingly; their evidence is not
+changed. Other passes continue to use their saved pricing snapshots.
 
 Example enabled profiles (replace model IDs and capacities only with values
 verified for the intended account/runtime):
