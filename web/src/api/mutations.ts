@@ -11,14 +11,16 @@ export function useCommand(workspace = 'global') {
   const failureRef = useRef<unknown>(null)
   const pending = useIsMutating({ mutationKey: [scope, workspace] }) > 0
   const mutation = useMutation({ mutationKey: [scope, workspace], scope: { id: `${scope}:${workspace}` },
-    mutationFn: async (run: () => Promise<unknown>) => {
-      try { return await run() } finally { await reconcile(workspace === 'global' ? undefined : workspace) }
+    mutationFn: async ({ run, deferReconcile }: { run: () => Promise<unknown>; deferReconcile: boolean }) => {
+      try { return await run() } finally {
+        if (!deferReconcile) await reconcile(workspace === 'global' ? undefined : workspace)
+      }
     } })
-  async function send<T>(path: string, schema: z.ZodType<T>, body: unknown, method = 'POST'): Promise<T | undefined> {
+  async function send<T>(path: string, schema: z.ZodType<T>, body: unknown, method = 'POST', deferReconcile = false): Promise<T | undefined> {
     if (latch.current || connection !== 'Live') return undefined
     latch.current = true; failureRef.current = null; setError(null)
     try {
-      const value = await mutation.mutateAsync(() => request(path, schema, { method, body })) as T
+      const value = await mutation.mutateAsync({ run: () => request(path, schema, { method, body }), deferReconcile }) as T
       return value
     } catch (failure) { failureRef.current = failure; setError(failure); return undefined }
     finally { latch.current = false }

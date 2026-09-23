@@ -23,6 +23,8 @@ def dispatch(service, method, parts, body=None, query=None):
         if method == 'POST':
             if tail == ['prepare']:
                 return response(202, service.prepare(ident, body))
+            if tail == ['reprepare']:
+                return response(202, service.reprepare(ident, body))
             if tail in (['archive'], ['restore']):
                 return response(200, service.archive(ident, body, tail == ['archive']))
             if tail == ['review', 'confirm-and-approve']:

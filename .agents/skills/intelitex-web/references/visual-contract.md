@@ -20,7 +20,9 @@ full UI implementation and apply the provenance/decision register first.
 - Work: active-workspace **rows in one bordered list**, then cover-card Library.
   Not v32's active-card grid. Real count badges and independent per-row action.
 - Workspace: header plus five equal phase tiles Prepare/Analyse/Review/Translate/
-  Publish. Every unblocked tile navigates, not only Review. No P1 prefix in rail titles.
+  Publish. Every unblocked tile navigates, not only Review. The original has no P1
+  prefix in rail titles; the approved production clarification labels Analyse as
+  whole-book P1 so it is visible independently of section P1 cells.
 - Section table columns exactly Section,Processing,P1,P2,P3,P4,P5. Compact F/T/E,
   model-colored state icons with accessible tooltips. No redundant textual status
   per cell, Type column, Models column or right permanent progress sidebar.

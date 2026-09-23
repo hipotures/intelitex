@@ -20,7 +20,13 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             source = confined_source(Path(spec.import_root), spec.source_id)
             validate_source_tree(source)
             # A configured draft is already reserved; legacy imports reserve a new directory.
-            if project.exists():
+            if spec.reprepare:
+                from ..application.source_preflight import source_signature
+                from ..application.workspace_setup import read_workspace_setup
+                setup = read_workspace_setup(project)
+                if source_signature(Path(spec.import_root), spec.source_id) != setup['source_fingerprint']:
+                    raise ValueError('Source changed since workspace setup.')
+            elif project.exists():
                 from ..application.workspace_setup import validate_draft_destination
                 from ..application.source_preflight import source_signature
                 setup = validate_draft_destination(project, spec.source_id)
@@ -28,7 +34,7 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
                     raise ValueError('Source changed since workspace setup.')
             else:
                 project.mkdir(exist_ok=False)
-            app.projects.import_book(ImportBookCommand(
+            command = ImportBookCommand(
                 project, source,
                 local_token_estimate=True,
                 previous_volume=workspace_destination(Path(spec.workspace_root), spec.previous_volume) if spec.previous_volume else None,
@@ -38,7 +44,11 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
                 sidecar_txt=spec.sidecar_txt, whole_section_limit=spec.whole_section_limit,
                 profile=spec.profile, pass_profiles={int(k): v for k, v in (spec.pass_profiles or {}).items()},
                 model=spec.model, context_size=spec.context_size, thinking=spec.thinking,
-            ))
+            )
+            if spec.reprepare:
+                app.projects.reprepare(command, spec.expected_revision)
+            else:
+                app.projects.import_book(command)
         elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile))
         elif spec.operation == "translate":

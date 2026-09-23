@@ -34,6 +34,11 @@ and responsive breakpoints. The following differences carry real application sem
   P1–P5 profile selectors before Prepare. The setup modal and draft model panel are product additions absent
   from v33. The language selector currently offers the supported English→Polish pair;
   broader translation and Review language support is a separate issue item.
+- Prepared workspaces add `Run Prepare again` in the Prepare detail page. It versions
+  the old plan in the same workspace and resets section-specific choices only before
+  any persisted pipeline work. The original v33 has no in-place rebuild control.
+- The Analyse phase explicitly says `P1` and `whole book`; section P1 cells still
+  report only real per-section unit evidence rather than fabricated progress.
 - Confirm glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
 - P2–P4 retained receipts display amber retained/unverified state where the existing

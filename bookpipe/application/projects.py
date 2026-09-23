@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import copy
+import shutil
+import uuid
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..importer import estimate_source_tokens, import_folder
 from ..profiles import migrate_settings_file, resolve_profile, validate_profiles, with_builtin_profiles
 from ..project_config import materialize_configuration
 from ..series import continuation_metadata, prepare_handoff, validate_series_metadata
-from ..util import PipelineError, digest, plan_fingerprint, read_json
+from ..util import PipelineError, atomic_json, digest, plan_fingerprint, read_json
 from .commands import ImportBookCommand, ModelOptions, StatusCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .results import ChapterStatus, ChunkStatus, ImportResult, StatusResult
@@ -97,6 +100,21 @@ def load_valid_book(root: Path, fingerprint=plan_fingerprint, files=None) -> dic
     return book
 
 
+class ReprepareLocked(PipelineError):
+    """A source plan with persisted work cannot be replaced in place."""
+
+
+def _mark_local_estimates(book: dict) -> None:
+    identity = {"method": "chars_per_four_estimate", "chars_per_token": 4}
+    book["model_identity"] = None
+    book["tokenizer_identity"] = identity
+    for chapter in book["chapters"]:
+        chapter["source_tokens_tokenizer"] = identity
+        chapter["source_tokens_quality"] = "estimated"
+    for chunk in book["chunks"]:
+        chunk["source_tokens_quality"] = "estimated"
+
+
 class ProjectsService:
     def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink,
                  publishing=None):
@@ -151,14 +169,7 @@ class ProjectsService:
             if source_folder != source:
                 book['source_archive'] = str(source)
             if client is None:
-                estimate_identity = {"method": "chars_per_four_estimate", "chars_per_token": 4}
-                book["model_identity"] = None
-                book["tokenizer_identity"] = estimate_identity
-                for chapter in book["chapters"]:
-                    chapter["source_tokens_tokenizer"] = estimate_identity
-                    chapter["source_tokens_quality"] = "estimated"
-                for chunk in book["chunks"]:
-                    chunk["source_tokens_quality"] = "estimated"
+                _mark_local_estimates(book)
             else:
                 book["model_identity"] = client.identity
                 book["tokenizer_identity"] = client.tokenizer_identity
@@ -196,6 +207,102 @@ class ProjectsService:
                 series_volume=series_volume, inherited_terms=inherited_terms,
                 inherited_observations=inherited_observations,
             )
+
+    def _reprepare_inputs(self, root: Path, source: Path, expected_revision: str, scope):
+        from .source_preflight import source_signature
+        from .workspace_setup import read_workspace_setup
+        from ..processing import ConfigConflict, configuration
+
+        old_book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        setup = read_workspace_setup(root)
+        if not setup or source.name != setup['source_id']:
+            raise ReprepareLocked('Only configured workspaces can rebuild their source plan.')
+        config = configuration(root)
+        if digest(config) != expected_revision:
+            raise ConfigConflict('Configuration changed.')
+        if source_signature(source.parent, source.name) != setup['source_fingerprint']:
+            raise ReprepareLocked('The source changed since setup; use a new workspace.')
+        allowed = {'book.json', 'settings.json', 'workspace.json', 'web.config.json',
+                   'web.lifecycle.json', 'state.sqlite3', 'state.sqlite3-wal', 'state.sqlite3-shm',
+                   '.lock', 'source-package', 'chapters', 'matter', 'extracted', 'prompts',
+                   'catalog', 'history'}
+        if (scope.store.has_work_since_import() or
+                any(entry.name not in allowed or entry.is_symlink() for entry in root.iterdir())):
+            raise ReprepareLocked('This workspace has persisted work; preserve it and prepare a new workspace.')
+        history = root / 'history'
+        versions = history / 'prepare_versions'
+        if history.is_symlink() or versions.is_symlink():
+            raise PipelineError('Unsafe preparation history.')
+        settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
+        for number in range(1, 6):
+            resolve_profile(settings, number, project=root)
+        return old_book, config, settings, versions
+
+    def check_reprepare(self, project: Path, source: Path, expected_revision: str) -> None:
+        root = project.resolve()
+        with OperationScope(self.dependencies, root, self.progress) as scope:
+            self._reprepare_inputs(root, source.resolve(), expected_revision, scope)
+
+    def reprepare(self, command: ImportBookCommand, expected_revision: str) -> ImportResult:
+        """Build a new local plan, then replace an untouched plan with a versioned backup."""
+        root, source = command.project.resolve(), command.source.resolve()
+        with OperationScope(self.dependencies, root, self.progress) as scope:
+            old_book, config, settings, versions = self._reprepare_inputs(root, source, expected_revision, scope)
+            stage = root / ('.reprepare-stage-' + uuid.uuid4().hex)
+            stage.mkdir(mode=0o700)
+            try:
+                source_folder = unpack_epub(source, stage) if source.is_file() and source.suffix.lower() == '.epub' else source
+                book = import_folder(source_folder, stage, estimate_source_tokens, settings, self.progress)
+                if source_folder != source:
+                    book['source_archive'] = str(source)
+                    book['source_root'] = str(root / 'source-package')
+                _mark_local_estimates(book)
+                book['planning_settings'] = {'whole_section_char_limit': settings['whole_section_char_limit']}
+                book['content_fingerprint'] = plan_fingerprint(book)
+                version = versions / uuid.uuid4().hex
+                version.mkdir(mode=0o700, parents=True)
+                atomic_json(version / 'book.json', old_book)
+                atomic_json(version / 'web.config.json', config)
+                atomic_json(version / 'version.json', {
+                    'created_at': datetime.now(timezone.utc).isoformat(),
+                    'old_plan_fingerprint': old_book['content_fingerprint'],
+                    'new_plan_fingerprint': book['content_fingerprint'],
+                    'section_choices_reset': True,
+                })
+                # New rows are pending. Keeping old pending rows also makes an
+                # interruption before book.json switches harmless to the old plan.
+                scope.store.register_chunks(book)
+                moved = []
+                try:
+                    for name in ('source-package', 'extracted', 'chapters', 'matter'):
+                        old, new = root / name, stage / name
+                        if old.exists():
+                            old.rename(version / name)
+                            moved.append(('old', name))
+                        if new.exists():
+                            new.rename(old)
+                            moved.append(('new', name))
+                    atomic_json(root / 'web.config.json', {**config, 'sections': {}})
+                    atomic_json(root / 'book.json', book)
+                except BaseException:
+                    atomic_json(root / 'book.json', old_book)
+                    atomic_json(root / 'web.config.json', config)
+                    for kind, name in reversed(moved):
+                        if kind == 'new':
+                            (root / name).rename(stage / name)
+                        else:
+                            (version / name).rename(root / name)
+                    shutil.rmtree(version, ignore_errors=True)
+                    raise
+                return ImportResult(
+                    project=root, narrative_sections=len(book['chapters']),
+                    translation_units=len(book['chunks']),
+                    excluded_sections=len(book.get('non_narrative_sections', [])),
+                    warnings=tuple(book['warnings']), series_id=None, series_volume=None,
+                    inherited_terms=0, inherited_observations=0,
+                )
+            finally:
+                shutil.rmtree(stage, ignore_errors=True)
 
     def status(self, command: StatusCommand) -> StatusResult:
         root = command.project.resolve()

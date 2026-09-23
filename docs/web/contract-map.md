@@ -1,6 +1,6 @@
 # Production web implementation and contract map
 
-Audited 2026-09-22 against the working implementation built from
+Audited 2026-09-23 against the working implementation built from
 the repository HEAD recorded in `api-baseline.json`. The skill's original recorded backend
 commit is historical. Exact audited source blob identities are recorded in
 `.agents/skills/intelitex-web/references/api-baseline.json`; the delivery commit
@@ -46,6 +46,13 @@ draft validator accepts that one safe file on retry and still rejects unrelated
 files, symlinks and partial project state. `workspace_setup.py::validate_draft_destination`
 is the audited boundary (blob `701b025ac4a151d8db380d8f993b8d6211482562`),
 with retry/unsafe-lock regression in `tests/test_web_production.py`.
+Auto import now recognizes explicit numbered/Prologue/Epilogue `h3`–`h6` headings
+even when the EPUB TOC supplies only a start link. It does not treat every `h4`
+as a chapter. The same-workspace reprepare route is available only before any
+persisted work. It stages a new plan, versions the previous plan and section
+configuration, then installs new source sections under the project lock. Old
+section-specific F/T/E choices are reset because their IDs can acquire different
+meaning. The backend preserves the old plan on ordinary staging/commit failure.
 
 `application/web.py::WebWorkspaceService` handles metadata, bounded source preview,
 revision-controlled settings, section aggregates and archive lifecycle. `processing.py`
@@ -53,6 +60,8 @@ overlays eligibility on the frozen import plan, retains dormant evidence and val
 re-inclusion against checked results, input/schema/prompt receipts and continuity.
 P1 membership freezes after persisted attempt/checkpoint evidence. Idle T↔E remains
 available; F transitions then return `analysis_membership_locked`.
+The F/T/E write checks P1 receipts and P1 attempt manifests directly, avoiding
+the full historical model-usage report on each section change.
 
 `WorkflowQueries.pipeline` calculates half-up weighted workflow progress from real P1/P5
 counts and returns the numerator, denominator and its meaning for each phase. Unknown
@@ -72,7 +81,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | --- | --- | --- |
 | Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts; visible Library loads bounded pages on scroll, while explicit Refresh restarts discovery and retains its last successful result on error |
 | Workspace | GET pipeline/settings/activity; jobs/stop | Five-phase rail, seven-column sections table, counts, actual provenance, supervised Run/Stop |
-| Prepare | GET workspaces/draft profiles; PATCH draft settings; POST workspace prepare; GET preparation after import | Real provider-free web import with marked 4-character token estimates; saved pass profiles can change before Prepare; failed import remains visible, empty-lock retry works, fresh workspace read prevents a stale duplicate submission |
+| Prepare | GET workspaces/draft profiles; PATCH draft settings; POST workspace prepare/reprepare; GET preparation after import | Real provider-free web import with marked 4-character token estimates; saved pass profiles can change before Prepare; an untouched prepared plan can be rebuilt in place with its old version retained; failed draft import remains visible, empty-lock retry works |
 | Analyse | GET pipeline/usage | Whole-book P1 units, recorded usage and artifact availability |
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
 | Translate | GET pipeline/usage/activity | Existing P2→P3→P4→P5 chunk execution, actual attempt diagnostics and section aggregates |
@@ -104,7 +113,9 @@ Review refreshes every 5 s; unhealthy connections poll every 5 s. Hidden tabs pa
 polling; focus/online reconcile. Offline/reconnecting mutations are disabled. Unmounting
 or disconnecting closes only browser resources, never workers.
 
-Mutations serialize by server/workspace and remain pending through reconciliation.
+Mutations serialize by server/workspace. F/T/E applies the acknowledged section
+response immediately and reconciles in the background; other mutations remain
+pending through reconciliation.
 No automatic mutation retry occurs. A session-scoped request key persists unknown start
 outcomes and resolves through GET requests/key; backend receipts reject mismatched reuse.
 Revision conflicts preserve buffered input and require explicit reapplication. Query refresh
@@ -155,6 +166,14 @@ and a confirmation dialog without a provider request.
 The action first reads current workspace state before POST, while the backend keeps
 the final concurrency and destination checks. A prepared workspace with its pipeline
 query still loading shows a disabled loading action, not another Prepare command.
+The prepared Prepare detail screen offers `Run Prepare again` behind a confirmation
+that says section choices reset and the old plan is versioned. It is disabled after
+persisted P1 work and while a job owns the workspace; the backend rechecks all
+conditions. Analyse is labeled P1 whole-book analysis in the phase rail/detail page.
+For F/T/E, the successful PATCH revision updates the selected section in the query
+cache immediately; old in-flight pipeline reads are cancelled and full reconciliation
+runs in the background. This avoids holding the control on unrelated workspace-list
+refetches while the backend remains authoritative for final counts and readiness.
 The original v33 does not depict a persisted pre-import draft or provider-dependent
 Prepare; these are intentional production differences from that mock.
 

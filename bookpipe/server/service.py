@@ -8,7 +8,7 @@ from ..util import digest
 from pathlib import Path
 from contextlib import contextmanager
 import re
-from ..application.imports import ImportDisabled, ImportQueries, workspace_destination
+from ..application.imports import ImportDisabled, ImportQueries, confined_source, workspace_destination
 from ..runtime.models import ImportJobSpec, JobSpec
 from . import serialization as dto
 
@@ -235,6 +235,34 @@ class ServerService:
             if source_signature(self.imports.root, manifest['source_id']) != manifest['source_fingerprint']:
                 raise ValueError('Source changed since setup; create a new workspace.')
         return self.import_book({'workspace_id': ident, 'source_id': self.catalog.source(ident), **payload})
+
+    def reprepare(self, ident, payload):
+        with self.supervisor.lock:
+            payload, key, fingerprint, previous = self.receipt(payload, f'reprepare:{ident}')
+            if previous is not None:
+                return previous.public()
+            fields(payload, {'revision'}, {'revision'})
+            if self.imports.root is None:
+                raise ImportDisabled('Web import disabled.')
+            root = self.workspaces.resolve(ident)
+            if self.application.web.lifecycle(root)['archived']:
+                raise WorkspaceArchived('Restore before preparing again.')
+            from ..application.workspace_setup import read_workspace_setup
+            from ..processing import ConfigConflict
+            setup = read_workspace_setup(root)
+            if not setup:
+                raise ValueError('This workspace has no saved Library source.')
+            if self.application.web.config(root)['revision'] != revision(payload):
+                raise ConfigConflict('Configuration changed.')
+            source_id = setup['source_id']
+            self.application.projects.check_reprepare(
+                root, confined_source(self.imports.root, source_id), payload['revision'])
+            spec = ImportJobSpec(workspace_root=str(self.workspaces.root), workspace_id=ident,
+                                 project=str(root), import_root=str(self.imports.root),
+                                 source_id=source_id, reprepare=True,
+                                 expected_revision=payload['revision'])
+            return self.supervisor.start(spec, request_key=key,
+                                         request_fingerprint=fingerprint).public()
 
     def receipt(self, payload, operation):
         payload = dict(payload)

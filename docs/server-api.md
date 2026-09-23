@@ -30,6 +30,7 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, reading-order file count and bounded real text excerpts |
 | POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
 | POST | `/api/workspaces/setup` | Setup payload below → `{workspace_id,source_id}`; creates a durable unprepared draft |
+| POST | `/api/workspaces/{id}/reprepare` | `{revision,request_key?}` → supervised import job that rebuilds an untouched prepared plan in the same workspace |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
 | GET | `/api/jobs` | `{jobs:[job],cursor}` |
@@ -239,6 +240,21 @@ credentials locally. Web Prepare/import does not construct a provider or contact
 model. It stores estimated source token counts as ceil(Unicode characters / 4),
 marked estimated; P1 recounts using the selected provider/tokenizer for actual
 context fitting. Direct CLI import retains its existing provider-aware behavior.
+In `auto`/`headings` mode, the importer also recognizes explicit numbered chapter,
+Prologue and Epilogue headings in `h3`–`h6` when an EPUB's TOC omits them. Generic
+lower-level headings do not create a new chapter. Leading matter before an explicit
+Prologue and a lower-level `ABOUT THE AUTHOR` section are classified as non-narrative.
+
+`POST /api/workspaces/{id}/reprepare` requires the current configuration revision,
+a configured Library source with unchanged fingerprint, an idle unarchived workspace,
+and no persisted P1–P5, Review or publication work. It runs in the supervised web
+worker without a model request. The previous `book.json`, section configuration and
+derived source files are saved under `history/prepare_versions/` before the new plan
+is installed. Section-specific F/T/E, content type and model overrides are reset;
+workspace pass assignments remain. The application rechecks eligibility under the
+project lock. A stale revision returns `config_revision_conflict`; saved work or a
+changed source returns `preparation_locked`. The old plan remains current if staging
+or the in-process installation fails. This route does not delete checkpoints.
 
 Source IDs reject absolute paths, `..`, empty/dot segments and backslashes.
 OPF paths are source-confined. Escaping source symlinks (including nested/sidecar

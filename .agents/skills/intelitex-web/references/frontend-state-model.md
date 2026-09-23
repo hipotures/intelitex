@@ -72,3 +72,14 @@ assignment with that revision and explicit confirmation; a 409 requires a fresh
 read and deliberate reapplication. The panel remains usable after a failed early
 Prepare, including a leftover empty `.lock`. No provider call occurs on this edit
 or during web Prepare. P1 performs provider-specific counting later.
+The prepared Prepare detail page offers a confirmed in-place rebuild only when the
+snapshot permits it; the backend remains the final guard. It uses a request key,
+fresh pipeline read and current config revision, then follows the supervised import
+job. Analyse/P1 is displayed as whole-book work; section cells show actual counts.
+For F/T/E PATCH, a successful returned revision updates the affected cached cell,
+old in-flight pipeline reads are cancelled, and reconciliation proceeds without
+holding the control on unrelated workspace-list queries. Subsequent server reads
+replace the provisional cell/readiness with authoritative state.
+The application checks persisted P1 receipts and P1 attempt manifests directly
+for membership locking, without constructing the full historical usage report on
+every Processing change.

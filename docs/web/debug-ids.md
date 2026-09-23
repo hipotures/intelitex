@@ -74,6 +74,7 @@ only in Debug mode and are not product terminology.
 | PSR | Prepare source structure card | `web/src/features/pipeline/Phase.tsx` |
 | PSM | Prepare source metadata card | `web/src/features/pipeline/Phase.tsx` |
 | PCK | Prepare checks card | `web/src/features/pipeline/Phase.tsx` |
+| RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PAN | Analyse units card | `web/src/features/pipeline/Phase.tsx` |
 | PGD | Analyse generated data card | `web/src/features/pipeline/Phase.tsx` |
 | PAR | Analyse artifacts card | `web/src/features/pipeline/Phase.tsx` |

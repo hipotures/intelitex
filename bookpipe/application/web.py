@@ -134,7 +134,6 @@ class WebWorkspaceService:
         from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired, effective_book, processing, reconcile_membership
         from ..profiles import resolve_profile
         from .sessions import OperationScope
-        from ..usage import usage_by_unit_report
         with OperationScope(self.dependencies, root) as scope:
             config = self.config(root)
             if payload.get('revision') != config.pop('revision'):
@@ -151,10 +150,7 @@ class WebWorkspaceService:
                     raise ValueError('Invalid processing mode.')
                 old = processing(book, config, section_id)
                 if old != mode:
-                    attempted = any(p.pass_no == 1 for u in usage_by_unit_report(root).units for p in u.passes)
-                    from .sessions import ProjectReadScope
-                    with ProjectReadScope(self.dependencies, root) as read:
-                        attempted |= any(key.startswith('pass1/') for key in read.store.checkpoint_inventory())
+                    attempted = scope.store.has_p1_attempt()
                     if attempted and ('full' in {old, mode}):
                         raise AnalysisMembershipLocked('P1 membership is frozen after its first attempt.')
                     target['processing'] = mode

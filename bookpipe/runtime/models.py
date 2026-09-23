@@ -74,7 +74,7 @@ class Job:
 
 @dataclass(frozen=True)
 class ImportJobSpec:
-    """Import targets a new directory or a validated, unprepared configured draft."""
+    """Import a draft or rebuild an untouched prepared plan under supervision."""
     workspace_root: str
     workspace_id: str
     project: str
@@ -94,6 +94,8 @@ class ImportJobSpec:
     model: str | None = None
     context_size: int | None = None
     thinking: str | None = None
+    reprepare: bool = False
+    expected_revision: str | None = None
 
     def __post_init__(self):
         from ..application.imports import (DestinationConflict, confined_source,
@@ -102,13 +104,33 @@ class ImportJobSpec:
         destination = workspace_destination(root, self.workspace_id)
         if self.operation != 'import' or str(destination) != self.project:
             raise ValueError('Invalid import specification.')
-        if destination.exists():
+        if type(self.reprepare) is not bool:
+            raise ValueError('Invalid reprepare option.')
+        if not self.reprepare and self.expected_revision is not None:
+            raise ValueError('Revision applies only to reprepare.')
+        if self.reprepare:
+            from ..application.workspace_setup import read_workspace_setup
+            if (destination.is_symlink() or not destination.is_dir() or
+                    not (destination / 'book.json').is_file() or
+                    not (destination / 'state.sqlite3').is_file() or
+                    read_workspace_setup(destination).get('source_id') != self.source_id or
+                    not isinstance(self.expected_revision, str) or
+                    not re.fullmatch(r'[0-9a-f]{64}', self.expected_revision)):
+                raise DestinationConflict('Prepared workspace is unavailable for rebuilding.')
+        elif destination.exists():
             from ..application.workspace_setup import validate_draft_destination
             from ..util import PipelineError
             try:
                 validate_draft_destination(destination, self.source_id)
             except PipelineError as exc:
                 raise DestinationConflict('Destination already exists.') from exc
+        if self.reprepare and any(value is not None for value in (
+                self.previous_volume, self.opf, self.input_encoding, self.include_glob,
+                self.profile, self.pass_profiles, self.model, self.context_size,
+                self.thinking, self.whole_section_limit, self.chapter_selector)):
+            raise ValueError('Reprepare uses the saved source and settings.')
+        if self.reprepare and (self.chapter_mode != 'auto' or self.sidecar_txt):
+            raise ValueError('Invalid reprepare options.')
         source_root = Path(self.import_root).resolve(strict=True)
         source = confined_source(source_root, self.source_id)
         if not (source.is_dir() or (source.is_file() and source.suffix.lower() == '.epub')) or destination.is_relative_to(source):

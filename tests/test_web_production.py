@@ -189,6 +189,166 @@ def test_web_prepare_estimates_locally_without_provider_and_p1_recounts(tmp_path
     assert counter.calls > 0
 
 
+def test_reprepare_versions_untouched_plan_and_resets_section_choices(api):
+    app, root, service, server = api
+    source = service.imports.root / 'chapter-rebuild'
+    source.mkdir()
+    (source / 'split_000.html').write_text(
+        '<h4>ONE</h4><p>First chapter.</p><h4>TWO</h4><p>Second chapter.</p>')
+    assignments = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': source.name, 'source_fingerprint': source_signature(service.imports.root, source.name),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': assignments, 'request_key': 'chapter-rebuild-0123456789',
+    })
+    ident = draft['workspace_id']
+    destination = root.parent / ident
+    initial = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                            project=str(destination), import_root=str(service.imports.root),
+                            source_id=source.name, chapter_mode='file')
+    assert execute(initial, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    old_book = read_json(destination / 'book.json')
+    assert len(old_book['chapters']) == 1
+    config = service.pipeline(ident)['config']
+    service.configure(ident, {'revision': config['revision'], 'processing': 'excluded'}, 'ch0001')
+    revision = service.pipeline(ident)['config']['revision']
+    rebuild = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                            project=str(destination), import_root=str(service.imports.root),
+                            source_id=source.name, reprepare=True, expected_revision=revision)
+    assert execute(rebuild, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    new_book = read_json(destination / 'book.json')
+    assert [chapter['title'] for chapter in new_book['chapters']] == ['ONE', 'TWO']
+    assert new_book['content_fingerprint'] != old_book['content_fingerprint']
+    assert read_json(destination / 'web.config.json')['sections'] == {}
+    versions = list((destination / 'history' / 'prepare_versions').iterdir())
+    assert len(versions) == 1
+    assert read_json(versions[0] / 'book.json') == old_book
+    assert read_json(versions[0] / 'web.config.json')['sections']['ch0001']['processing'] == 'excluded'
+    assert service.pipeline(ident)['analysis']['complete'] is False
+    code, stale = request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                          {'revision': revision, 'request_key': 'reprepare-stale-0123456789'})
+    assert code == 409 and stale['error']['code'] == 'config_revision_conflict'
+    current = service.pipeline(ident)['config']['revision']
+    code, job = request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                        {'revision': current, 'request_key': 'reprepare-current-0123456789'})
+    assert code == 202 and job['operation'] == 'import'
+    assert request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                   {'revision': current, 'request_key': 'reprepare-current-0123456789'})[1]['job_id'] == job['job_id']
+    code, busy = request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                         {'revision': current, 'request_key': 'reprepare-another-0123456789'})
+    assert code == 409 and busy['error']['code'] == 'workspace_busy'
+    service.supervisor.stop(job['job_id'])
+
+
+def test_reprepare_packed_epub_keeps_durable_source_package(api, tmp_path):
+    app, root, service, _ = api
+    source = make_epub_source(tmp_path)
+    packed = service.imports.root / 'rebuild.epub'
+    with zipfile.ZipFile(packed, 'w') as archive:
+        for path in source.rglob('*'):
+            if path.is_file():
+                archive.write(path, path.relative_to(source).as_posix())
+    assignments = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': packed.name, 'source_fingerprint': source_signature(service.imports.root, packed.name),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': assignments, 'request_key': 'packed-rebuild-0123456789',
+    })
+    ident = draft['workspace_id']
+    destination = root.parent / ident
+    original = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                             project=str(destination), import_root=str(service.imports.root),
+                             source_id=packed.name)
+    assert execute(original, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    old_book = read_json(destination / 'book.json')
+    revision = service.pipeline(ident)['config']['revision']
+    rebuild = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                            project=str(destination), import_root=str(service.imports.root),
+                            source_id=packed.name, reprepare=True, expected_revision=revision)
+    assert execute(rebuild, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    new_book = read_json(destination / 'book.json')
+    assert new_book['source_archive'] == str(packed)
+    assert new_book['source_root'] == str(destination / 'source-package')
+    assert (destination / 'source-package' / 'META-INF' / 'container.xml').is_file()
+    versions = list((destination / 'history' / 'prepare_versions').iterdir())
+    assert len(versions) == 1
+    assert read_json(versions[0] / 'book.json') == old_book
+    assert (versions[0] / 'source-package' / 'META-INF' / 'container.xml').is_file()
+    assert service.pipeline(ident)['stage'] == 'analysis'
+
+
+def test_reprepare_rejects_persisted_work_before_start(api):
+    app, root, service, server = api
+    source = service.imports.root / 'attempted-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<h4>ONE</h4><p>First chapter.</p>')
+    assignments = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': source.name, 'source_fingerprint': source_signature(service.imports.root, source.name),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': assignments, 'request_key': 'attempted-book-0123456789',
+    })
+    ident = draft['workspace_id']
+    destination = root.parent / ident
+    spec = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                         project=str(destination), import_root=str(service.imports.root), source_id=source.name)
+    assert execute(spec, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    book = read_json(destination / 'book.json')
+    from bookpipe.store import Store
+    store = Store(destination)
+    with store.db:
+        store.set('analysis:' + book['chapters'][0]['id'], {'attempted': True})
+    store.close()
+    revision = service.pipeline(ident)['config']['revision']
+    code, error = request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                          {'revision': revision, 'request_key': 'attempted-rebuild-0123456789'})
+    assert code == 409 and error['error']['code'] == 'preparation_locked'
+    code, invalid = request(server, 'POST', f'/api/workspaces/{ident}/reprepare',
+                            {'revision': revision, 'chapter_selector': 'h4'})
+    assert code == 400 and invalid['error']['code'] == 'invalid_request'
+    assert read_json(destination / 'book.json') == book
+    assert not (destination / 'history' / 'prepare_versions').exists()
+
+
+def test_reprepare_restores_previous_plan_if_commit_fails(api, monkeypatch):
+    app, root, service, _ = api
+    source = service.imports.root / 'rollback-book'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<h4>ONE</h4><p>First.</p><h4>TWO</h4><p>Second.</p>')
+    assignments = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
+    draft = service.save_setup({
+        'source_id': source.name, 'source_fingerprint': source_signature(service.imports.root, source.name),
+        'source_language': 'en', 'target_language': 'pl', 'label': None,
+        'pass_profiles': assignments, 'request_key': 'rollback-book-0123456789',
+    })
+    ident = draft['workspace_id']
+    destination = root.parent / ident
+    initial = ImportJobSpec(workspace_root=str(root.parent), workspace_id=ident,
+                            project=str(destination), import_root=str(service.imports.root),
+                            source_id=source.name, chapter_mode='file')
+    assert execute(initial, JsonlProgressSink(io.StringIO()), application_factory=lambda _: app) == 0
+    original = read_json(destination / 'book.json')
+    original_text = (destination / 'chapters' / 'ch0001' / 'source.txt').read_text()
+    revision = service.pipeline(ident)['config']['revision']
+    from bookpipe.application import projects as projects_module
+    save = projects_module.atomic_json
+    failed = False
+    def fail_new_book(path, value):
+        nonlocal failed
+        if path == destination / 'book.json' and not failed:
+            failed = True
+            raise OSError('Simulated final manifest write failure')
+        return save(path, value)
+    monkeypatch.setattr(projects_module, 'atomic_json', fail_new_book)
+    with pytest.raises(OSError, match='Simulated'):
+        app.projects.reprepare(ImportBookCommand(destination, source, local_token_estimate=True), revision)
+    assert read_json(destination / 'book.json') == original
+    assert (destination / 'chapters' / 'ch0001' / 'source.txt').read_text() == original_text
+    assert not list(destination.glob('.reprepare-stage-*'))
+    assert not list((destination / 'history' / 'prepare_versions').iterdir())
+    assert service.pipeline(ident)['config']['revision'] == revision
+
+
 def test_setup_rejects_unavailable_languages_and_unrelated_destinations(api):
     _, root, service, server = api
     profiles = {str(i): service.profiles()['default_profile'] for i in range(1, 6)}
@@ -426,6 +586,17 @@ def test_d02_membership_and_revision_preserve_checkpoints(api):
     assert len(effective_book(book, root)['chunks']) == 1
     service.configure('book', {'revision': updated['revision'], 'processing': 'translate'}, 'ch0002')
     assert all(p.exists() for p in before)
+
+
+def test_p1_attempt_manifest_locks_membership_before_checkpoint(api):
+    app, root, service, _ = api
+    attempt = root / 'artifacts' / 'pass1' / 'A0001' / 'fingerprint' / 'attempt_001' / 'attempt.json'
+    attempt.parent.mkdir(parents=True)
+    attempt.write_text(json.dumps({'identity': {'pass_no': 1, 'task_key': 'pass1/A0001'}}))
+    revision = app.web.config(root)['revision']
+    with pytest.raises(AnalysisMembershipLocked):
+        service.configure('book', {'revision': revision, 'processing': 'translate'}, 'ch0001')
+    assert app.web.config(root)['revision'] == revision
 
 
 def test_d08_edit_blocks_application_before_provider_and_atomic_confirmation(api):

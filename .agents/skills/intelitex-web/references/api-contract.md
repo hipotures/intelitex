@@ -144,6 +144,11 @@ is shared with the compatibility HTTP adapter.
   `.lock`; unrelated or partially imported destinations still conflict. Drafts have
   no pipeline response, so GET `/api/workspaces` supplies their active/last import job.
   GET `/api/workspaces/{id}/profiles` resolves their saved P1–P5 assignments.
+- POST `/api/workspaces/{id}/reprepare`: current config revision and optional
+  request_key; supervised provider-free rebuild of an already prepared configured
+  workspace. The application rejects changed sources, stale revisions, jobs,
+  archived workspaces and any persisted work; it versions the previous plan and
+  resets section-specific configuration. `preparation_locked` is a 409.
 - PATCH `/api/workspaces/{id}/sections/{section}`: revision plus processing/content_type/profiles;
   allow_model_change:true only after explicit user confirmation.
 - PATCH `/api/workspaces/{id}/settings`: revision, pass_profiles, allow_model_change.
@@ -167,7 +172,7 @@ persistent palette index. Runtime projections remain separate from checkpoint tr
 
 New 409 codes: analysis_membership_locked, config_revision_conflict,
 lifecycle_revision_conflict, model_change_confirmation_required, workspace_archived,
-request_key_conflict. Existing codes and mutation revisions are retained.
+request_key_conflict, preparation_locked. Existing codes and mutation revisions are retained.
 
 P2–P4 retained receipts remain explicitly unverified; they are never relabeled current
 complete. Profile-definition editing and model diagnostics have no public production

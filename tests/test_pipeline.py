@@ -782,6 +782,50 @@ def test_major_section_and_natural_scene_planning(tmp_path):
     assert len(book["chapters"][1]["chunk_ids"]) == 1
 
 
+def test_auto_import_recognizes_numbered_h4_chapters_inside_spine_files(tmp_path):
+    source = tmp_path / 'split_epub'
+    source.mkdir()
+    documents = {
+        'split_000.html': '<p>Start and copyright.</p>',
+        'split_001.html': '<h2>BOOK TITLE</h2>',
+        'split_002.html': ('<h2>AUTHOR NAME</h2><h4>DRAMATIS PERSONAE</h4><p>Cast list.</p>'
+                           '<h4>PROLOGUE</h4><p>Opening story.</p>'),
+        'split_003.html': ('<h4>ONE</h4><p>First chapter.</p><h4>Scene caption</h4>'
+                           '<p>Still the first chapter.</p><h4>TWO</h4><p>Second chapter.</p>'),
+        'split_004.html': ('<h4>Chapter Three</h4><p>Third chapter.</p>'
+                           '<h4>ABOUT THE AUTHOR</h4><p>Biography.</p>'),
+    }
+    for name, content in documents.items():
+        (source / name).write_text(content)
+    (source / 'content.opf').write_text(
+        '<package><metadata><title>BOOK TITLE</title></metadata><manifest>'
+        + ''.join(f'<item id="f{i}" href="{name}" media-type="application/xhtml+xml"/>'
+                  for i, name in enumerate(documents))
+        + '<item id="toc" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
+        + '</manifest><spine>'
+        + ''.join(f'<itemref idref="f{i}"/>' for i in range(len(documents)))
+        + '</spine></package>')
+    (source / 'toc.ncx').write_text(
+        '<ncx><navMap><navPoint><navLabel><text>Start</text></navLabel>'
+        '<content src="split_000.html"/></navPoint></navMap></ncx>')
+    out = tmp_path / 'prepared'
+    with Display(True) as ui:
+        book = import_folder(source, out, lambda text: (len(text) + 3) // 4,
+                             {'whole_section_char_limit': 10000}, ui)
+    assert [section['title'] for section in book['chapters']] == ['PROLOGUE', 'ONE', 'TWO', 'Chapter Three']
+    assert [section['role'] for section in book['non_narrative_sections']] == [
+        'front_matter', 'front_matter', 'front_matter', 'back_matter']
+    assert book['metadata']['toc'] == [{'file': 'split_000.html', 'anchor': '', 'label': 'Start'}]
+    assert 'Scene caption' in [block['text'] for block in book['chapters'][1]['blocks']]
+    assert 'Second chapter.' not in [block['text'] for block in book['chapters'][1]['blocks']]
+    imported = [block['text'] for section in sorted(
+        [*book['chapters'], *book['non_narrative_sections']],
+        key=lambda item: item['blocks'][0]['order']) for block in section['blocks']]
+    extracted = [block['text'] for name in sorted(documents)
+                 for block in extract_blocks(documents[name].encode())[0]]
+    assert imported == extracted
+
+
 def test_large_scene_is_never_size_split(tmp_path):
     source = tmp_path / "src_large"
     source.mkdir()

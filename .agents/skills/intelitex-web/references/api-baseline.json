@@ -1,15 +1,16 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "090e614cf79bc35cd500809c45f3e2dd9d227935",
-  "audit_date": "2026-09-22",
-  "audit_basis": "Current working tree manually re-audited for revision-controlled draft pass profiles and provider-free web Prepare with marked one-token-per-four-character estimates. P1 recounts estimated source text before context fitting; direct CLI import retains provider-aware behavior. Source hashes are a drift guard, not runtime certification.",
+  "inspected_commit": "794890bc294fb5287758a6dd631f44ee52d8d647",
+  "audit_date": "2026-09-23",
+  "audit_basis": "Manually inspected same-workspace versioned reprepare application/HTTP/worker boundaries, persisted-work gate, source-heading auto import, direct P1 membership evidence check, revision/idempotency handling, and regression tests. Source hashes are a drift guard, not runtime certification.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
       "create_app",
       "stream",
-      "ASGIServer"
+      "ASGIServer",
+      "ReprepareLocked error mapping"
     ],
     "bookpipe/server/__init__.py": [
       "serve",
@@ -19,10 +20,12 @@
     "bookpipe/server/routes.py": [
       "dispatch",
       "library preflight and inspect routes",
-      "workspace setup route"
+      "workspace setup route",
+      "workspace reprepare route"
     ],
     "bookpipe/server/http.py": [
-      "Handler"
+      "Handler",
+      "ReprepareLocked error mapping"
     ],
     "bookpipe/server/service.py": [
       "ServerService",
@@ -35,7 +38,8 @@
       "inspect_source",
       "compatibility",
       "save_setup",
-      "configure"
+      "configure",
+      "reprepare"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -57,7 +61,8 @@
       "WebWorkspaceService",
       "configure",
       "section_summaries",
-      "preparation"
+      "preparation",
+      "configure direct P1 attempt check"
     ],
     "bookpipe/application/workflow.py": [
       "WorkflowQueries",
@@ -113,7 +118,9 @@
     "bookpipe/store.py": [
       "Store",
       "save_approval_revision",
-      "mark_chunks_stale"
+      "mark_chunks_stale",
+      "has_work_since_import",
+      "has_p1_attempt"
     ],
     "docs/server-runtime.md": [
       "FastAPI"
@@ -124,7 +131,10 @@
     ],
     "bookpipe/application/projects.py": [
       "ProjectsService",
-      "import_book"
+      "import_book",
+      "check_reprepare",
+      "reprepare",
+      "_reprepare_inputs"
     ],
     "bookpipe/application/commands.py": [
       "ImportBookCommand.local_token_estimate"
@@ -134,15 +144,19 @@
     ],
     "bookpipe/importer.py": [
       "estimate_source_tokens",
-      "import_folder"
+      "import_folder",
+      "_semantic_lower_heading",
+      "_numbered_chapter_label"
     ],
     "bookpipe/runtime/models.py": [
       "ImportJobSpec",
-      "__post_init__"
+      "__post_init__",
+      "ImportJobSpec.reprepare"
     ],
     "bookpipe/runtime/worker.py": [
       "execute",
-      "draft destination and fingerprint check"
+      "draft destination and fingerprint check",
+      "execute reprepare branch"
     ],
     "bookpipe/profiles.py": [
       "validate_settings",
@@ -170,17 +184,19 @@
     "web/tests/development.test.mjs",
     "web/tests/recovery.test.mjs",
     "web/tests/library-refresh.test.mjs",
-    "web/tests/library-setup.test.mjs"
+    "web/tests/library-setup.test.mjs",
+    "tests/test_pipeline.py",
+    "web/tests/reprepare.test.mjs"
   ],
   "source_blobs": {
-    "bookpipe/server/asgi.py": "ba683a20dcbc05b5e776be36eda4a7c477a9f0e1",
+    "bookpipe/server/asgi.py": "83c1da58fa756cb4c053b7002dcff35f9859d3ef",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
-    "bookpipe/server/routes.py": "0922aa2ffb76ef8ac1d1aa618920e7b9fb2e825b",
-    "bookpipe/server/http.py": "f5158c0d998813dd5f82b5eaf2a7f0b5f31ae481",
-    "bookpipe/server/service.py": "658e655dd477b2e02f24d5484a778597e8926d61",
+    "bookpipe/server/routes.py": "a89fab59bf67b9da59d7843917e79b2f49f3c468",
+    "bookpipe/server/http.py": "d9400cf306b50eef5eff910891345920ee9c7a5d",
+    "bookpipe/server/service.py": "06e9e9cabafa228caa43c76b3c004a6b77331549",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
     "bookpipe/application/catalog.py": "c48e64d755374b622ff60c6d219f543e2e66c327",
-    "bookpipe/application/web.py": "a206a7bafe86489c4fc5a1f9c5949722539277e3",
+    "bookpipe/application/web.py": "6746412341dac4741b3cea31a38e40eaa783172c",
     "bookpipe/application/workflow.py": "7ff85de560f5adf295a25c0ed317d1980e30e550",
     "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
     "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
@@ -191,15 +207,15 @@
     "bookpipe/runtime/supervisor.py": "a1d814c1010047ccf0edb01e0d11557b9267d4bb",
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
     "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
-    "bookpipe/store.py": "286f9ce2f80585c555a4af228d16e38ce45b1c65",
+    "bookpipe/store.py": "f66643c091450d29fe8519879b8c86dbb7ddfd5b",
     "docs/server-runtime.md": "9c334000170d6074e06cd16525715ca08753c587",
     "bookpipe/application/epub_sources.py": "77883c7b0e01424d1a29551362e49522688d2021",
-    "bookpipe/application/projects.py": "b16465c30f0c358a1bec230e3d7f368b4f409e8f",
+    "bookpipe/application/projects.py": "d05df487cf75433dee9c702f7d34a57a9db21832",
     "bookpipe/application/commands.py": "61fb441e10145e922be0b5b5be300b6663d383be",
     "bookpipe/engine.py": "1adfdd7636f6ab6df58c340c004dfb5578cf9e7c",
-    "bookpipe/importer.py": "fcde251c850cdb15352a55190d4db18d06bfc1e3",
-    "bookpipe/runtime/models.py": "b9a7624785207e648640dc8637048f22119fc9e4",
-    "bookpipe/runtime/worker.py": "bfe3859a3fc67cb523e86381bdfb3aed5c4a5ff3",
+    "bookpipe/importer.py": "eac63e5eafcd780ad2a309c2d92e29c4993c3166",
+    "bookpipe/runtime/models.py": "b05251c2b506e124a23219cebb0a268de94e512b",
+    "bookpipe/runtime/worker.py": "8abea8e568f5fc148ef85bd383148b82e58bad58",
     "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
     "bookpipe/application/source_preflight.py": "38fe9386c077b78f1dfe112d3fe2629910d82178",
     "bookpipe/application/workspace_setup.py": "701b025ac4a151d8db380d8f993b8d6211482562"

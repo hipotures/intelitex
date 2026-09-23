@@ -112,3 +112,35 @@ in localStorage appears in production code.
 
 Source limitations are documented in [intentional differences](differences.md).
 No live provider or active translation workspace was accessed.
+
+## 2026-09-23: chapter boundaries, same-workspace Prepare rebuild, P1 visibility and F/T/E response
+
+The current change used disposable pytest projects and offline browser route fixtures;
+no model was contacted and no active translation workspace was mutated. A read-only
+inspection of the affected source and workspace confirmed sparse TOC entries, numbered
+`h4` chapter headings and no persisted P1 attempt. The user's running server was not
+started, stopped or restarted by these checks.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 851 passed; 3 existing dependency/ZIP-fixture warnings |
+| `uv run --group dev python -m pytest -q tests/test_web_production.py -k 'd02_membership or p1_attempt_manifest or reprepare'` | 12 passed; 52 deselected |
+| `node --test tests/*.cjs` | 31 passed |
+| `npm --prefix web run test:unit` | 15 passed in 5 files |
+| `npm --prefix web run lint` | Passed |
+| `npm --prefix web run build` | Typecheck and production build passed; existing >500 kB chunk advisory |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf npm --prefix web run test:browser` | 8 passed, including workflow, SSE, Library, setup, and rebuild/F/T/E; zero unexpected console/page/request errors |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf node --test tests/reprepare.test.mjs` (from `web/`, after mobile CSS change) | 1 passed; no page/console/request errors or page horizontal overflow |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and supplied contract hashes unchanged |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual source re-audit |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed |
+| `git diff --check` | Passed |
+
+Offline Chromium captures are in `/tmp/intelitex-reprepare-evidence/` at dark
+1440×1000 and light 390×844. Manual comparison with the original v33 Prepare page
+found matching page/panel geometry and typography; the prepared page intentionally
+adds a guarded rebuild control, while the fixture's live source/metadata differs
+from the mock's seeded book. The mobile source table scrolls inside its card so
+column headings remain separate without widening the page. The browser test also
+confirmed an acknowledged F/T/E change appears in under 1.2 seconds while two
+authoritative background reads were delayed by 3.5 seconds.

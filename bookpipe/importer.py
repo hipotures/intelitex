@@ -194,11 +194,35 @@ def reading_order(root: Path, opf_path: Path | None = None) -> tuple[list[Path],
 
 MAJOR_SECTION_CLASSES = {"calibre27"}
 SCENE_START_CLASSES = {"calibre19", "calibre21", "calibre23"}
+CHAPTER_UNITS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
+CHAPTER_TEENS = {"ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"}
+CHAPTER_TENS = {"twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"}
 
 
 def _structure_title(text: str) -> str:
     """Remove lightweight emphasis and source-formatting whitespace from labels."""
     return re.sub(r"\s+", " ", re.sub(r"[*_`]+", "", text)).strip()
+
+
+def _numbered_chapter_label(text: str) -> bool:
+    label = _structure_title(text).casefold()
+    if label.startswith("chapter "):
+        label = label[8:].split(":", 1)[0].strip()
+    words = label.replace("-", " ").split()
+    if len(words) == 1:
+        word = words[0]
+        return (bool(re.fullmatch(r"[1-9][0-9]{0,3}", word)) or
+                bool(re.fullmatch(r"(?=[ivxlcdm]+$)m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})", word)) or
+                word in CHAPTER_UNITS | CHAPTER_TEENS | CHAPTER_TENS)
+    return len(words) == 2 and words[0] in CHAPTER_TENS and words[1] in CHAPTER_UNITS
+
+
+def _semantic_lower_heading(block: dict) -> bool:
+    """Recognize explicit chapters in lower-level headings without splitting every h3–h6."""
+    if block.get("heading_level") not in (3, 4, 5, 6):
+        return False
+    label = _structure_title(block["text"]).casefold()
+    return label in {"prologue", "epilogue", "about the author"} or _numbered_chapter_label(label)
 
 
 def _extract_document(raw: bytes, *, encoding: str | None = None,
@@ -465,7 +489,8 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
         current = None
         for block in blocks:
             matching = next((e for e in toc if e["anchor"] and e["anchor"] in block["anchors"]), None)
-            heading_boundary = block["custom_heading"] or block["heading_level"] in (1, 2)
+            heading_boundary = (block["custom_heading"] or block["heading_level"] in (1, 2)
+                                or _semantic_lower_heading(block))
             major_boundary = bool(block.get("major_section"))
 
             if chapter_mode == "file":
@@ -506,8 +531,17 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
     if not discovered:
         raise PipelineError("Import produced no text.")
 
+    # A genuine Prologue starts the narrative. Title pages, author credits and
+    # cast lists preceding it are front matter even when the EPUB TOC is sparse.
+    prologue_index = next((i for i, section in enumerate(discovered)
+                           if section["structure"] == "heading" and
+                           _structure_title(section["title"]).casefold() == "prologue"), None)
+    if prologue_index is not None and any(_numbered_chapter_label(section["title"])
+                                          for section in discovered[:prologue_index]):
+        prologue_index = None
     for i, section in enumerate(discovered):
-        role = _section_role(section, i, len(discovered), metadata)
+        role = ("front_matter" if prologue_index is not None and i < prologue_index
+                else _section_role(section, i, len(discovered), metadata))
         section["role"] = role
         if role == "narrative":
             number = len(manifest["chapters"]) + 1
@@ -598,6 +632,6 @@ def import_folder(root: Path, project: Path, count: Callable[[str], int], settin
         f"Natural structure policy: sections <= {limit:,} characters stay whole; larger sections split only at detected scene boundaries; individual scenes are never size-split."
     )
     manifest["warnings"].append(
-        "Publisher-specific structure hints currently recognize calibre27 as a named major section and calibre19/calibre21/calibre23 plus image-only separators as scene starts. Inspect book.json before analysis."
+        "Structure hints recognize explicit numbered/Prologue/Epilogue headings in h3-h6, calibre27 named major sections, and calibre19/calibre21/calibre23 plus image-only scene separators. Inspect book.json before analysis."
     )
     return manifest

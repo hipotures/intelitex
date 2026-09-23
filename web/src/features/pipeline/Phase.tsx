@@ -1,7 +1,10 @@
+import { useContext, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { endpoint, useApi } from '../../api/client'
-import { pipelineSchema, preparationSchema, profilesSchema, usageSchema, workspacesSchema, type Usage } from '../../api/schema'
-import { Back, Empty, ErrorNote, Panel, ProfileSwatch } from '../../components/ui/common'
+import { endpoint, queryClient, request, Scope, useApi } from '../../api/client'
+import { jobSchema, pipelineSchema, preparationSchema, profilesSchema, usageSchema, workspacesSchema, type Usage } from '../../api/schema'
+import { useCommand } from '../../api/mutations'
+import { createRequestKey } from '../../api/requestKey'
+import { Back, Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
 import { Activity, PassMark, phaseStatus } from './Workspace'
 import { Action } from './Action'
 import { debugTag } from '../../debug/regions'
@@ -23,13 +26,50 @@ export function PhasePage() {
   const usage = useApi(endpoint(id,'usage'), usageSchema, !!workspace?.prepared && ['analyse','translate'].includes(phase))
   const profiles = useApi(endpoint(id,'profiles'), profilesSchema, !!workspace?.prepared)
   const preparation = useApi(endpoint(id,'preparation'), preparationSchema, !!workspace?.prepared && phase === 'prepare')
+  const command = useCommand(id)
+  const scope = useContext(Scope)
+  const [rebuildOpen, setRebuildOpen] = useState(false)
+  const [rebuildError, setRebuildError] = useState<unknown>(null)
   const p = query.data
   const title = ({ prepare: 'Prepare', analyse: 'Analyse', translate: 'Translate', publish: 'Publish' } as Record<string,string>)[phase] ?? phase
   const state = p ? phaseStatus(p,phase) : 'blocked'
   const totals = usageTotals(usage.data, phase === 'analyse' ? [1] : [2,3,4,5])
   const metrics = phase === 'prepare' ? [['Format',p?.metadata.format ?? '—'],['Sections',p?.sections.length ?? '—'],['Processable',p?.sections.filter(s => s.processing !== 'excluded').length ?? '—'],['Words',p?.metadata.word_count?.toLocaleString() ?? '—']] : phase === 'publish' ? [['Status',p?.publication.state ?? '—'],['Format',p?.publication.current ? 'EPUB' : '—'],['Sections',p?.sections.filter(s => s.processing !== 'excluded').length ?? '—'],['Size',p?.publication.size_bytes == null ? '—' : `${p.publication.size_bytes.toLocaleString()} bytes`]] : totals.map((t,i) => [labels[i],measured(t)])
   const currentProfile = (n:number) => { const profile=profiles.data?.resolved_passes[String(n)];return <span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={profile?.name ?? 'Unavailable'} />{profile?.name ?? '—'}</span> }
-  return <main className="main phase-detail-page" {...debugTag('PHD')}><Back id={id} /><div className="phase-detail-head" {...debugTag('PHH')}><div className="phase-detail-title"><div className="eyebrow">{title} · {p?.metadata.title ?? workspace?.metadata.title ?? 'Workspace'}</div><h1>{title}</h1><div className="phase-detail-meta">Phase details and execution diagnostics</div></div><span className={`phase-status-badge ${state}`}>{state === 'done' ? 'Complete' : state === 'blocked' ? 'Blocked' : state === 'error' ? 'Failed' : p?.active_job ? 'Running' : 'Ready'}</span></div><ErrorNote error={query.error ?? usage.error ?? profiles.error} retry={() => void query.refetch()} />
+  async function runReprepare() {
+    if (!p || !workspace || command.disabled) return
+    setRebuildError(null)
+    try {
+      const latest = await request(endpoint(id, 'pipeline'), pipelineSchema)
+      queryClient.setQueryData([scope, endpoint(id, 'pipeline')], latest)
+      if (latest.config.revision !== p.config.revision || latest.busy || latest.metadata.lifecycle.archived) {
+        setRebuildError(new Error('Workspace changed. Review its current state before preparing again.'))
+        return
+      }
+    } catch (error) { setRebuildError(error); return }
+    const storageKey = `intelitex.pending.${scope}.${id}.reprepare`
+    let key: string
+    try { key = sessionStorage.getItem(storageKey) ?? createRequestKey(); sessionStorage.setItem(storageKey, key) }
+    catch { try { key = createRequestKey() } catch (error) { setRebuildError(error); return } }
+    const value = await command.send(endpoint(id, 'reprepare'), jobSchema,
+      { revision: p.config.revision, request_key: key })
+    if (value) {
+      try { sessionStorage.removeItem(storageKey) } catch { /* Optional storage. */ }
+      setRebuildOpen(false)
+    } else if (command.unknownOutcome()) {
+      try {
+        const receipt = await request(`/api/requests/${encodeURIComponent(key)}`, jobSchema)
+        if (receipt.workspace_id === id && receipt.operation === 'import') {
+          try { sessionStorage.removeItem(storageKey) } catch { /* Optional storage. */ }
+          command.clearError(); setRebuildOpen(false)
+        }
+      } catch { /* Keep the pending receipt for deliberate recovery. */ }
+    } else {
+      try { sessionStorage.removeItem(storageKey) } catch { /* Optional storage. */ }
+    }
+  }
+  const canReprepare = !!p && !!workspace?.source_id && !p.busy && !p.analysis.membership_locked && !p.metadata.lifecycle.archived
+  return <main className="main phase-detail-page" {...debugTag('PHD')}><Back id={id} /><div className="phase-detail-head" {...debugTag('PHH')}><div className="phase-detail-title"><div className="eyebrow">{title} · {p?.metadata.title ?? workspace?.metadata.title ?? 'Workspace'}</div><h1>{phase === 'analyse' ? 'Analyse · P1' : title}</h1><div className="phase-detail-meta">{phase === 'analyse' ? `Whole-book analysis · ${p?.progress.analysis.required ? `${p.progress.analysis.completed}/${p.progress.analysis.required} required units` : 'plan not created yet'}` : 'Phase details and execution diagnostics'}</div></div><span className={`phase-status-badge ${state}`}>{state === 'done' ? 'Complete' : state === 'blocked' ? 'Blocked' : state === 'error' ? 'Failed' : p?.active_job ? 'Running' : 'Ready'}</span></div><ErrorNote error={query.error ?? usage.error ?? profiles.error} retry={() => void query.refetch()} />
     <div className="phase-metrics" {...debugTag('PHM')}>{metrics.map(([label,value]) => <div className="phase-metric" key={label} {...debugTag('PMT', String(label))}><div className="phase-metric-label">{label}</div><div className="phase-metric-value" title={String(value)}>{value}</div></div>)}</div>
     {!p ? <Empty>{workspace?.prepared ? 'Loading phase details…' : <>Source structure has not been inspected yet. Run Prepare from the workspace to create the frozen section and chunk plan.{workspace && <Action workspace={workspace} />}</>}</Empty> : state === 'blocked' && phase !== 'prepare' ? <Empty>Complete the preceding phase before {title.toLowerCase()}.</Empty> : <div className="phase-detail-grid"><div className="phase-detail-stack">
       {phase === 'prepare' && <Panel debugId="PSR" title="Source structure"><table className="phase-detail-table prepare-structure"><thead><tr><th>Section</th><th>Content type</th><th>Processing</th><th>P1</th></tr></thead><tbody>{p.sections.map(s => <tr key={s.id}><td title={s.title ?? s.fallback_excerpt}>{String(s.ordinal).padStart(2,'0')} · {s.title || s.fallback_excerpt}</td><td>{s.content_type.replaceAll('_',' ')}</td><td>{s.processing}</td><td>{s.processing === 'full' ? 'Included' : '—'}</td></tr>)}</tbody></table></Panel>}
@@ -38,10 +78,11 @@ export function PhasePage() {
       {phase === 'publish' && <><Panel debugId="PPO" title="Published output"><dl className="phase-kv"><dt>File</dt><dd>{p.publication.filename ?? '—'}</dd><dt>Resource</dt><dd>{p.publication.current ? 'Current workspace EPUB' : 'Unavailable'}</dd><dt>Language</dt><dd>{p.publication.target_language}</dd><dt>Edition</dt><dd>{p.publication.generated_by ?? '—'}</dd><dt>Source sections</dt><dd>{p.sections.length}</dd><dt>Excluded</dt><dd>{p.sections.filter(s => s.processing === 'excluded').length}</dd></dl>{p.publication.current && <a className="secondary-btn download" href={endpoint(id,'publication/download')}>Open EPUB</a>}{p.publication.last_error && <p className="subtitle">{p.publication.last_error}</p>}</Panel><Panel debugId="PPV" title="Package validation">{p.publication.checks.length ? p.publication.checks.map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>) : <Empty>No current publication validation results.</Empty>}</Panel></>}
     </div><div className="phase-detail-stack">
       {phase === 'translate' ? <Activity id={id} expanded title="Recent execution" /> : phase === 'analyse' ? <Panel debugId="PGD" title="Generated data"><dl className="phase-kv"><dt>Terms / entities</dt><dd>{p.review.summary?.total ?? '—'}</dd><dt>Analysis units</dt><dd>{p.analysis.units.length}</dd><dt>Default profile</dt><dd>{currentProfile(1)}</dd><dt>Review gate</dt><dd>{p.approved ? 'Committed approval' : p.analysis.complete ? 'Ready for review' : 'Not ready'}</dd></dl></Panel> : <Panel debugId={phase === 'prepare' ? 'PSM' : 'PMD'} title={phase === 'prepare' ? 'Source metadata' : 'Metadata'}><dl className="phase-kv"><dt>Title</dt><dd>{p.metadata.title}</dd><dt>Author</dt><dd>{p.metadata.creators.join(', ') || '—'}</dd><dt>Source language</dt><dd>{p.metadata.language ?? '—'}</dd>{phase === 'prepare' ? <><dt>Source</dt><dd>{p.preparation.source_id}</dd></> : <><dt>Output language</dt><dd>{p.publication.target_language}</dd><dt>Publisher</dt><dd>{p.publication.generated_by ?? '—'}</dd></>}</dl></Panel>}
-      {phase === 'prepare' && <Panel debugId="PCK" title="Checks">{(preparation.data?.checks ?? []).map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>)}<ErrorNote error={preparation.error} /><p className="subtitle">{preparation.data?.unavailable}</p><p className="subtitle">Reading order: {preparation.data?.reading_order?.replaceAll('_',' ') ?? '—'}</p></Panel>}
+      {phase === 'prepare' && <Panel debugId="PCK" title="Checks">{(preparation.data?.checks ?? []).map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>)}<ErrorNote error={preparation.error} /><p className="subtitle">{preparation.data?.unavailable}</p><p className="subtitle">Reading order: {preparation.data?.reading_order?.replaceAll('_',' ') ?? '—'}</p><div className="prepare-rerun"><p className="subtitle">Rebuild the source sections in this workspace. The previous plan is kept in versioned history; section F/T/E choices must be reviewed again.</p><Button disabled={!canReprepare || command.disabled} onClick={() => setRebuildOpen(true)}>{p.active_job?.operation === 'import' ? 'Rebuilding…' : 'Run Prepare again'}</Button>{p.analysis.membership_locked && <p className="subtitle">P1 has persisted work, so this plan cannot be replaced in place.</p>}{!workspace?.source_id && <p className="subtitle">This workspace has no saved Library source for another Prepare.</p>}{p.last_job?.operation === 'import' && p.last_job.state === 'failed' && <p className="subtitle">The rebuild failed. The previous source plan remains available.</p>}</div></Panel>}
       {phase === 'analyse' && <Panel debugId="PAR" title="Artifacts"><p className="phase-check">{p.artifacts.terminology ? '✓' : '○'} Terminology candidates · {p.artifacts.terminology ? 'Available' : 'Not available'}</p><p className="phase-check">{p.artifacts.book_memory ? '✓' : '○'} Book memory · {p.artifacts.book_memory ? 'Available' : 'Not available'}</p></Panel>}
       {phase === 'translate' && <Panel debugId="PDG" title="Diagnostics"><p className="subtitle">Usage covers recorded attempts, including retries. Cache and reasoning can be subsets; do not add these totals together.</p><ErrorNote error={usage.error} />{usage.data?.warning && <p className="subtitle">{usage.data.warning}</p>}<div className="execution-diagnostics">{usage.data?.units.flatMap(u => u.passes.filter(pass => pass.pass_no > 1).map(pass => <details key={`${u.unit_id}-${pass.pass_no}`}><summary>{u.unit_id} · P{pass.pass_no} · {pass.physical_attempt_count} attempts</summary><p>{pass.provider ?? '—'} · {pass.reported_model ?? pass.requested_model ?? '—'} · {pass.result_status} · {pass.failed_attempt_count} failed · {pass.elapsed_seconds.value == null ? '—' : `${pass.elapsed_seconds.value.toFixed(2)} s`}</p>{pass.attempts.map(a => <p key={a.attempt_id}>{a.attempt_id} · {a.acceptance_status} · {a.generation_status} · {a.reported_model ?? '—'} · {a.elapsed_seconds == null ? '—' : `${a.elapsed_seconds.toFixed(2)} s`}</p>)}</details>))}</div></Panel>}
       {phase === 'publish' && <Activity id={id} publicationOnly expanded title="Publication log" />}
     </div></div>}
+    {rebuildOpen && <Overlay title="Run Prepare again?" debugId="RPM" compact close={() => { if (!command.pending) setRebuildOpen(false) }}><div className="modal-body"><p>Rebuild source sections in this workspace without contacting a model. The current Prepare plan will be saved as a version. Your section F/T/E choices will be reset because section boundaries and IDs may change.</p><ErrorNote error={rebuildError ?? command.error} /></div><div className="modal-foot"><Button onClick={() => setRebuildOpen(false)}>Cancel</Button><Button variant="primary" disabled={!canReprepare || command.disabled} onClick={() => void runReprepare()}>Rebuild Prepare</Button></div></Overlay>}
   </main>
 }

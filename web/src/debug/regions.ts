@@ -65,6 +65,7 @@ export const debugRegions = [
   { id: 'PSR', description: 'Prepare source structure card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PSM', description: 'Prepare source metadata card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PCK', description: 'Prepare checks card', source: 'features/pipeline/Phase.tsx' },
+  { id: 'RPM', description: 'Prepare rebuild confirmation modal', source: 'features/pipeline/Phase.tsx' },
   { id: 'PAN', description: 'Analyse units card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PGD', description: 'Analyse generated data card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PAR', description: 'Analyse artifacts card', source: 'features/pipeline/Phase.tsx' },

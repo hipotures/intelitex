@@ -69,6 +69,13 @@ The selected profile remains saved for P1–P5 and may be changed on an unprepar
 draft through a revision-controlled application command. Direct CLI import retains
 its existing provider-aware behavior; the web worker uses the local estimate.
 
+On 2026-09-23 the task owner selected **same-workspace, versioned reprepare** before
+persisted P1 work. The previous source plan and section configuration are retained
+in project history; section-specific choices reset because changed boundaries can
+reuse IDs with different meanings. Any persisted P1–P5/Review work blocks in-place
+replacement. This is distinct from preparing a second workspace. The same request
+also called for visible whole-book P1 labeling and prompt F/T/E feedback.
+
 The supplied implementation contract is an immutable historical handoff, so its sections 5.2, 16.1 and V33-02 retain the superseded one-draft wording; read those sections through this decision register. The original v33 bytes also remain unchanged. The separate multilingual pipeline and derived SQLite cache items in issue #1 are not silently included in this Library/setup/Prepare implementation; their scope and evidence stay separate in `docs/web/contract-map.md`.
 
 ## Updating the skill

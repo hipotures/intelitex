@@ -106,6 +106,28 @@ class Store:
         with self.db:
             self.db.executemany("INSERT OR IGNORE INTO chunks(id) VALUES(?)", [(c["id"],) for c in book["chunks"]])
 
+    def has_work_since_import(self) -> bool:
+        """A changed source plan cannot reuse any persisted P1–P5 or Review evidence."""
+        for table in ('jobs', 'merged', 'terms', 'facts', 'history'):
+            if self.db.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone():
+                return True
+        if self.db.execute("SELECT 1 FROM chunks WHERE status!='pending' OR final_path IS NOT NULL LIMIT 1").fetchone():
+            return True
+        for key, raw in self.db.execute('SELECT key,value FROM kv'):
+            if key not in {'analysis_done', 'approved'} or json.loads(raw) is not False:
+                return True
+        return False
+
+    def has_p1_attempt(self) -> bool:
+        """Check the irreversible membership gate without building a usage report."""
+        if self.db.execute("SELECT 1 FROM jobs WHERE key LIKE 'pass1/%' LIMIT 1").fetchone():
+            return True
+        if self.db.execute("SELECT 1 FROM kv WHERE key LIKE 'analysis:%' OR (key='analysis_done' AND value='true') LIMIT 1").fetchone():
+            return True
+        # The engine writes P1 attempts below this pass-specific directory before
+        # provider execution. Even incomplete evidence freezes membership.
+        return any((self.root / 'artifacts' / 'pass1').glob('**/attempt_*/attempt.json'))
+
     def seed_series(self, seed: dict):
         """Seed inherited memory atomically without treating the new book as approved."""
         if self.db.execute("SELECT 1 FROM terms LIMIT 1").fetchone() or self.db.execute("SELECT 1 FROM facts LIMIT 1").fetchone():

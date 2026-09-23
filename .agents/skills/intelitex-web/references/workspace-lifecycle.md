@@ -101,3 +101,12 @@ Before Prepare, PATCH `/api/workspaces/{id}/settings` can change saved pass
 assignments using the current draft settings revision. It rejects stale revisions,
 busy/archived workspaces and invalid or language-incompatible profiles. The draft
 contains no model output or checkpoints to invalidate.
+
+After Prepare, an explicit `POST /api/workspaces/{id}/reprepare` may rebuild the
+same configured workspace only while idle and before any persisted pipeline or
+Review work. It stages the new provider-free source plan, retains the previous
+plan/configuration in `history/prepare_versions/`, resets section-specific choices,
+and keeps pass assignments. The worker rechecks source fingerprint, current config
+revision and project evidence under the project lock. A failed staging or ordinary
+commit error leaves the prior plan in place. The UI requires confirmation and never
+silently resubmits after an unknown job-start acknowledgement.

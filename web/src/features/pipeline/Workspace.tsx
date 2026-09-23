@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
-import { endpoint, Scope, useApi } from '../../api/client'
+import { endpoint, queryClient, reconcile, Scope, useApi } from '../../api/client'
 import { activitySchema, configSchema, lifecycleSchema, pipelineSchema, previewSchema, profilesSchema, workspacesSchema, type Pipeline, type Section } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Back, Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
@@ -13,6 +13,7 @@ import { debugTag, pipelineModelIds, sectionModelIds } from '../../debug/regions
 const modes = [['full', 'F', 'Full'], ['translate', 'T', 'Translate only'], ['excluded', 'E', 'Excluded']] as const
 const contentTypes = ['narrative','contents','glossary','footnotes','front_matter','back_matter','advertisement','unclassified']
 export function phaseStatus(p: Pipeline, phase: string) {
+  if (phase === 'prepare' && p.active_job?.operation === 'import') return 'active'
   if (p.last_job?.state === 'failed' && (p.last_job.operation === 'analyze' && phase === 'analyse' || p.last_job.operation === 'translate' && phase === 'translate' && !p.translation_complete || phase === 'publish' && p.publication.last_failure)) return 'error'
   if (phase === 'prepare') return 'done'
   if (phase === 'analyse') return p.analysis.complete ? 'done' : 'active'
@@ -78,7 +79,18 @@ export function WorkspacePage() {
   async function configure(body: Record<string, unknown>, sectionId?: string) {
     const revision = p?.config.revision ?? (!sectionId && !workspace?.prepared ? profiles.data?.revision : undefined)
     if (!revision) return
-    return await command.send(endpoint(id, sectionId ? `sections/${encodeURIComponent(sectionId)}` : 'settings'), configSchema, { revision, ...body }, 'PATCH')
+    const processing = sectionId && typeof body.processing === 'string' ? body.processing : null
+    const result = await command.send(endpoint(id, sectionId ? `sections/${encodeURIComponent(sectionId)}` : 'settings'), configSchema,
+      { revision, ...body }, 'PATCH', !!processing)
+    if (processing) {
+      await queryClient.cancelQueries({ queryKey: [scope, endpoint(id, 'pipeline')] })
+      if (result) queryClient.setQueryData<Pipeline>([scope, endpoint(id, 'pipeline')], current => current && ({
+        ...current, config: { ...current.config, revision: result.revision },
+        sections: current.sections.map(item => item.id === sectionId ? { ...item, processing: processing as Section['processing'] } : item),
+      }))
+      void reconcile(id).catch(() => { /* Query errors stay in their query state. */ })
+    }
+    return result
   }
   if (!workspace) return <main className="main"><Back /><ErrorNote error={all.error} /><Empty>{all.isPending ? 'Loading workspace…' : 'Workspace not found.'}</Empty></main>
   const modelsOpen = workspace.prepared ? models : draftModels
@@ -92,9 +104,9 @@ export function WorkspacePage() {
     {p?.last_job && ['failed','abandoned','cancelled'].includes(p.last_job.state) && !p.active_job && <div className={`notice ${p.last_job.state === 'failed' ? 'error' : ''}`}><span>{p.last_job.state === 'abandoned' ? 'The previous server stopped. Reconcile the saved checkpoints before starting another job.' : p.last_job.state === 'cancelled' ? 'Stopped. Saved checkpoints are retained; Run continues eligible work.' : p.last_job.error?.message ?? 'The operation failed. Saved checkpoints are retained.'}</span></div>}
     <div className="phase-rail" {...debugTag('PHR')}>{(['prepare','analyse','review','translate','publish'] as const).map(phase => {
       const state = p ? phaseStatus(p, phase) : phase === 'prepare' && !workspace.prepared ? draftFailed ? 'error' : 'active' : 'blocked'
-      const subtitle = !p ? phase === 'prepare' ? draftFailed ? 'Failed' : draftPreparing ? 'Preparing source…' : 'Ready to prepare' : 'Blocked' : phase === 'prepare' ? 'Source structure frozen' : phase === 'analyse' ? `${p.progress.analysis.completed}/${p.progress.analysis.required} analysed` : phase === 'review' ? p.approved ? 'Confirmed' : 'Human gate' : phase === 'translate' ? `${p.progress.translation.completed}/${p.progress.translation.required} complete` : p.publication.state.replaceAll('_', ' ')
+      const subtitle = !p ? phase === 'prepare' ? draftFailed ? 'Failed' : draftPreparing ? 'Preparing source…' : 'Ready to prepare' : 'Blocked' : phase === 'prepare' ? p.active_job?.operation === 'import' ? 'Rebuilding source…' : 'Source structure frozen' : phase === 'analyse' ? p.progress.analysis.required ? `P1 · ${p.progress.analysis.completed}/${p.progress.analysis.required} analysed` : 'P1 · whole book' : phase === 'review' ? p.approved ? 'Confirmed' : 'Human gate' : phase === 'translate' ? `${p.progress.translation.completed}/${p.progress.translation.required} complete` : p.publication.state.replaceAll('_', ' ')
       const canOpen = state !== 'blocked' && workspace.prepared
-      return <button key={phase} className={`phase ${state} ${draftPreparing && phase === 'prepare' ? 'preparing' : ''} ${canOpen ? 'clickable' : ''}`} disabled={!canOpen} title={!workspace.prepared && phase === 'prepare' ? subtitle : !canOpen ? 'Complete the preceding phase first.' : `Open ${phase} details`} onClick={() => void navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: id, phase } })}><span className="phase-top"><span className="phase-icon">{state === 'done' ? '✓' : state === 'error' ? '×' : ''}</span><span className="phase-name">{phase[0]!.toUpperCase() + phase.slice(1)}</span></span><span className="phase-sub">{state === 'blocked' ? 'Blocked' : subtitle}</span></button>
+      return <button key={phase} className={`phase ${state} ${(draftPreparing || p?.active_job?.operation === 'import') && phase === 'prepare' ? 'preparing' : ''} ${canOpen ? 'clickable' : ''}`} disabled={!canOpen} title={!workspace.prepared && phase === 'prepare' ? subtitle : !canOpen ? 'Complete the preceding phase first.' : `Open ${phase} details`} onClick={() => void navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: id, phase } })}><span className="phase-top"><span className="phase-icon">{state === 'done' ? '✓' : state === 'error' ? '×' : ''}</span><span className="phase-name">{phase === 'analyse' ? 'Analyse · P1' : phase[0]!.toUpperCase() + phase.slice(1)}</span></span><span className="phase-sub">{state === 'blocked' ? 'Blocked' : subtitle}</span></button>
     })}</div>
     {!workspace.prepared && modelPanel}
     {!workspace.prepared ? <div className="prepare-card" {...debugTag('PRC')}><div className="prepare-inner"><div className="prepare-icon">P</div><h2>{draftPreparing ? 'Preparing this workspace' : draftFailed ? 'Preparation failed' : 'Prepare this workspace'}</h2><p className="subtitle">Inspect the source and freeze its sections and translation units before analysis. Token counts here are local estimates: one token per four characters. Prepare does not contact a model.</p>{draftP1 && <p className="prepare-profile">Selected P1 profile for Analyse: {draftP1.name} ({draftP1.provider})</p>}<Action workspace={workspace} /></div></div> : !p ? <Empty>Loading source structure…</Empty> : <>

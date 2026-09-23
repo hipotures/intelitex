@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from ..runtime.supervisor import JobConflict, RequestConflict
 from ..application.web import LifecycleConflict, WorkspaceArchived
+from ..application.projects import ReprepareLocked
 from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired
 from ..util import PipelineError, LockConflict
 from ..application.review import ReviewConflict
@@ -127,6 +128,7 @@ class Handler(BaseHTTPRequestHandler):
                 (LifecycleConflict, 409, 'lifecycle_revision_conflict', 'Workspace membership changed.'),
                 (WorkspaceArchived, 409, 'workspace_archived', 'Restore this workspace first.'),
                 (AnalysisMembershipLocked, 409, 'analysis_membership_locked', 'P1 membership is frozen.'),
+                (ReprepareLocked, 409, 'preparation_locked', 'This workspace has saved work or a changed source; its plan cannot be rebuilt in place.'),
                 (ConfigConflict, 409, 'config_revision_conflict', 'Configuration changed.'),
                 (ModelChangeRequired, 409, 'model_change_confirmation_required', 'Confirm model changes.'),
                 (ReviewConflict, 409, 'review_revision_conflict', 'Review state changed.'),
