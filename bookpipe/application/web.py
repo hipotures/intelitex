@@ -125,19 +125,32 @@ class WebWorkspaceService:
         return {'id': section_id, 'blocks': blocks[start:start + 20],
                 'next_page': page + 1 if start + 20 < len(blocks) else None}
 
-    def translation_pass_preview(self, root, chunk_id, pass_no):
+    def translation_pass_preview(self, root, chunk_id, pass_no, page=0):
         """Bounded, validated saved pass output for one eligible translation chunk."""
         from ..processing import effective_book
         from .sessions import ProjectReadScope
         if pass_no not in (2, 3, 4, 5):
             raise ValueError('Invalid translation pass.')
+        if type(page) is not int or page < 0 or page > 10000:
+            raise ValueError('Invalid preview page.')
         book = effective_book(self.book(root), root)
         chunk = next((item for item in book['chunks'] if item['id'] == chunk_id), None)
         if chunk is None:
             raise KeyError(chunk_id)
         key = f'pass{pass_no}/{chunk_id}'
-        source = [{'id': item['id'], 'text': item['text'][:4000]} for item in chunk['blocks'][:4]]
-        source_truncated = len(chunk['blocks']) > 4 or any(len(item['text']) > 4000 for item in chunk['blocks'][:4])
+        page_size = 5
+        start = page * page_size
+        blocks = chunk['blocks'][start:start + page_size]
+        block_ids = {item['id'] for item in blocks}
+        sentences = [item for item in chunk['sentences'] if item['block_id'] in block_ids]
+        sentence_ids = {item['id'] for item in sentences}
+        next_page = page + 1 if start + page_size < len(chunk['blocks']) else None
+        text_limit = 20000
+        source = [{'id': item['id'], 'text': item['text'][:text_limit]} for item in blocks]
+        source_truncated = any(len(item['text']) > text_limit for item in blocks)
+        sentence_preview = [{'id': item['id'], 'block_id': item['block_id'], 'text': item['text'][:text_limit]}
+                            for item in sentences]
+        sentence_truncated = any(len(item['text']) > text_limit for item in sentences)
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
             selected = store.get('selected_pass:' + key)
@@ -149,25 +162,27 @@ class WebWorkspaceService:
                 saved = store.latest_job(key)
             current = pass_no == 5 and store.chunk(chunk_id)['status'] == 'done' and saved is not None and store.chunk(chunk_id)['final_path'] == saved['path']
             if not saved:
-                return {'chunk_id': chunk_id, 'pass_no': pass_no, 'available': False,
-                        'current': False, 'source': source, 'translations': [], 'checks': [], 'findings': [],
-                        'truncated': source_truncated}
+                return {'chunk_id': chunk_id, 'pass_no': pass_no, 'page': page, 'next_page': next_page,
+                        'available': False, 'current': False, 'source': source, 'sentences': sentence_preview,
+                        'translations': [], 'checks': [], 'findings': [],
+                        'truncated': source_truncated or sentence_truncated}
             value = saved['value']
-            translations = [{'id': item['id'], 'text': item['text'][:4000]}
-                            for item in value.get('translations', [])[:20]]
-            raw_checks = value.get('checks', [])
-            raw_findings = value.get('issues', []) if pass_no == 2 else value.get('corrections', [])
+            raw_translations = [item for item in value.get('translations', []) if item['id'] in block_ids]
+            translations = [{'id': item['id'], 'text': item['text'][:text_limit]}
+                            for item in raw_translations]
+            raw_checks = [item for item in value.get('checks', []) if item['sid'] in sentence_ids]
+            raw_findings = [item for item in (value.get('issues', []) if pass_no == 2 else value.get('corrections', []))
+                            if item['sid'] in sentence_ids]
             def bounded(rows):
-                return [{field: item[:1200] if isinstance(item, str) else item
-                         for field, item in row.items()} for row in rows[:30]]
+                return [{field: item[:text_limit] if isinstance(item, str) else item
+                         for field, item in row.items()} for row in rows]
             checks, findings = bounded(raw_checks), bounded(raw_findings)
-            return {'chunk_id': chunk_id, 'pass_no': pass_no, 'available': True,
-                    'current': current, 'source': source, 'translations': translations,
+            return {'chunk_id': chunk_id, 'pass_no': pass_no, 'page': page, 'next_page': next_page,
+                    'available': True, 'current': current, 'source': source, 'sentences': sentence_preview, 'translations': translations,
                     'checks': checks, 'findings': findings,
-                    'truncated': source_truncated or len(value.get('translations', [])) > 20
-                    or any(len(item['text']) > 4000 for item in value.get('translations', [])[:20])
-                    or len(raw_checks) > 30 or len(raw_findings) > 30
-                    or any(len(item) > 1200 for row in [*raw_checks[:30], *raw_findings[:30]]
+                    'truncated': source_truncated or sentence_truncated
+                    or any(len(item['text']) > text_limit for item in raw_translations)
+                    or any(len(item) > text_limit for row in [*raw_checks, *raw_findings]
                            for item in row.values() if isinstance(item, str))}
 
     def config(self, root, *, config=None):

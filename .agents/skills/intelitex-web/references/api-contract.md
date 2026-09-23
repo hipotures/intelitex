@@ -10,8 +10,9 @@ second automatically authoritative API. Inspect current serializers and tests.
 ## Real routes
 
 Successful queries/short mutations return 200; job start/stop returns 202.
-Query parameters are accepted only by documented Library paging and workspace-list
-filters; other non-event routes reject them. IDs are validated identifiers, not paths.
+Query parameters are accepted by documented Library paging, workspace-list filters,
+and translation pass preview paging; other non-event routes reject them. IDs are
+validated identifiers, not paths.
 
 | Method | Route | Body / result |
 | --- | --- | --- |
@@ -21,6 +22,7 @@ filters; other non-event routes reject them. IDs are validated identifiers, not 
 | GET | /api/workspaces?archived=false or ?archived=true | filtered active/archive list; excluded prepared projects are not validated |
 | GET | /api/workspaces/{id} | workspace_id,status,active_job |
 | GET | /api/workspaces/{id}/pipeline | workflow snapshot described below |
+| GET | /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}?page={n} | Five source blocks plus matching P2/P4 sentence checks or P3/P5 translations; `next_page` for explicit loading |
 | GET | /api/workspaces/{id}/summary | checkpoint-validated Work card stage/progress/actions without section or physical-attempt history; unpublished completed work defers full publication readiness to Publish detail |
 | GET | /api/workspaces/{id}/usage | retained usage by unit/pass/attempt |
 | GET | /api/workspaces/{id}/profiles | sanitized effective settings |

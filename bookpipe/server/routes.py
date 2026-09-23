@@ -4,6 +4,11 @@ def response(status, value):
     return status, value
 
 
+def is_translation_preview_path(parts):
+    return (len(parts) == 8 and parts[:2] == ['api', 'workspaces']
+            and parts[3:5] == ['translation', 'chunks'] and parts[6] == 'passes')
+
+
 def dispatch(service, method, parts, body=None, query=None):
     supervisor = service.supervisor
     mutation = method != 'GET'
@@ -38,8 +43,12 @@ def dispatch(service, method, parts, body=None, query=None):
                 return response(200, service.configure(ident, body, tail[1]))
         if method == 'GET':
             if len(tail) == 5 and tail[:2] == ['translation', 'chunks'] and tail[3] == 'passes':
+                if query is not None and (set(query) != {'page'} or not query['page'].isascii()
+                                          or not query['page'].isdecimal() or len(query['page']) > 5):
+                    raise ValueError('Invalid preview page.')
                 return response(200, service.application.web.translation_pass_preview(
-                    service.workspaces.resolve(ident), tail[2], int(tail[4])))
+                    service.workspaces.resolve(ident), tail[2], int(tail[4]),
+                    int(query['page']) if query is not None else 0))
             if tail == ['analysis-reset']:
                 return response(200, service.analysis_reset_status(ident))
             if tail == ['preparation']:

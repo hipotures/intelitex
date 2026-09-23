@@ -104,12 +104,16 @@ P2–P4 invalidate an already finished chunk until P5 runs again. P5 updates the
 registered final translation and follows the existing automatic publication rule.
 Use a `request_key` for safe retries, as with other supervised jobs.
 
-`GET /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}` returns
-a bounded source/result preview for one eligible chunk and P2–P5. The response
-contains `available`, `current` (verified final P5 only), `source`, `translations`,
-`checks`, `findings`, and `truncated`. Saved P2–P4 artifacts are historical until
-their inputs are checked during execution; the preview does not claim they are
-current. No provider is contacted by this read.
+`GET /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}?page=0`
+returns five source blocks and their matching saved P2–P5 data. `page` is an optional
+zero-based integer from 0 through 10,000; `next_page` is null after the last block. The
+response contains `page`, `next_page`, `available`, `current` (verified final P5
+only), `source`, `sentences` (`id`, `block_id`, `text`), `translations`, `checks`,
+`findings`, and `truncated`. P3/P5 translations are selected by source block ID;
+P2/P4 checks and findings are selected by source sentence ID. `truncated` reports
+individual entries over 20,000 characters, not additional pages. Saved P2–P4
+artifacts are historical until their inputs are checked during execution; the
+preview does not claim they are current. No provider is contacted by this read.
 
 A job contains `job_id`, `workspace_id`, `operation`, `state`, `pid`, `started_at`,
 `finished_at`, `exit_code`, `sequence`, `last_event`, `error`. Nullable fields are

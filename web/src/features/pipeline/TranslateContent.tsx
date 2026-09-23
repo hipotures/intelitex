@@ -1,7 +1,8 @@
 import { useContext, useLayoutEffect, useRef, useState } from 'react'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
-import { endpoint, queryClient, reconcile, request, Scope, useApi } from '../../api/client'
-import { jobSchema, pipelineSchema, translationPassPreviewSchema, type Pipeline, type Profiles, type Usage } from '../../api/schema'
+import { endpoint, queryClient, reconcile, request, Scope } from '../../api/client'
+import { jobSchema, pipelineSchema, translationPassPreviewSchema, type Pipeline, type Profiles, type TranslationPassPreview, type Usage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
 import { Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
@@ -33,6 +34,37 @@ function totals(usage: Usage | undefined, passNo: number) {
 function describeFinding(value: Record<string, unknown>) {
   return Object.entries(value).filter(([key]) => key !== 'sid' && key !== 'block_id')
     .map(([key, item]) => `${key.replaceAll('_', ' ')}: ${String(item)}`).join(' · ')
+}
+
+function languageName(code: string | null | undefined, fallback: string) {
+  if (!code) return fallback
+  try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code }
+  catch { return code }
+}
+
+export function PreviewPage({ page, passNo }: { page: TranslationPassPreview; passNo: number | null }) {
+  const translations = new Map(page.translations.map(item => [item.id, item.text]))
+  return <>{page.source.map(block => (passNo === 2 || passNo === 4) && page.available ?
+    <div className="translate-preview-block" key={block.id}>
+      <div className="translate-preview-block-label">{block.id}</div>
+      {page.sentences.filter(sentence => sentence.block_id === block.id).map(sentence => {
+        const check = page.checks.find(item => item.sid === sentence.id)
+        const findings = page.findings.filter(item => item.sid === sentence.id)
+        return <div className="translate-preview-pair" key={sentence.id}>
+          <div className="translate-preview-text"><small>{sentence.id}</small>{sentence.text}</div>
+          <div className="translate-preview-analysis"><small>{sentence.id}</small>
+            {check && <strong>{passNo === 2 ? `Risk: ${String(check.risk)}` : `Status: ${String(check.status).replaceAll('_', ' ')}`}</strong>}
+            {findings.map((finding, index) => <p key={index}>{describeFinding(finding)}</p>)}
+            {!check && !findings.length && <span className="subtitle">No saved check.</span>}
+          </div>
+        </div>
+      })}
+    </div> :
+    <div className={`translate-preview-pair${page.available && passNo ? '' : ' source-only'}`} key={block.id}>
+      <div className="translate-preview-text"><small>{block.id}</small>{block.text}</div>
+      {page.available && passNo && <div className="translate-preview-text"><small>{block.id}</small>{translations.get(block.id) ?? 'No saved translation for this block.'}</div>}
+    </div>
+  )}</>
 }
 
 type ChunkPass = Pipeline['units'][number]['passes'][string]
@@ -81,8 +113,14 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const sections = new Map(pipeline.sections.map(section => [section.id, section]))
   const titles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const overriddenSections = pipeline.sections.filter(section => passNumbers.some(number => !!section.profiles[String(number)]))
-  const preview = useApi(endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${previewPass ?? 2}`),
-    translationPassPreviewSchema, !!unit)
+  const previewPath = endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${previewPass ?? 2}`)
+  const preview = useInfiniteQuery({ queryKey: [scope, previewPath],
+    queryFn: ({ pageParam, signal }) => request(`${previewPath}?page=${pageParam}`, translationPassPreviewSchema, { signal }),
+    initialPageParam: 0, getNextPageParam: page => page.next_page ?? undefined, enabled: !!unit })
+  const previewPages = preview.data?.pages ?? []
+  const firstPreview = previewPages[0]
+  const sourceLanguage = languageName(pipeline.metadata.source_language ?? pipeline.metadata.language, 'Source language unknown')
+  const targetLanguage = languageName(pipeline.metadata.target_language ?? pipeline.publication.target_language, 'Target language unknown')
   const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived
   const candidateActive = pipeline.active_job?.operation === 'translate' ? pipeline.active_job : null
   const liveActive = candidateActive ? live.state.jobs[candidateActive.job_id] : null
@@ -222,13 +260,14 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
         <div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <>
           <div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div>
           <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
-          {preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : preview.data && <>
-            <p className="subtitle">{!previewPass ? 'Source text · no saved passes yet.' : preview.data.available ? previewPass === 5 && preview.data.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
-            <div className={`translate-preview-scroll${previewPass && preview.data.available ? '' : ' source-only'}`}>
-              <div className="translate-preview-column"><h3>Source</h3>{preview.data.source.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}</div>
-              {previewPass && preview.data.available && <div className="translate-preview-column"><h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : 'Polish'}</h3>{preview.data.translations.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}{preview.data.checks.map((check, index) => <p key={`check-${index}`}><small>{String(check.sid ?? `Check ${index + 1}`)}</small>{describeFinding(check)}</p>)}{preview.data.findings.map((finding, index) => <p key={`finding-${index}`}><small>{String(finding.sid ?? finding.block_id ?? `Finding ${index + 1}`)}</small>{describeFinding(finding)}</p>)}{!preview.data.translations.length && !preview.data.findings.length && !preview.data.checks.length && <Empty>No findings in this saved result.</Empty>}</div>}
+          {preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : firstPreview && <>
+            <p className="subtitle">{!previewPass ? 'Source text · no saved passes yet.' : firstPreview.available ? previewPass === 5 && firstPreview.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
+            <div className="translate-preview-scroll">
+              <div className={`translate-preview-head${previewPass && firstPreview.available ? '' : ' source-only'}`}><h3>{sourceLanguage}</h3>{previewPass && firstPreview.available && <h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : targetLanguage}</h3>}</div>
+              {previewPages.map(page => <PreviewPage key={page.page} page={page} passNo={previewPass && page.available ? previewPass : null} />)}
+              {preview.hasNextPage && <div className="translate-preview-more"><span>{previewPages.reduce((sum, page) => sum + page.source.length, 0)} blocks shown</span><Button disabled={preview.isFetchingNextPage} onClick={() => void preview.fetchNextPage()}>{preview.isFetchingNextPage ? 'Loading…' : 'Load next 5 blocks'}</Button></div>}
             </div>
-            {preview.data.truncated && <p className="subtitle">Preview shortened for this chunk.</p>}
+            {previewPages.some(page => page.truncated) && <p className="subtitle">Some very long entries were shortened.</p>}
           </>}
         </>}</div>
       </Panel>

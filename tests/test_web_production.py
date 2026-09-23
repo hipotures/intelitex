@@ -799,6 +799,53 @@ def test_preview_and_progress_are_application_facts(api):
     assert saved['translations'] and saved['source']
 
 
+def test_translation_preview_pages_keep_source_sentences_and_results_together(api):
+    from bookpipe.store import Store
+    app, root, service, server = api
+    source = service.imports.root / 'preview-pages-source'
+    source.mkdir()
+    (source / 'chapter.html').write_text('<h1>Chapter</h1>' + ''.join(
+        f'<p>Source sentence {index}.</p>' for index in range(1, 8)))
+    root = root.parent / 'preview-pages'
+    app.projects.import_book(ImportBookCommand(root, source, chapter_mode='file'))
+    book = read_json(root / 'book.json')
+    chunk = book['chunks'][0]
+    assert len(chunk['blocks']) >= 7
+    sixth_sid = next(item['id'] for item in chunk['sentences']
+                     if item['block_id'] == chunk['blocks'][5]['id'])
+    store = Store(root)
+    try:
+        for number, value in [(2, {'checks': [{'sid': item['id'], 'risk': 'medium'} for item in chunk['sentences']],
+                                   'issues': [{'sid': sixth_sid, 'source_span': 'Source sentence',
+                                               'type': 'style', 'meaning': 'Sixth block issue',
+                                               'constraint': 'Keep the tone.', 'confidence': 'high'}]}),
+                              (3, {'translations': [{'id': item['id'], 'text': f"Translation {item['id']}"}
+                                                    for item in chunk['blocks']]})]:
+            path = root / 'artifacts' / f'pass{number}' / chunk['id'] / 'result.json'
+            atomic_json(path, value)
+            store.save_job(f"pass{number}/{chunk['id']}", 'preview-test', path, {})
+    finally:
+        store.close()
+    path = f"/api/workspaces/preview-pages/translation/chunks/{chunk['id']}/passes"
+    code, p2_first = request(server, 'GET', f'{path}/2?page=0')
+    assert code == 200 and p2_first['next_page'] == 1, p2_first
+    assert len(p2_first['source']) == 5 and len(p2_first['sentences']) == 5
+    assert {item['sid'] for item in p2_first['checks']} == {item['id'] for item in p2_first['sentences']}
+    assert not p2_first['findings']
+    code, p2_next = request(server, 'GET', f'{path}/2?page=1')
+    assert code == 200 and p2_next['next_page'] is None
+    assert len(p2_next['source']) == len(chunk['blocks']) - 5
+    assert p2_next['findings'][0]['meaning'] == 'Sixth block issue'
+    code, p3_next = request(server, 'GET', f'{path}/3?page=1')
+    assert code == 200 and [item['id'] for item in p3_next['translations']] == [item['id'] for item in p3_next['source']]
+    code, unsaved = request(server, 'GET', f'{path}/4?page=1')
+    assert code == 200 and not unsaved['available'] and unsaved['next_page'] is None
+    assert [item['id'] for item in unsaved['source']] == [item['id'] for item in p3_next['source']]
+    for invalid in ('page=-1', 'page=x', 'page=0&page=1', 'other=1'):
+        assert request(server, 'GET', f'{path}/3?{invalid}')[0] == 400
+    assert request(server, 'GET', '/api/workspaces/book/pipeline?page=1')[0] == 400
+
+
 def test_asgi_guards_and_static_route_isolation(api, tmp_path):
     _, _, service, _ = api
     frontend = tmp_path / 'dist'

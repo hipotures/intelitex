@@ -114,7 +114,10 @@ identify actual recorded profile provenance; future assignments do not recolor h
 Mixed provenance stays explicit. P2–P4 legacy retained receipts are not misrepresented as
 validated current completions. Runtime `running` is a separate cell decoration.
 Translate's P2–P4 previews identify saved output without claiming current input
-compatibility. P5 alone can show a verified current final. A targeted pass reuses
+compatibility. The TPV reads five source blocks and their matching P2–P5 data per
+page, then loads more on click. P2/P4 findings are grouped with the source sentence
+identified by `sid`; P3/P5 source and translation blocks share a row. P5 alone can
+show a verified current final. A targeted pass reuses
 saved prior-pass inputs or stops before a model call; `rerun` stores a new attempt,
 and a changed P2–P4 marks a finished chunk stale until P5 completes again.
 A later chunk may run alone for inspection; its P5 stays stale while earlier
