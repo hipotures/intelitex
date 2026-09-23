@@ -193,6 +193,8 @@ Ready until an `analyze` job is active, avoiding an apparent running state. Befo
 the first running P1 job, saved plan or attempt, its phase tile is noninteractive
 and says to start P1 with the workspace `Run` action; while P1 runs or after it has
 saved details, the tile opens the diagnostic page.
+Debug mode shows the current route/API workspace ID as selectable text in the
+workspace header; the stable `WSP` panel identifier remains a separate UI code.
 For F/T/E, the chosen mode appears immediately as pending local intent; no durable
 pipeline counts or readiness are inferred from it. A failed mutation clears the
 intent and shows the server error. The successful PATCH revision updates the

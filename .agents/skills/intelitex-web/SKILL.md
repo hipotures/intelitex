@@ -114,6 +114,8 @@ checked [ID reference table](../../../docs/web/debug-ids.md) and registry test w
 adding IDs. Test badge toggle, persistence, layout stability, console and network
 behavior in a real browser. Do not create absent UI solely to assign it an ID; the
 implemented workspace setup modal uses the registered `WCM` ID.
+In Debug mode the workspace header also shows its route/API workspace ID as selectable
+text, so the `WSP` panel code cannot be mistaken for a workspace identity.
 For an unboxed page region, show its boundary in Debug mode without reflow. Attach
 heading-group IDs to the actual text group so badges do not float over empty space.
 

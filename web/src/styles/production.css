@@ -7,6 +7,9 @@ button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .connection-status { font-size: 11px; color:var(--amber); white-space:nowrap; }
 .connection-status.live { color:var(--green); }
+.workspace-debug-identity { display:none;color:var(--text-soft);user-select:text;overflow-wrap:anywhere; }
+html[data-ui-debug="on"] .workspace-debug-identity { display:inline; }
+.workspace-debug-identity code { color:var(--accent);font-size:12px;user-select:text; }
 .cover,.mini-cover { background: var(--cover-1); }
 .book-card:nth-child(5n+2) .cover { background:var(--cover-2); }
 .book-card:nth-child(5n+3) .cover { background:var(--cover-3); }

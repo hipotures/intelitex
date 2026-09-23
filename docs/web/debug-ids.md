@@ -6,6 +6,9 @@ The Debug toggle lives in Settings and is stored only as a browser UI preference
 A repeated component keeps its type ID; `data-entity-id` identifies the source,
 workspace, profile, term or chapter instance separately. These codes are visible
 only in Debug mode and are not product terminology.
+On a workspace overview, Debug also displays the current workspace's route/API ID as
+selectable text beside the header metadata. This is the value of `data-entity-id` on
+`WSP`; a three-letter UI panel code is never a workspace ID.
 
 | ID | Conceptual component | Source component/file |
 | --- | --- | --- |
