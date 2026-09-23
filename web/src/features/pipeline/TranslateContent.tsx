@@ -13,6 +13,14 @@ const tokenFields = ['input_tokens', 'cached_input_tokens', 'reasoning_output_to
 const tokenLabels = ['Input', 'Cache', 'Reason', 'Output']
 const passNumbers = [2, 3, 4, 5] as const
 
+export function highestSavedPass(unit: Pipeline['units'][number] | undefined): number | null {
+  for (const number of [...passNumbers].reverse()) {
+    const pass = unit?.passes[String(number)]
+    if (pass?.retained_count || pass?.checkpoint_state === 'completed') return number
+  }
+  return null
+}
+
 function totals(usage: Usage | undefined, passNo: number) {
   const passes = usage?.units.flatMap(unit => unit.passes.filter(pass => pass.pass_no === passNo)) ?? []
   return tokenFields.map(field => {
@@ -62,17 +70,18 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const live = useLive()
   const previewStack = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [selectedPass, setSelectedPass] = useState<number>(pipeline.units.some(item => item.passes['5']?.checkpoint_state === 'completed') ? 5 : 2)
+  const [selectedPass, setSelectedPass] = useState<number | null>(null)
   const [pendingRun, setPendingRun] = useState<{ chunkId: string; passNo: number; rerun: boolean } | null>(null)
   const [localError, setLocalError] = useState<unknown>(null)
   const [unknownOutcome, setUnknownOutcome] = useState(false)
   const [startedTarget, setStartedTarget] = useState<{ chunkId: string; passNo: number; jobId: string | null } | null>(null)
   const runLatch = useRef(false)
   const unit = pipeline.units.find(item => item.id === selectedId) ?? pipeline.units[0]
+  const previewPass = selectedPass ?? highestSavedPass(unit)
   const sections = new Map(pipeline.sections.map(section => [section.id, section]))
   const titles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const overriddenSections = pipeline.sections.filter(section => passNumbers.some(number => !!section.profiles[String(number)]))
-  const preview = useApi(endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${selectedPass}`),
+  const preview = useApi(endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${previewPass ?? 2}`),
     translationPassPreviewSchema, !!unit)
   const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived
   const candidateActive = pipeline.active_job?.operation === 'translate' ? pipeline.active_job : null
@@ -176,7 +185,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
       <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
         const section = sections.get(item.chapter_id)
         const finished = item.passes['5']?.checkpoint_state === 'completed' && passNumbers.every(number => !!item.passes[String(number)]?.retained_count)
-        return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(2) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
+        return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(null) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
           const pass = item.passes[String(number)]
           const display = passDisplay(pass, item.status)
           const hasSaved = !!pass?.retained_count
@@ -184,7 +193,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           const isWorking = working?.chunkId === item.id && working.passNo === number
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
           const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'
-          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && selectedPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
+          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && previewPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
         })}</tr>
       })}</tbody></table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}</Panel>
       <Panel debugId="PTS" title="Models and usage"><details className="translate-summary-details"><summary>Show details</summary>
@@ -209,7 +218,20 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
         })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
       </details></Panel>
     </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>
-      <Panel debugId="TPV" title={unit ? `P${selectedPass} preview · ${unit.id}` : 'Pass preview'}><div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <><div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div><ErrorNote error={preview.error} retry={() => void preview.refetch()} />{preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : preview.data && <><p className="subtitle">{preview.data.available ? selectedPass === 5 && preview.data.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p><div className="translate-preview-scroll"><div className="translate-preview-column"><h3>Source</h3>{preview.data.source.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}</div><div className="translate-preview-column"><h3>{selectedPass === 2 ? 'Semantic checks' : selectedPass === 4 ? 'Correction checks' : 'Polish'}</h3>{preview.data.translations.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}{preview.data.checks.map((check, index) => <p key={`check-${index}`}><small>{String(check.sid ?? `Check ${index + 1}`)}</small>{describeFinding(check)}</p>)}{preview.data.findings.map((finding, index) => <p key={`finding-${index}`}><small>{String(finding.sid ?? finding.block_id ?? `Finding ${index + 1}`)}</small>{describeFinding(finding)}</p>)}{preview.data.available && !preview.data.translations.length && !preview.data.findings.length && !preview.data.checks.length && <Empty>No findings in this saved result.</Empty>}</div></div>{preview.data.truncated && <p className="subtitle">Preview shortened for this chunk.</p>}</>}</>}</div></Panel>
+      <Panel debugId="TPV" title={unit ? `${previewPass ? `P${previewPass}` : 'Source'} preview · ${unit.id}` : 'Pass preview'}>
+        <div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <>
+          <div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div>
+          <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
+          {preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : preview.data && <>
+            <p className="subtitle">{!previewPass ? 'Source text · no saved passes yet.' : preview.data.available ? previewPass === 5 && preview.data.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
+            <div className={`translate-preview-scroll${previewPass && preview.data.available ? '' : ' source-only'}`}>
+              <div className="translate-preview-column"><h3>Source</h3>{preview.data.source.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}</div>
+              {previewPass && preview.data.available && <div className="translate-preview-column"><h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : 'Polish'}</h3>{preview.data.translations.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}{preview.data.checks.map((check, index) => <p key={`check-${index}`}><small>{String(check.sid ?? `Check ${index + 1}`)}</small>{describeFinding(check)}</p>)}{preview.data.findings.map((finding, index) => <p key={`finding-${index}`}><small>{String(finding.sid ?? finding.block_id ?? `Finding ${index + 1}`)}</small>{describeFinding(finding)}</p>)}{!preview.data.translations.length && !preview.data.findings.length && !preview.data.checks.length && <Empty>No findings in this saved result.</Empty>}</div>}
+            </div>
+            {preview.data.truncated && <p className="subtitle">Preview shortened for this chunk.</p>}
+          </>}
+        </>}</div>
+      </Panel>
     </div></div>
     <Activity id={id} expanded title="Recent execution" />
     <Panel debugId="PDG" title="Attempt diagnostics"><details className="translate-diagnostics"><summary>Show recorded attempts and measurement notes</summary><ErrorNote error={usageError} />{usage?.warning && <p className="subtitle">{usage.warning}</p>}<div className="execution-diagnostics">{usage?.units.flatMap(item => item.passes.filter(pass => pass.pass_no > 1).map(pass => <details key={`${item.unit_id}-${pass.pass_no}`}><summary>{item.unit_id} · P{pass.pass_no} · {pass.physical_attempt_count} attempts</summary><p>{pass.provider ?? '—'} · {pass.reported_model ?? pass.requested_model ?? '—'} · {pass.result_status} · {pass.failed_attempt_count} failed</p>{pass.attempts.map(attempt => <p key={attempt.attempt_id}>{attempt.attempt_id} · {attempt.acceptance_status} · {attempt.generation_status}</p>)}</details>))}</div></details></Panel>
