@@ -71,9 +71,10 @@ only in Debug mode and are not product terminology.
 | PHH | Phase detail heading | `web/src/features/pipeline/Phase.tsx` |
 | PHM | Phase metrics group | `web/src/features/pipeline/Phase.tsx` |
 | PMT | Phase metric card | `web/src/features/pipeline/Phase.tsx` |
-| PSR | Prepare source structure card | `web/src/features/pipeline/Phase.tsx` |
-| PSM | Prepare source metadata card | `web/src/features/pipeline/Phase.tsx` |
-| PCK | Prepare checks card | `web/src/features/pipeline/Phase.tsx` |
+| PSR | Prepare source structure card | `web/src/features/pipeline/PrepareContent.tsx` |
+| PPR | Prepare source preview card | `web/src/features/pipeline/PrepareContent.tsx` |
+| PSM | Prepare source metadata card | `web/src/features/pipeline/PrepareContent.tsx` |
+| PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PAN | Analyse units card | `web/src/features/pipeline/Phase.tsx` |
 | PGD | Analyse generated data card | `web/src/features/pipeline/Phase.tsx` |

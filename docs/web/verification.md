@@ -183,3 +183,41 @@ table scrolls within the card.
 
 The browser test asserts the rebuild button's primary style, right alignment and
 spacing from the description on desktop, and captures the complete mobile page.
+
+## 2026-09-23: Prepare row preview and immediate Processing feedback
+
+This change used source code and disposable offline fixtures only. It did not read or
+mutate the user's workspace directories, contact a provider, or start/stop the user's
+server. The Browser plugin was unavailable, so the repository's Playwright-based
+offline browser suite exercised the real production bundle. The flow was Workspace
+→ choose F/T/E → Prepare → choose source row → inspect the opening text.
+
+The Prepare table and preview were checked at dark 1440×1000 and light 390×844.
+Captures are in `/tmp/intelitex-reprepare-evidence/prepare-dark-1440.png` and
+`prepare-light-390-full.png` beside it. Compared with the immutable v33 Prepare
+capture, the phase header, metric cards and panel styling remain consistent; the
+table is intentionally narrower, the selected row drives a new adjacent preview,
+and metadata/checks follow that preview. At 390 px, Section, Content type,
+Processing and P1 remain visible without page or table horizontal overflow.
+The P1 cell says `in` for membership rather than showing a completion check.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q tests/test_web_production.py::test_preview_and_progress_are_application_facts tests/test_server_api.py::test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage` | 4 passed in disposable projects |
+| `node --test tests/*.cjs` | 31 passed |
+| `npm --prefix web run test:unit` | 18 passed in 7 files, including UTF-8 boundary tests |
+| `npm --prefix web run lint` | Passed |
+| `npm --prefix web run build` | Strict TypeScript and production build passed; existing >500 kB chunk advisory |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf node --test tests/reprepare.test.mjs` (from `web/`) | 1 passed; lazy read, row selection, 1-KiB bound, HTML escaping, immediate saving intent, conflict rollback, rebuild and responsive layout |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf npm --prefix web run test:browser` | 8 passed; offline integration and responsive smoke |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 unchanged |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched`; no backend code or API contract changed |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed |
+| `git diff --check` | Passed |
+
+The browser suite reported no unexpected page, console or network errors. The
+Processing conflict test deliberately returns one HTTP 409, which Chromium logs;
+the UI displays the conflict and restores the server-confirmed mode. Canceled GETs
+from query reconciliation are expected and ignored only for the known workspace and
+pipeline paths. Source preview text comes from the existing read-only section API;
+only its first 1 KiB of UTF-8 is rendered. The test did not run Analyse or any model.

@@ -37,8 +37,14 @@ and responsive breakpoints. The following differences carry real application sem
 - Prepared workspaces add `Run Prepare again` in the Prepare detail page. It versions
   the old plan in the same workspace and resets section-specific choices only before
   any persisted pipeline work. The original v33 has no in-place rebuild control.
+- Prepare places a compact Source structure table beside an on-demand first-1-KiB
+  source preview. Source metadata and checks follow the preview; v33 has no
+  row-driven Prepare preview. Processing is shown as F/T/E and P1 membership as
+  lowercase `in`, with full meanings available through labels/tooltips. It does not
+  claim that P1 has completed.
 - The Analyse phase explicitly says `P1` and `whole book`; section P1 cells still
-  report only real per-section unit evidence rather than fabricated progress.
+  report only real per-section unit evidence rather than fabricated progress. A ready
+  Analyse phase is neutral and says Ready; only an active `analyze` job says Running.
 - Confirm glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
 - P2–P4 retained receipts display amber retained/unverified state where the existing
@@ -47,7 +53,9 @@ and responsive breakpoints. The following differences carry real application sem
 - Model swatches use persistent profile indices and historical provenance rather than
   the mock's fixed sample model identities. Unknown identity/usage remains unknown.
 - Connection state, pending mutations, revision conflict/reapply and safe errors are
-  visible. Accessible native buttons/dialogs replace clickable mock divs.
+  visible. F/T/E displays a distinct local saving state immediately, then accepts
+  the backend revision or rolls back on conflict. Accessible native buttons/dialogs
+  replace clickable mock divs.
 - Source preview is escaped, bounded and paginated. Diagnostic tables scroll internally
   on narrow screens; no extra section-table columns were introduced.
 - Reader uses actual verified translated chapters, canonical Unicode markers, deletion,

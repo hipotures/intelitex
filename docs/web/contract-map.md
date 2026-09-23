@@ -173,8 +173,15 @@ query still loading shows a disabled loading action, not another Prepare command
 The prepared Prepare detail screen offers `Run Prepare again` behind a confirmation
 that says section choices reset and the old plan is versioned. It is disabled after
 persisted P1 work and while a job owns the workspace; the backend rechecks all
-conditions. Analyse is labeled P1 whole-book analysis in the phase rail/detail page.
-For F/T/E, the successful PATCH revision updates the selected section in the query
+conditions. The Prepare detail layout narrows Source structure and shows an on-demand
+source preview beside it; the existing read-only section-preview API supplies the
+text, of which the UI displays at most the first 1 KiB of UTF-8. Metadata and checks
+remain below the preview. Analyse is labeled P1 whole-book analysis; it is explicitly
+Ready until an `analyze` job is active, avoiding an apparent running state.
+For F/T/E, the chosen mode appears immediately as pending local intent; no durable
+pipeline counts or readiness are inferred from it. A failed mutation clears the
+intent and shows the server error. The successful PATCH revision updates the
+selected section in the query
 cache immediately; old in-flight pipeline reads are cancelled and full reconciliation
 runs in the background for that workspace only. The global workspace list is marked
 stale, but not refetched until it is next used, so this avoids scanning every book

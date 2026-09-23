@@ -76,7 +76,10 @@ The prepared Prepare detail page offers a confirmed in-place rebuild only when t
 snapshot permits it; the backend remains the final guard. It uses a request key,
 fresh pipeline read and current config revision, then follows the supervised import
 job. Analyse/P1 is displayed as whole-book work; section cells show actual counts.
-For F/T/E PATCH, a successful returned revision updates the affected cached cell,
+For F/T/E PATCH, the selected mode is shown immediately as local **saving intent**,
+separate from pipeline truth. A rejected mutation clears that intent and restores the
+authoritative cached choice; no job starts. A successful returned revision updates
+the affected cached cell,
 old in-flight pipeline reads are cancelled, and reconciliation proceeds without
 holding the control on unrelated workspace-list queries. The global list is marked
 stale for its next use without refetching it on this screen. Only queries scoped to
