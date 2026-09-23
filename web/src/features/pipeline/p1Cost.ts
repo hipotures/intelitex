@@ -30,3 +30,17 @@ export function p1Cost(usage: Usage | undefined) {
   return { text: formatCost(amount, priced[0]!.currency!),
     note: `${detail}${fallback ? ' Older attempts without saved rates use the current model catalog.' : ''}${partial ? ' Some attempts have unknown price or usage, so the shown sum covers only known amounts.' : ''}` }
 }
+
+export function translationCost(usage: Usage | undefined) {
+  const passes = usage?.units.flatMap(unit => unit.passes.filter(pass => pass.pass_no >= 2 && pass.pass_no <= 5)) ?? []
+  const contacted = passes.filter(pass => pass.provider_call_count > 0 || pass.unknown_provider_call_count > 0)
+  const priced = contacted.map(pass => pass.cost).filter((cost): cost is Cost => cost?.amount != null && !!cost.currency)
+  if (!contacted.length) return { text: '—', note: 'Waiting for recorded P2–P5 model usage.' }
+  if (!priced.length) return { text: '—', note: 'P2–P5 price unavailable: usage or a saved model rate is missing.' }
+  const currencies = new Set(priced.map(cost => cost.currency))
+  if (currencies.size !== 1) return { text: '—', note: 'P2–P5 estimates use different currencies and cannot be added.' }
+  const amount = priced.reduce((sum, cost) => sum + cost.amount!, 0)
+  const partial = priced.length !== contacted.length || priced.some(cost => cost.status !== 'complete')
+  return { text: formatCost(amount, priced[0]!.currency!),
+    note: `Recorded P2–P5 attempts across all chunks, passes, models and retries. This is an estimate, not a provider invoice.${partial ? ' Some attempts have unknown price or usage, so the shown sum covers only known amounts.' : ''}` }
+}
