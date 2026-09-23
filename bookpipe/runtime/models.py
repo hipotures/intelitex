@@ -79,8 +79,21 @@ class Job:
         error_type = self.error.get('type') if self.error else None
         if not isinstance(error_type, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,127}', error_type):
             error_type = 'WorkerError'
-        value['error'] = ({'type': error_type, 'message': 'Operation failed; inspect locally.'}
-                          if self.error else None)
+        message = 'Operation failed; inspect locally.'
+        safe_errors = {
+            'local_model_unavailable': 'The selected local model server is unavailable. Start llama.cpp or choose another profile for this pass.',
+            'source_span_mismatch': 'Model output cited text that does not exactly match its source sentence. This attempt was not selected.',
+            'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
+            'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
+        }
+        error_code = self.error.get('code') if self.error else None
+        if isinstance(error_code, str) and error_code in safe_errors:
+            message = safe_errors[error_code]
+        private_message = self.error.get('message', '') if self.error else ''
+        if error_type == 'PipelineError' and 'source_span is not an exact quote' in private_message and message == 'Operation failed; inspect locally.':
+            message = ('Model output cited text that does not exactly match its source sentence. '
+                       'This attempt was not selected; check the failed attempt before retrying.')
+        value['error'] = ({'type': error_type, 'message': message} if self.error else None)
         return value
 
 

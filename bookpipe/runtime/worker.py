@@ -5,6 +5,8 @@ import signal
 import sys
 from pathlib import Path
 
+import httpx
+
 from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand
 from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
@@ -66,8 +68,27 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
         sink.send({"type": "reload", "completed_units": exc.completed_units})
         return 0
     except Exception as exc:
+        # Only allow fixed diagnostic codes across the worker boundary. Exception
+        # text may contain local paths, provider responses, or book content.
+        causes = []
+        cause = exc
+        while cause is not None and len(causes) < 4:
+            causes.append(cause)
+            cause = cause.__cause__
+        message = str(exc)
+        if any(isinstance(item, httpx.ConnectError) for item in causes):
+            code = 'local_model_unavailable'
+        elif 'source_span is not an exact quote' in message:
+            code = 'source_span_mismatch'
+        elif 'has no current saved result for this chunk' in message:
+            code = 'missing_prerequisite'
+        elif 'already has a saved result' in message:
+            code = 'pass_already_saved'
+        else:
+            code = None
         sink.send({"type": "failure", "error": {
             "type": type(exc).__name__,
+            **({"code": code} if code else {}),
             "message": "Operation failed; inspect project configuration and attempt evidence locally.",
         }})
         return 1

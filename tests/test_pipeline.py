@@ -677,6 +677,40 @@ def test_schema_requires_complete_coverage():
         validate_result(3, {"translations": [{"id": "OTHER", "text": "Something"}]}, inputs)
 
 
+def test_source_span_repair_grounds_markup_and_elision_without_guessing():
+    sentence = '“You *can* move about in all directions of Space, but not in Time.”'
+    inputs = {"SOURCE_BLOCKS": [{"id": "B1", "text": sentence}],
+              "SOURCE_SENTENCES": [{"id": "S1", "text": sentence}]}
+    value = {"checks": [{"sid": "S1", "risk": "medium"}], "issues": [{
+        "sid": "S1", "source_span": "You can move about in all directions of Space",
+        "type": "relation", "meaning": "mobility", "constraint": "keep contrast", "confidence": "high"}]}
+    fixed, repairs = conservative_repair(2, value, inputs)
+    assert fixed["issues"][0]["source_span"] == "You *can* move about in all directions of Space"
+    assert repairs[0]["action"] == "align_source_span"
+    validate_result(2, fixed, inputs)
+    assert value["issues"][0]["source_span"] == "You can move about in all directions of Space"
+
+    value["issues"][0]["source_span"] = "plasma cannon fired"
+    unchanged, repairs = conservative_repair(2, value, inputs)
+    assert not repairs
+    with pytest.raises(PipelineError, match="source_span"):
+        validate_result(2, unchanged, inputs)
+
+    value["issues"][0]["source_span"] = "You ... in Time"
+    fixed, _ = conservative_repair(2, value, inputs)
+    assert fixed["issues"][0]["source_span"] == "You *can* move about in all directions of Space, but not in Time"
+    validate_result(2, fixed, inputs)
+
+    p4_inputs = {**inputs, "POLISH_DRAFT": {"translations": [{"id": "B1", "text": "Możesz się ruszać."}]}}
+    correction = {"checks": [{"sid": "S1", "status": "needs_correction"}], "corrections": [{
+        "sid": "S1", "block_id": "B1", "source_span": "You can move about",
+        "draft_span": "Możesz", "problem": "omission", "constraint": "preserve relation",
+        "severity": "major", "confidence": "high"}]}
+    fixed, repairs = conservative_repair(4, correction, p4_inputs)
+    assert len(repairs) == 1
+    validate_result(4, fixed, p4_inputs)
+
+
 def test_corrupt_final_is_not_silently_accepted(project):
     root, args, state = project
     assert main(["analyze", *args]) == 0

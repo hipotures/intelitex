@@ -470,6 +470,35 @@ def test_progress_protocol_preserves_metadata_and_excludes_private_payloads():
     assert decoded["current"] == 3 and decoded["total"] == 7
 
 
+def test_public_job_state_and_safe_worker_failure_code(tmp_path):
+    import httpx
+    from bookpipe.runtime.protocol import public_envelope
+    state = public_envelope({"id": 1, "job_id": "job", "workspace_id": "w", "sequence": 1,
+                             "timestamp": "2026-01-01T00:00:00Z",
+                             "event": {"kind": "job_state", "values": {"state": "failed", "private": "secret"}}})
+    assert state["event"]["values"] == {"state": "failed"}
+    frame = decode('{"type":"failure","error":{"type":"PipelineError","code":"local_model_unavailable","message":"secret"}}\n')
+    assert frame["error"]["code"] == "local_model_unavailable"
+    assert "secret" not in json.dumps(frame)
+    public = Job("j", str(tmp_path), "w", str(tmp_path), "translate", state="failed",
+                 error=frame["error"]).public()
+    assert "local model server is unavailable" in public["error"]["message"]
+    project = tmp_path / 'w'
+    project.mkdir()
+    frames = []
+
+    def disconnected(_sink):
+        try:
+            raise httpx.ConnectError('private host or token')
+        except httpx.ConnectError as exc:
+            raise PipelineError('Cannot discover local model at private host') from exc
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), disconnected) == 1
+    assert frames[0]['error']['code'] == 'local_model_unavailable'
+    assert 'private host' not in json.dumps(frames)
+
+
 def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, server):
     from test_pipeline import make_epub_source
     from bookpipe.cli import main

@@ -122,6 +122,39 @@ def response_schema(pass_no: int, inputs: dict) -> dict:
     return schema
 
 
+def _exact_source_span(candidate: str, sentence: str) -> str | None:
+    """Ground an elided or markup-stripped quote in one contiguous source span.
+
+    Every word in the model quote must occur in source order. A foreign word,
+    empty quote, or weak one-word match remains a validation failure.
+    """
+    words = [match.group().casefold() for match in re.finditer(r"\w+", candidate)]
+    source_words = [(match.group().casefold(), match.start(), match.end())
+                    for match in re.finditer(r"\w+", sentence)]
+    if len(words) < 2 or not any(len(word) >= 4 for word in words):
+        return None
+    matches = []
+    for start, (word, first, _) in enumerate(source_words):
+        if word != words[0]:
+            continue
+        position = start
+        for wanted in words[1:]:
+            position = next((index for index in range(position + 1, len(source_words))
+                             if source_words[index][0] == wanted), -1)
+            if position < 0:
+                break
+        else:
+            matches.append(sentence[first:source_words[position][2]])
+    if not matches:
+        return None
+    exact = min(matches, key=len)
+    # A large gap without an explicit ellipsis is likely a wrong citation, not
+    # stripped formatting. Leave it for validation and a targeted model retry.
+    if "..." not in candidate and "…" not in candidate and len(exact) > 2 * len(candidate) + 8:
+        return None
+    return exact
+
+
 def conservative_repair(pass_no: int, value: dict, inputs: dict) -> tuple[dict, list[dict]]:
     """Apply only repairs that cannot add unsupported information.
 
@@ -137,6 +170,26 @@ def conservative_repair(pass_no: int, value: dict, inputs: dict) -> tuple[dict, 
     established aliases/canonical forms, so pruning an unsupported alias from a
     single P1 delta cannot erase prior knowledge.
     """
+    if pass_no in (2, 4) and isinstance(value, dict):
+        field = "issues" if pass_no == 2 else "corrections"
+        if not isinstance(value.get(field), list):
+            return value, []
+        sentences = {item.get("id"): item.get("text") for item in inputs.get("SOURCE_SENTENCES", [])
+                     if isinstance(item, dict)}
+        repaired = copy.deepcopy(value)
+        repairs = []
+        for index, item in enumerate(repaired[field]):
+            if not isinstance(item, dict) or not isinstance(item.get("source_span"), str):
+                continue
+            sentence = sentences.get(item.get("sid"))
+            if not isinstance(sentence, str) or normalized(item["source_span"]) in normalized(sentence):
+                continue
+            exact = _exact_source_span(item["source_span"], sentence)
+            if exact is not None:
+                item["source_span"] = exact
+                repairs.append({"action": "align_source_span", "index": index, "sid": item["sid"],
+                                "source_span": exact})
+        return repaired, repairs
     if pass_no != 1 or not isinstance(value, dict):
         return value, []
     if not isinstance(value.get("observations"), list) or not isinstance(value.get("terms"), list):
@@ -494,7 +547,15 @@ class Runner:
             payload = copy.deepcopy(inputs)
             if retry:
                 payload["VALIDATION_ERROR"] = last_error[:1800]
-                payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."
+                if pass_no in (2, 4) and "source_span is not an exact quote" in last_error:
+                    payload["RETRY_INSTRUCTION"] = (
+                        "The cited source_span failed validation. For each issue or correction, copy one contiguous "
+                        "substring verbatim from the SOURCE_SENTENCES text with the same sid, including any italic "
+                        "markup and punctuation. Do not paraphrase, omit words, or join separate fragments. "
+                        "Return one complete valid JSON object."
+                    )
+                else:
+                    payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."
                 if pass_no == 1:
                     payload["ALLOWED_EVIDENCE_IDS"] = [b["id"] for b in inputs["SOURCE_BLOCKS"]]
             number = len(list(work.glob("attempt_*"))) + 1

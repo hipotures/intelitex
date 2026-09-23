@@ -28,7 +28,9 @@ export function Realtime() {
       const jobs = results[1]
       if (jobs.status === 'fulfilled') view = { ...view, state: snapshot(view.state, jobs.value, false) }
       if (closed) return
-      const failed = jobs.status === 'rejected' || queryClient.getQueryCache().findAll({ predicate }).some(q => q.state.status === 'error')
+      // An unrelated detail query can fail while SSE and the job endpoint are
+      // healthy. Its own panel reports that error; it must not lock every action.
+      const failed = jobs.status === 'rejected'
       view = { ...view, connection: navigator.onLine ? connected && !failed ? 'Live' : 'Reconnecting…' : 'Offline' }; emit()
       refreshing = false
       if (dirty) { dirty = false; schedule() }

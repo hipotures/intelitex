@@ -115,6 +115,11 @@ A job contains `job_id`, `workspace_id`, `operation`, `state`, `pid`, `started_a
 `finished_at`, `exit_code`, `sequence`, `last_event`, `error`. Nullable fields are
 null until known. States are `starting`, `running`, `stopping`, `succeeded`,
 `failed`, `cancelled`, `abandoned`. Private project/root paths are excluded.
+`job_state` activity events expose the fixed `state` value. Failed jobs expose
+only fixed, safe diagnostics for a missing local model server, invalid source
+quote, missing earlier pass, or already saved pass; other failures remain generic.
+The worker never returns exception text, source text, provider output, or paths
+through the public job record.
 
 SSE accepts optional `workspace_id`, `job_id`, `after`, and the `Last-Event-ID`
 header. A workspace import can be followed before it appears in discovery. Every

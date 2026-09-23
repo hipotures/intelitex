@@ -20,6 +20,7 @@ prose_translation_generated provider publication_fingerprint reasoning_chars
 reasoning_output_tokens recalculate_request_tokens repair_count
 replace_successful_outputs requested_model run_current run_total section_number
 source status target_language task_key total_tokens unit_id unit_index
+state
 """.split())
 
 
@@ -84,7 +85,11 @@ def decode(line: str) -> dict:
         error_type = error.get("type", "WorkerError")
         if not isinstance(error_type, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,127}", error_type):
             raise ValueError("Invalid error type.")
+        safe_codes = {'local_model_unavailable', 'source_span_mismatch', 'missing_prerequisite', 'pass_already_saved'}
+        raw_code = error.get('code')
+        code = raw_code if isinstance(raw_code, str) and raw_code in safe_codes else None
         value = {"type": "failure", "error": {"type": error_type,
+                 **({"code": code} if code else {}),
                  "message": "Operation failed; inspect project configuration and attempt evidence locally."}}
     elif value["type"] == "reload":
         count = value.get("completed_units")
