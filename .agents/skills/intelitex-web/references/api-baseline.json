@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "a58a26a1882d05dd2a7ad9919a6953d7a1a8de93",
+  "inspected_commit": "5d3f4674d6978bf3003988dc152227ae04e9074b",
   "audit_date": "2026-09-23",
-  "audit_basis": "Manually re-audited the current worktree on the inspected commit for versioned P1 reset, Store-backed reset records and backup, project-operation recovery guard, legacy source reprepare verification, and shared HTTP/ASGI error mappings. Source hashes guard drift; full Python and offline browser regressions test behavior separately.",
+  "audit_basis": "Manually re-audited the current worktree on the inspected commit for versioned P1 reset, Store-backed reset records and backup, project-operation recovery guard, legacy source reprepare verification, and shared HTTP/ASGI error mappings. Source hashes guard drift; full Python and offline browser regressions test behavior separately. Re-audited ASGI lifetime after the Ctrl-C regression: SSE closes first, a 30-second bounded HTTP drain precedes worker cancellation, and the adapter waits through the same bound.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -11,7 +11,8 @@
       "stream",
       "ASGIServer",
       "ReprepareLocked error mapping",
-      "AnalysisResetLocked error mapping"
+      "AnalysisResetLocked error mapping",
+      "ASGIServer bounded HTTP drain"
     ],
     "bookpipe/server/__init__.py": [
       "serve",
@@ -140,7 +141,8 @@
       "clear_p1"
     ],
     "docs/server-runtime.md": [
-      "FastAPI"
+      "FastAPI",
+      "Ctrl-C HTTP drain contract"
     ],
     "bookpipe/application/epub_sources.py": [
       "packed_epub_metadata",
@@ -231,10 +233,11 @@
     "tests/test_server_api.py::test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage",
     "tests/test_web_production.py::test_analysis_reset_is_revisioned_and_keeps_versioned_evidence",
     "tests/test_web_production.py::test_interrupted_p1_reset_blocks_other_project_mutations",
-    "web/tests/analysis-reset.test.mjs"
+    "web/tests/analysis-reset.test.mjs",
+    "tests/test_cli_entrypoint.py::test_ctrl_c_drains_inflight_http_request_without_cancelling_it"
   ],
   "source_blobs": {
-    "bookpipe/server/asgi.py": "74932fa8f8dbebe6b9b8133b5b69dc4ac394d051",
+    "bookpipe/server/asgi.py": "f55e955b3780e0fd55ec57cacedd3b31d416f4d5",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
     "bookpipe/server/routes.py": "a32e17b534440531251902763eeb33169e93e382",
     "bookpipe/server/http.py": "550e07a7d877fcf6e60bd4c50917fc31b4bb5f5b",
@@ -253,7 +256,7 @@
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
     "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
     "bookpipe/store.py": "26cb93aeb3d306c0eda403bf6e2d181e9aee1703",
-    "docs/server-runtime.md": "9c334000170d6074e06cd16525715ca08753c587",
+    "docs/server-runtime.md": "975d2ae37f92fe6375f95e1348428f04ad8a6b85",
     "bookpipe/application/epub_sources.py": "77883c7b0e01424d1a29551362e49522688d2021",
     "bookpipe/application/projects.py": "a0303605ab937a4f0cf22ae31cfb2d773e428aba",
     "bookpipe/application/commands.py": "61fb441e10145e922be0b5b5be300b6663d383be",

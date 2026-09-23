@@ -88,8 +88,11 @@ reaping and any stop/descendant-cleanup thread has returned. Job and event histo
 remains in the registry.
 
 On Ctrl-C or SIGTERM, the CLI first rejects new supervised jobs and closes SSE
-streams, then drains the HTTP server. It requests cancellation of all owned workers
-through the same bounded Stop procedure before closing the runtime registry. Repeated
+streams, then gives in-flight HTTP requests up to 30 seconds to finish before
+Uvicorn's bounded cancellation fallback. The adapter waits for that drain instead
+of cancelling a valid slow read after one second and printing an ASGI traceback.
+It then requests cancellation of all owned workers through the same bounded Stop
+procedure before closing the runtime registry. Repeated
 interrupts do not skip cleanup. A normal shutdown prints one short status line and
 returns 0 directly; a command runner may report 130 when it also receives Ctrl-C.
 

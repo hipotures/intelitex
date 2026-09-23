@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 import urllib.request
 
@@ -97,6 +98,75 @@ def test_ctrl_c_closes_sse_without_traceback(tmp_path):
     finally:
         if connection:
             connection.close()
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=5)
+
+
+def test_ctrl_c_drains_inflight_http_request_without_cancelling_it(tmp_path):
+    workspaces = tmp_path / "workspaces"
+    workspaces.mkdir()
+    entered = tmp_path / "request-entered"
+    script = textwrap.dedent("""
+        import sys, time
+        from pathlib import Path
+        import bookpipe.server as server_module
+        from bookpipe.server.service import ServerService
+
+        original = ServerService.capabilities
+        def slow_capabilities(self):
+            Path(sys.argv[2]).write_text('entered')
+            time.sleep(3)
+            return original(self)
+        ServerService.capabilities = slow_capabilities
+        server_module.serve(Path(sys.argv[1]), port=0)
+    """)
+    process = subprocess.Popen(
+        [sys.executable, "-u", "-c", script, str(workspaces), str(entered)],
+        cwd=ROOT, env={**os.environ, "XDG_STATE_HOME": str(tmp_path / "state")},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
+    )
+    connection = stream = None
+    result = []
+    try:
+        readable, _, _ = select.select([process.stdout], [], [], 15)
+        assert readable, "Server did not start"
+        match = re.search(r"http://127\.0\.0\.1:(\d+)", process.stdout.readline())
+        assert match
+        port = int(match.group(1))
+        stream = http.client.HTTPConnection("127.0.0.1", port, timeout=8)
+        stream.request("GET", "/api/events")
+        assert stream.getresponse().readline() == b"event: snapshot\n"
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=8)
+        connection.request("GET", "/api/capabilities")
+
+        def read_response():
+            try:
+                response = connection.getresponse()
+                result.append((response.status, response.read()))
+            except BaseException as exc:
+                result.append(exc)
+
+        reader = threading.Thread(target=read_response)
+        reader.start()
+        for _ in range(100):
+            if entered.is_file():
+                break
+            time.sleep(.02)
+        else:
+            raise AssertionError("HTTP request did not enter the application")
+        os.killpg(process.pid, signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=15)
+        reader.join(timeout=3)
+        assert process.returncode == 0, stderr
+        assert stdout.count("Intelitex stopped.") == 1
+        assert not stderr, stderr
+        assert result and result[0][0] == 200, result
+    finally:
+        if connection:
+            connection.close()
+        if stream:
+            stream.close()
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)

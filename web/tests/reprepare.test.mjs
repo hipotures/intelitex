@@ -86,6 +86,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         body = { id: 'ch0001', blocks: [{ id: 'b1', text: 'A'.repeat(1023) + 'ą' + '<script>window.bad=true</script>' }], next_page: null }
       } else if (path === '/api/workspaces/w-1/sections/ch0002/0') {
         previewReads++
+        await new Promise(resolve => setTimeout(resolve, 350))
         body = { id: 'ch0002', blocks: [{ id: 'b2', text: 'The second section begins here.' }], next_page: null }
       }
       else if (path === '/api/workspaces/w-1/sections/ch0001' && request.method() === 'PATCH') {
@@ -135,10 +136,17 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       await page.getByText('Analyse · P1').waitFor()
       await page.getByText('Ready to start · whole book').waitFor()
       assert.equal(await page.locator('.processing-switch').count(), 0, 'workspace Processing is read-only')
+      assert.equal(await page.locator('[data-ui-debug-id="SCT"] .processing-readonly').first().textContent(), 'F',
+        'overview shows one compact Processing letter, not F plus Full')
       await page.getByRole('button', { name: /Prepare.*Source structure frozen/ }).click()
       assert.equal(previewReads, 0, 'Prepare does not fetch source text before selection')
+      const metadataTop = () => page.locator('[data-ui-debug-id="PSM"]').evaluate(element =>
+        element.getBoundingClientRect().top + window.scrollY)
+      const initialMetadataTop = await metadataTop()
       await page.locator('.prepare-structure tbody tr').first().click()
       await page.locator('[data-ui-debug-id="PPR"] .prepare-preview-text').waitFor()
+      assert.ok(Math.abs(await metadataTop() - initialMetadataTop) < 2,
+        'opening a long source excerpt does not move metadata and checks')
       assert.equal(await page.locator('.prepare-preview-text').textContent(), 'A'.repeat(1023),
         'the opening source text is bounded to one complete UTF-8 KiB')
       assert.equal(await page.evaluate(() => window.bad), undefined)
@@ -158,7 +166,12 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         'a conflict restores the authoritative choice in Prepare')
       const readsAfterDrawer = previewReads
       await page.locator('.prepare-structure tbody tr').nth(1).locator('td').nth(1).click()
+      await page.getByRole('status').filter({ hasText: 'Loading source text' }).waitFor()
+      assert.ok(Math.abs(await metadataTop() - initialMetadataTop) < 2,
+        'right column remains fixed while the next source preview loads')
       await page.getByText('The second section begins here.').waitFor()
+      assert.ok(Math.abs(await metadataTop() - initialMetadataTop) < 2,
+        'short and long source excerpts keep the same panel geometry')
       assert.equal(previewReads, readsAfterDrawer + 1, 'a newly selected section fetches its own source text')
       assert.equal(await page.locator('.prepare-structure tbody tr').nth(2).locator('td').last().textContent(), 'in',
         'P1 column means membership, not completed analysis')
@@ -181,11 +194,14 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       })
       const mobileScroll = await page.evaluate(() => window.scrollY)
       const tableScroll = await page.locator('.prepare-structure-scroll').evaluate(element => element.scrollTop)
+      const mobileMetadataTop = await metadataTop()
       await page.locator('.prepare-structure tbody tr').first().click()
       assert.ok(Math.abs(await page.evaluate(() => window.scrollY) - mobileScroll) < 100,
         'selecting a Prepare section does not jump to the source preview')
       assert.equal(await page.locator('.prepare-structure-scroll').evaluate(element => element.scrollTop), tableScroll,
         'selecting a section keeps the table position')
+      assert.ok(Math.abs(await metadataTop() - mobileMetadataTop) < 2,
+        'mobile metadata stays in place when switching from a short to a long excerpt')
       await page.evaluate(() => window.scrollTo(0, 0))
       await page.screenshot({ path: `${output}/prepare-light-390-full.png`, fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)

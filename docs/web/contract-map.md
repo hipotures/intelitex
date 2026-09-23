@@ -177,8 +177,11 @@ conditions. The Prepare detail layout narrows Source structure and shows an on-d
 source preview beside it; the existing read-only section-preview API supplies the
 text, of which the UI displays at most the first 1 KiB of UTF-8. Metadata and checks
 remain below the preview. F/T/E choices are edited in this table after reading the
-source; workspace overview shows them read-only. A selected section and its scroll
-position remain stable during background reads and section mutations. A legacy
+source; workspace overview shows only the saved F/T/E letter, with the full meaning
+in its accessible label and tooltip. The source preview has a stable height and
+scrolls internally, so choosing a short or long section does not move metadata or
+checks below it. A selected section and its scroll position remain stable during
+background reads and section mutations. A legacy
 workspace with its original source directly inside the configured Library can also
 rebuild; the application verifies the imported file fingerprint before switching
 plans. An external or unlinked source remains ineligible.

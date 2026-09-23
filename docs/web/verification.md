@@ -256,3 +256,40 @@ below, and Rebuild action are intentional differences. The injected 409 conflict
 is visible in the test capture; it verifies that a rejected Processing change
 returns to the authoritative saved value. The mobile capture has no horizontal
 overflow. Empty Analyse evidence is in `/tmp/intelitex-analysis-reset-evidence/`.
+
+## 2026-09-23: bounded Ctrl-C HTTP drain and stable Prepare preview
+
+A disposable loopback server with an open SSE stream and a deliberately slow HTTP
+read reproduced the reported `Cancel 1 running task(s)` traceback under the former
+one-second Uvicorn drain. With a 30-second bounded drain, the read completed, SSE
+closed, the process exited 0, and stderr stayed empty. Existing offline worker
+shutdown tests still verified supervised cancellation and registry cleanup. No
+active user workspace, running server, or model provider was used.
+
+The Prepare preview now keeps the same panel height while changing sections or
+waiting for source text; long excerpts scroll within it. Browser assertions check
+that metadata stays at the same document position before selection, during a
+delayed read, after a short excerpt, and after changing back to a long excerpt on
+mobile. Workspace overview shows only F/T/E rather than duplicating each letter
+with its full name; the full meaning remains available to assistive technology.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 904 passed, 3 existing dependency/ZIP-fixture warnings. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm --prefix web run test:unit` | 18 passed in 7 files. |
+| `npm --prefix web run lint` | Passed. |
+| `npm --prefix web run build` | Strict TypeScript and production build passed; existing >500 kB chunk advisory. |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf node --test --test-concurrency=1 tests/*.test.mjs` (from `web/`) | 9 passed; zero unexpected console/page/request errors. |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and contract unchanged. |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after inspecting the ASGI timeout and runtime documentation. |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed. |
+
+The Browser plugin was unavailable; the repository's Playwright tests used its
+offline Chromium. Dark desktop and light mobile Prepare captures were inspected at
+`/tmp/intelitex-reprepare-evidence/` against the immutable v33 Prepare capture in
+`/tmp/intelitex-visual-evidence/`. The compact preview is an intentional production
+addition; header, metric cards, typography, and card treatment remain aligned.
+The test capture includes an intentionally injected 409 Processing conflict.
+A workspace screenshot with the compact Processing letter is at
+`/tmp/intelitex-browser-evidence/workspace-dark-1024.png`.

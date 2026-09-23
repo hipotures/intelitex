@@ -27,6 +27,7 @@ from .serialization import safe_json
 HEADERS = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
            'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"}
+HTTP_DRAIN_TIMEOUT = 30
 
 
 def json_response(status, value):
@@ -194,7 +195,8 @@ class ASGIServer:
             hosts.add(f'localhost:{self.server_port}')
         self.app = create_app(service, hosts)
         self.server = uvicorn.Server(uvicorn.Config(self.app, log_config=None, access_log=False,
-                                     workers=1, proxy_headers=False, timeout_graceful_shutdown=1))
+                                     workers=1, proxy_headers=False,
+                                     timeout_graceful_shutdown=HTTP_DRAIN_TIMEOUT))
 
     def serve_forever(self, poll_interval=.2):
         try:
@@ -204,7 +206,7 @@ class ASGIServer:
 
     def shutdown(self):
         self.server.should_exit = True
-        self.finished.wait(timeout=5)
+        self.finished.wait(timeout=HTTP_DRAIN_TIMEOUT + 5)
 
     def server_close(self):
         self.socket.close()
