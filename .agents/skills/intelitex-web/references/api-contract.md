@@ -21,7 +21,7 @@ filters; other non-event routes reject them. IDs are validated identifiers, not 
 | GET | /api/workspaces?archived=false or ?archived=true | filtered active/archive list; excluded prepared projects are not validated |
 | GET | /api/workspaces/{id} | workspace_id,status,active_job |
 | GET | /api/workspaces/{id}/pipeline | workflow snapshot described below |
-| GET | /api/workspaces/{id}/summary | checkpoint-validated Work card stage/progress/actions without section or physical-attempt history |
+| GET | /api/workspaces/{id}/summary | checkpoint-validated Work card stage/progress/actions without section or physical-attempt history; unpublished completed work defers full publication readiness to Publish detail |
 | GET | /api/workspaces/{id}/usage | retained usage by unit/pass/attempt |
 | GET | /api/workspaces/{id}/profiles | sanitized effective settings |
 | GET | /api/workspaces/{id}/settings | same schema as profiles; read-only |
@@ -83,7 +83,8 @@ Raw stages/states and their limitations are in pipeline-state-model.md.
 Actions are {allowed,reason}, not a preexisting reason_code/message schema.
 Reasons include workspace_busy, analysis_required, analysis_complete,
 review_preparation_required, review_stale, review_not_confirmed, approval_required,
-translation_complete, translation_required, publication_current, publication_not_ready.
+translation_complete, translation_required, publication_current, publication_not_ready,
+and summary-only publication_check_required (open Publish detail for full validation).
 
 ### Configuration and publication
 

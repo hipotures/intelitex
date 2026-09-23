@@ -41,10 +41,16 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
     : workspace.metadata.lifecycle.archived
     ? { label: 'Restore before running', allowed: false, operation: 'prepare' }
     : { label: activeJob ? activeJob.state === 'starting' ? 'Starting…' : activeJob.state === 'stopping' ? 'Stopping…' : 'Stop' : workspace.last_job?.operation === 'import' && workspace.last_job.state === 'failed' ? 'Retry Prepare' : 'Prepare', allowed: !activeJob || activeJob.state === 'running', operation: activeJob ? 'stop' : 'prepare' }
+  if (row && p?.stage === 'publication' && p.actions.publish?.reason === 'publication_check_required' && !activeJob) {
+    action.label = 'Open Publish'
+    action.allowed = true
+    action.operation = 'open_publish'
+  }
   async function run() {
     if (checkLatch.current || !action.allowed) return
     setLocalError(null)
     if (row && action.label === 'Finished') { await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: workspace.workspace_id } }); return }
+    if (action.operation === 'open_publish') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'publish' } }); return }
     if (action.operation === 'review') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'review' } }); return }
     if (action.operation === 'stop' && activeJob) { await command.send(`/api/jobs/${encodeURIComponent(activeJob.job_id)}/stop`, jobSchema, {}); return }
     if (action.operation === 'prepare') {

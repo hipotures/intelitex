@@ -54,7 +54,8 @@ class WorkflowQueries:
         return self.pipeline_with_evidence(root, busy=busy)[0]
 
     def pipeline_with_evidence(self, root: Path, *, busy: bool = False,
-                               include_usage: bool = True) -> tuple[dict, dict, object, dict]:
+                               include_usage: bool = True,
+                               include_publication_readiness: bool = True) -> tuple[dict, dict, object, dict]:
         """Build a checkpoint-validated snapshot; omit attempt history for compact summaries."""
         files = self.dependencies.files
         with ProjectReadScope(self.dependencies, root) as scope:
@@ -107,7 +108,9 @@ class WorkflowQueries:
                                   and review.get('analysis_revision') == digest(store.terms()))
             confirmed = bool(review_current and review.get('confirmed') is True)
             complete = bool(chunks) and all(c['passes']['5']['checkpoint_state'] == 'completed' for c in chunks)
-            publication = self.publishing.query_snapshot(root, book, store, projected=True)
+            publication = (self.publishing.query_snapshot(root, book, store, projected=True)
+                           if include_publication_readiness else self.publishing.card_snapshot(
+                               root, book, store, translation_complete=complete))
             stage = ('analysis' if not analyzed else 'review' if not approved else
                      'translation' if not complete else 'complete' if publication.current else 'publication')
             def action(reason=None):
@@ -122,7 +125,8 @@ class WorkflowQueries:
                 'translate': action('analysis_required' if not analyzed else 'approval_required' if not approved
                                     else 'translation_complete' if complete else None),
                 'publish': action('translation_required' if not complete else 'publication_current' if publication.current
-                                  else 'publication_not_ready' if publication.state == 'not_ready' else None),
+                                  else 'publication_check_required' if publication.state == 'unchecked' and approved
+                                  else 'publication_not_ready' if publication.state == 'not_ready' or not approved else None),
             }
             analysis_done = sum(u['state'] == 'completed' for u in analysis)
             translated = sum(all(p['checkpoint_state'] == 'completed' for n, p in u['passes'].items() if n == '5') for u in chunks)

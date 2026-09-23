@@ -1,5 +1,25 @@
 # Executed production web verification
 
+## Work-home publication and Library reads (2026-09-23)
+
+User-provided Network timings after the first compact-summary release showed
+`summary` responses of 0.5–3.03 s and a `library?limit=14` response of 3.04 s.
+The unpublished Work summary now skips full EPUB readiness assembly, while the
+Publish detail and command retain it. Work's Library request uses `links=false`
+to avoid reopening imported project plans; the active workspace list supplies
+the source chips. The new browser bundle was built and tested from an isolated
+directory, so these results are local fixture results, not measured production
+latency.
+
+| Executed command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 908 passed, 3 dependency/fixture warnings. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm run typecheck`, `npm run test:unit`, `npm run lint`, isolated Vite build (`web/`) | Typecheck/lint/build passed; 19 unit tests passed. |
+| `INTELITEX_TEST_DIST=/tmp/intelitex-work-build-20260923-v2` plus repository Playwright browser-library environment, `node --test tests/workspace-list.test.mjs` (`web/`) | Passed. Work requested compact summaries, deferred Archive, did not request full pipelines during the 16-second idle period, and opened Publish for full validation. No console or failed-request errors before navigation. |
+| Skill reference integrity, API baseline drift and skill unit checks | Passed; source hashes updated after route review, 31 skill tests passed. |
+
+
 ## Work-home read cost (2026-09-23)
 
 The Work page now loads only active workspaces and reads compact backend pipeline

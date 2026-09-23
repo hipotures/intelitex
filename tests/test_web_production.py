@@ -594,8 +594,14 @@ def test_library_page_cursor_loads_only_requested_metadata_and_rejects_bad_queri
     assert len(collected) == 27
     assert len(set(collected)) == 27
     assert calls == collected
+    with monkeypatch.context() as patch:
+        patch.setattr(service.application.web, 'book', lambda *args: (_ for _ in ()).throw(
+            AssertionError('Work Library must not reopen imported project plans')))
+        code, page = request(server, 'GET', '/api/library?limit=12&links=false')
+        assert code == 200 and page['sources']
     for query in ('limit=0', 'limit=41', 'limit=oops', 'limit=12&limit=12', 'after=..%2Fetc', 'unexpected=1'):
         assert request(server, 'GET', '/api/library?' + query)[0] == 400
+    assert request(server, 'GET', '/api/library?links=maybe')[0] == 400
 
 
 def test_draft_archive_restore_uses_catalog_revision_without_importing(api):

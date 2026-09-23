@@ -118,11 +118,18 @@ def test_work_card_summary_uses_checkpoint_truth_without_attempt_history(api, mo
         with monkeypatch.context() as patch:
             patch.setattr(workflow, 'usage_by_unit_report', lambda *args, **kwargs: (_ for _ in ()).throw(
                 AssertionError('Work summary must not scan physical attempts')))
+            patch.setattr(app.publishing, '_prepare', lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError('Work summary must not assemble an unpublished EPUB')))
             code, summary = request(server, 'GET', '/api/workspaces/book/summary')
         assert code == 200
         assert summary['stage'] == expected['stage']
         assert summary['progress'] == expected['progress']
-        assert summary['actions'] == expected['actions']
+        assert {key: value for key, value in summary['actions'].items() if key != 'publish'} == {
+            key: value for key, value in expected['actions'].items() if key != 'publish'}
+        if expected['translation_complete'] and expected['approved']:
+            assert summary['actions']['publish'] == {'allowed': False, 'reason': 'publication_check_required'}
+        else:
+            assert summary['actions']['publish'] == expected['actions']['publish']
         assert summary['analysis']['complete'] == expected['analysis']['complete']
         assert summary['approved'] == expected['approved']
         assert summary['publication']['current'] == expected['publication']['current']
@@ -137,6 +144,11 @@ def test_work_card_summary_uses_checkpoint_truth_without_attempt_history(api, mo
     assert assert_summary()['stage'] == 'translation'
     translate(root)
     assert assert_summary()['stage'] == 'publication'
+    store = Store(root)
+    with store.db:
+        store.set('approved', False)
+    store.close()
+    assert assert_summary()['stage'] == 'review'
 
 
 def test_pipeline_lifecycle_and_stale_approval(api):

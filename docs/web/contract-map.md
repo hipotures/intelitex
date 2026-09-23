@@ -28,10 +28,13 @@ No Node production server, reload worker, upload endpoint or CLI-output parser i
 Work home requests `GET /api/workspaces?archived=false`, so previously archived
 projects are not opened or validated on every list refresh. Its Archive drawer
 requests `?archived=true` only when opened. Prepared rows poll
-`GET /api/workspaces/{id}/summary`: Python derives stage, weighted progress, action
-gates and publication currency from validated book/checkpoint state but omits the
-physical-attempt history scan and section/detail projection. Opening a workspace
-still reads the full `/pipeline` snapshot. The existing unfiltered list route remains
+`GET /api/workspaces/{id}/summary`: Python derives stage, weighted progress and action
+gates from validated book/checkpoint state but omits physical-attempt history, section
+details and full EPUB assembly for unpublished translations. A completed unpublished
+card offers Open Publish; Publish detail computes readiness before exposing Publish.
+Work requests `/api/library?links=false` to skip imported-project linkage scans;
+its Library chips use the active workspace list. Opening a workspace still reads
+the full `/pipeline` snapshot. The existing unfiltered list route remains
 for other screens and compatibility. The two HTTP adapters share identical strict
 filter parsing; successful mutations invalidate both filtered lists.
 

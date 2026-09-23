@@ -3,7 +3,7 @@
   "repository": "hipotures/intelitex",
   "inspected_commit": "3cb49a65fdc8deb1a1132a0f36dab35cf00b156a",
   "audit_date": "2026-09-23",
-  "audit_basis": "Manually re-audited the current worktree for active/archive workspace-list filtering and compact checkpoint-validated summary. ASGI and compatibility HTTP permit only the exact archived=true/false list query; shared dispatch rejects extra or duplicate fields. The summary uses ProjectReadScope, validates book/checkpoint/publication state, omits physical-attempt usage scan and section details, and has stage/progress/action parity tests at analysis, review, translation and publication. Existing source hashes guard drift, not runtime correctness; offline Python and browser regressions test behavior separately. The earlier P1 reset and bounded HTTP-drain audits remain applicable.",
+  "audit_basis": "Manually re-audited Work-card publication deferral and Library links=false fast path. Unpublished summary still validates plan and P5 receipts, but does not assemble the EPUB or claim publication readiness; Publish detail and command keep full validation. Library links=false retains catalog links and skips imported-project book validation; default remains compatible. Offline API and browser regressions cover both paths. Existing active/archive, P1 reset and bounded HTTP-drain audits remain applicable.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -52,7 +52,9 @@
       "reset_analysis",
       "last_job reset projection",
       "legacy reprepare source resolution",
-      "active/archive list exclusion and compact summary projection"
+      "active/archive list exclusion and compact summary projection",
+      "library_page links=false Work fast path",
+      "pipeline_summary publication-readiness deferral"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -84,7 +86,8 @@
       "pipeline",
       "settings",
       "pipeline_with_evidence",
-      "compact summary without physical-attempt usage report"
+      "compact summary without physical-attempt usage report",
+      "pipeline_with_evidence optional publication readiness"
     ],
     "bookpipe/application/review.py": [
       "approval_current",
@@ -100,7 +103,8 @@
       "PublishingService",
       "download",
       "query_snapshot",
-      "query_snapshot projected book"
+      "query_snapshot projected book",
+      "card_snapshot deferred unpublished readiness"
     ],
     "bookpipe/application/imports.py": [
       "workspace_destination",
@@ -246,14 +250,14 @@
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
     "bookpipe/server/routes.py": "ec0784449732d07196cacb4228bbcf2f9235b6b2",
     "bookpipe/server/http.py": "ab9ef33762631e7440c8b4d7d65231916a243ba0",
-    "bookpipe/server/service.py": "8107bcd1f9a80b56b5cde6bbfc311e826e87c381",
+    "bookpipe/server/service.py": "06827f6d54cff96b85c5d620182fad9d1c1db832",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
     "bookpipe/application/catalog.py": "c48e64d755374b622ff60c6d219f543e2e66c327",
     "bookpipe/application/web.py": "3e394bace20db570c1b81c3a81edb84335a7b868",
-    "bookpipe/application/workflow.py": "e18aae40550ad4285dc5dcafb9495aa85863c008",
+    "bookpipe/application/workflow.py": "fc2f90800ebc13fd0996bfbbf227488125b87254",
     "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
     "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
-    "bookpipe/application/publishing.py": "fbb703d308631918128d7d2581d10ac66c2c997f",
+    "bookpipe/application/publishing.py": "b74dc7bb296964efa472074a5aa8185bd646ee43",
     "bookpipe/application/imports.py": "6baec0cae30d9cd0dc25d1f940928209b115533f",
     "bookpipe/processing.py": "456dab0677bfb6106f7cfe0e712012af4c0e656a",
     "bookpipe/runtime/registry.py": "d7dfd1cc89347e7eff9ca56cd312c9de5628cf52",

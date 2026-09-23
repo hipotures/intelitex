@@ -237,8 +237,11 @@ class ServerService:
         return {'sources': sources, 'configured': self.imports.root is not None}
 
     def library_page(self, query):
-        if set(query) - {'after', 'limit'}:
+        if set(query) - {'after', 'limit', 'links'}:
             raise ValueError('Invalid Library query.')
+        links = query.get('links', 'true')
+        if links not in {'true', 'false'}:
+            raise ValueError('Invalid Library link mode.')
         raw_limit = query.get('limit', '24')
         if not isinstance(raw_limit, str) or not raw_limit.isdecimal():
             raise ValueError('Invalid Library page size.')
@@ -250,8 +253,9 @@ class ServerService:
                                   or '/' in after or '\\' in after or '\x00' in after):
             raise ValueError('Invalid Library cursor.')
         sources, next_cursor = self.catalog.library_page(after, limit)
-        imported = {str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
-        if self.imports.root:
+        imported = ({str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
+                    if links == 'true' else {})
+        if self.imports.root and links == 'true':
             for source in sources:
                 source['workspace_id'] = source['workspace_id'] or imported.get(str((self.imports.root / source['source_id']).resolve()))
         return {'sources': sources, 'configured': self.imports.root is not None, 'next_cursor': next_cursor}
@@ -405,7 +409,7 @@ class ServerService:
         active = self.supervisor.active_for_project(root)
         busy = active is not None or self.supervisor.owns_project(root)
         result, book, _, _ = self.application.workflow.pipeline_with_evidence(
-            root, busy=busy, include_usage=False)
+            root, busy=busy, include_usage=False, include_publication_readiness=False)
         metadata = self.application.web.metadata(root, book=book)
         if metadata['lifecycle']['archived']:
             for value in result['actions'].values():

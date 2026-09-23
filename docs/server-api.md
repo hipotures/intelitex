@@ -20,14 +20,14 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces?archived=false` or `?archived=true` | Active or archived workspaces only; excluded prepared projects are not opened or validated |
 | GET | `/api/workspaces/{id}` | `{workspace_id,status,active_job}` |
 | GET | `/api/workspaces/{id}/pipeline` | Pipeline snapshot below |
-| GET | `/api/workspaces/{id}/summary` | Compact checkpoint-validated stage, progress, action gates, publication currency and runtime job for Work cards; no section or physical-attempt details |
+| GET | `/api/workspaces/{id}/summary` | Compact checkpoint-validated stage, progress and action gates for Work cards; unpublished complete translations defer full EPUB readiness to Publish detail (`publication_check_required`); no section or physical-attempt details |
 | GET | `/api/workspaces/{id}/usage` | Retained usage by unit/pass/physical attempt |
 | GET | `/api/workspaces/{id}/profiles` | Sanitized effective settings (same as `/settings`) |
 | GET | `/api/workspaces/{id}/settings` | Settings schema below |
 | GET | `/api/profiles` | Sanitized installed defaults/profiles, including before the first import |
 | GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders and packed EPUB files |
 | GET | `/api/library` | Legacy complete `{configured,sources}` response |
-| GET | `/api/library?limit=12&after={cursor}` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page |
+| GET | `/api/library?limit=12&after={cursor}&links=false` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page. `links=false` skips imported-project linkage scans for Work, which derives links from its workspace list; the default retains full linkage. |
 | GET | `/api/library/sources/{source_id}/preflight` | Read-only selected-source fingerprint, metadata and local language sample for setup |
 | GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, reading-order file count and bounded real text excerpts |
 | POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
@@ -155,7 +155,7 @@ contain `{allowed,reason}`. Reasons are null when allowed, otherwise
 `workspace_busy`, `analysis_required`, `analysis_complete`,
 `review_preparation_required`, `review_stale`, `review_not_confirmed`,
 `approval_required`, `translation_complete`, `translation_required`,
-`publication_current`, or `publication_not_ready`. Gating is computed in Python. Availability is advisory at
+`publication_current`, `publication_not_ready`, or summary-only `publication_check_required`. Gating is computed in Python. Availability is advisory at
 the snapshot instant: commands still enforce authoritative locking/validation.
 
 ## Review and approval concurrency

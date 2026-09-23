@@ -286,6 +286,21 @@ class PublishingService:
         return self._status_from(root, book if projected else effective_book(book, root),
                                  store, target, self._read_record(root))
 
+    def card_snapshot(self, root: Path, book: dict, store, target: str = "pl",
+                      *, translation_complete: bool) -> PublicationStatus:
+        """Give Work a safe publication state without assembling an unpublished EPUB."""
+        record = self._read_record(root)
+        if record.get('last_success'):
+            return self._status_from(root, book, store, target, record)
+        attempt = record.get('last_attempt') or {}
+        return PublicationStatus(
+            state='unchecked' if translation_complete else 'not_ready',
+            translation_complete=translation_complete, current=False, output_path=None,
+            target_language=target,
+            last_error='Publication readiness has not been checked.' if translation_complete else 'Translation is incomplete.',
+            last_failure=attempt.get('error') if attempt.get('status') == 'failed' else None,
+        )
+
     def _status_from(self, root: Path, book: dict, store, target: str, record: dict,
                      *, prepared=None) -> PublicationStatus:
         statuses = [store.chunk(chunk["id"])["status"] for chunk in book["chunks"]]

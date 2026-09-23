@@ -4,7 +4,7 @@ import { extname, resolve } from 'node:path'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
-const dist = resolve('dist')
+const dist = resolve(process.env.INTELITEX_TEST_DIST ?? 'dist')
 const workspace = (id, title, archived) => ({
   workspace_id: id, prepared: true, source_id: `${id}.epub`, active_job: null, last_job: null,
   metadata: { title, creators: [], language: 'en', source_language: 'en', target_language: 'pl',
@@ -39,17 +39,19 @@ test('Work loads compact active summaries and defers the archive', { timeout: 30
       else if (url.pathname === '/api/workspaces') {
         const archived = url.searchParams.get('archived')
         queries.push(archived)
-        assert.ok(archived === 'true' || archived === 'false', 'Work must use filtered workspace queries')
         body = { workspaces: archived === 'true' ? [workspace('old-book', 'Old Book', true)]
-          : [workspace('new-book-1', 'New Book 1', false), workspace('new-book-2', 'New Book 2', false), workspace('new-book-3', 'New Book 3', false)] }
+          : archived === 'false' ? [workspace('new-book-1', 'New Book 1', false), workspace('new-book-2', 'New Book 2', false), workspace('new-book-3', 'New Book 3', false)]
+          : [workspace('old-book', 'Old Book', true), workspace('new-book-1', 'New Book 1', false), workspace('new-book-2', 'New Book 2', false), workspace('new-book-3', 'New Book 3', false)] }
       } else if (/^\/api\/workspaces\/[^/]+\/summary$/.test(url.pathname)) {
         summaries.push(url.pathname)
         const id = url.pathname.split('/')[3]
-        body = { workspace_id: id, stage: 'analysis', progress: { percent: null, basis: 'Workflow progress — not an ETA',
+        const publication = id === 'new-book-3'
+        body = { workspace_id: id, stage: publication ? 'publication' : 'analysis', progress: { percent: publication ? 98 : null, basis: 'Workflow progress — not an ETA',
           analysis: { completed: 0, required: 0, denominator: 'required P1 analysis units' },
           translation: { completed: 0, required: 0, denominator: 'required P5 translation units' } },
-        analysis: { complete: false }, approved: false, publication: { current: false, last_failure: null },
-        actions: { analyze: { allowed: true, reason: null } },
+        analysis: { complete: publication }, approved: publication, publication: { current: false, last_failure: null },
+        actions: publication ? { publish: { allowed: false, reason: 'publication_check_required' } }
+          : { analyze: { allowed: true, reason: null } },
         metadata: { lifecycle: { archived: id === 'old-book', revision: `revision-${id}` } },
         publishing: false, active_job: null, last_job: null }
       } else if (url.pathname.endsWith('/pipeline')) {
@@ -66,6 +68,7 @@ test('Work loads compact active summaries and defers the archive', { timeout: 30
       await page.getByText('New Book 3', { exact: true }).waitFor()
       assert.equal(await page.locator('.workspace-row').count(), 3)
       await page.getByRole('button', { name: 'Run', exact: true }).first().waitFor()
+      await page.getByRole('button', { name: 'Open Publish', exact: true }).waitFor()
       assert.ok(summaries.filter(path => !path.includes('old-book')).length >= 3)
       assert.deepEqual(fullPipelines, [], 'Work cards must not fetch detail pipelines')
       assert.equal(queries.includes('true'), false, 'archive request must wait for drawer opening')
@@ -79,6 +82,13 @@ test('Work loads compact active summaries and defers the archive', { timeout: 30
       assert.ok(queries.includes('true'))
       assert.deepEqual(fullPipelines, [])
       assert.deepEqual(errors, [])
+      await page.keyboard.press('Escape')
+      await page.getByRole('dialog', { name: 'Archive' }).waitFor({ state: 'hidden' })
+      await page.getByRole('button', { name: 'Open Publish', exact: true }).click()
+      await page.waitForURL('**/work/workspaces/new-book-3/publish')
+      await page.waitForTimeout(300)
+      assert.ok(fullPipelines.includes('/api/workspaces/new-book-3/pipeline'),
+        `Publish detail must perform full validation; queries=${queries.join(',')}; errors=${errors.join(',')}`)
     } finally { await page.close() }
   } finally { await browser.close() }
 })

@@ -34,7 +34,7 @@ export function Home() {
   const scope = useContext(Scope)
   const libraryGrid = useRef<HTMLDivElement>(null)
   const library = useInfiniteQuery({ queryKey: [scope, '/api/library'],
-    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.childElementCount : 0)}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
+    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.childElementCount : 0)}&links=false${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
     initialPageParam: null as string | null, getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: false, staleTime: Infinity })
   const [archive, setArchive] = useState(false)
@@ -69,7 +69,7 @@ export function Home() {
     setRefreshError(null)
     announce('Refreshing Library…')
     try {
-      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}`, libraryPageSchema)
+      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false`, libraryPageSchema)
       queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library'], { pages: [first], pageParams: [null] })
       announce('Library refreshed.')
     } catch (error) { setRefreshError(error) }
