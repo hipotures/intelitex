@@ -6,10 +6,6 @@ import { useConnection } from '../../realtime/coordinator'
 import { prepareExcerpt } from './prepareExcerpt'
 import { sectionTitles } from './sectionTitles'
 
-const shortTypes: Record<string, string> = {
-  narrative: 'Narr.', contents: 'Contents', glossary: 'Gloss.', footnotes: 'Notes',
-  front_matter: 'Front', back_matter: 'Back', advertisement: 'Ad', unclassified: 'Other',
-}
 const modes = { full: ['F', 'Full'], translate: ['T', 'Translate only'], excluded: ['E', 'Excluded'] } as const
 
 export function PrepareContent({ id, pipeline, preparation, preparationError, workspace, canReprepare,
@@ -45,15 +41,16 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
       <Panel debugId="PSR" title="Source structure">
         <div className="prepare-structure-scroll"><table className="phase-detail-table prepare-structure">
           <colgroup><col className="prepare-section-col" /><col className="prepare-type-col" /><col className="prepare-processing-col" /><col className="prepare-p1-col" /></colgroup>
-          <thead><tr><th>Section</th><th>Content type</th><th>Processing</th><th>P1</th></tr></thead>
+          <thead><tr><th>Section</th><th title="Content type is descriptive metadata; it does not change processing or P1 membership." aria-label="Content type">Type</th><th>Processing</th><th>P1</th></tr></thead>
           <tbody>{pipeline.sections.map(section => {
             const name = displayedTitles.get(section.id) ?? 'Untitled section'
             const type = section.content_type.replaceAll('_', ' ')
+            const displayType = type.charAt(0).toUpperCase() + type.slice(1)
             const pending = pendingProcessing?.sectionId === section.id ? pendingProcessing : null
             const displayedMode = pending?.mode ?? section.processing
             return <tr key={section.id} className={selectedId === section.id ? 'selected' : ''} onClick={() => setSelectedId(section.id)}>
               <td title={name}><button className="prepare-section-choice" aria-pressed={selectedId === section.id} aria-controls="prepare-source-preview" onClick={() => setSelectedId(section.id)}>{String(section.ordinal).padStart(2, '0')} · {name}</button></td>
-              <td title={type}><span className="prepare-type">{shortTypes[section.content_type] ?? type}</span></td>
+              <td title={displayType}><span className="prepare-type">{displayType}</span></td>
               <td><div className={`processing-switch prepare-processing-switch ${pending ? 'saving' : ''}`} aria-label={`Processing ${name}${pending ? ' · saving change' : ''}`} aria-busy={!!pending}>{(Object.entries(modes) as [Section['processing'], readonly [string, string]][]).map(([mode, [letter, label]]) => <button key={mode} data-mode-value={label} title={`${letter} — ${label}`} aria-pressed={displayedMode === mode} className={displayedMode === mode ? 'active' : ''} disabled={commandDisabled || !!pending || pipeline.busy || pipeline.metadata.lifecycle.archived || (pipeline.analysis.membership_locked && mode !== section.processing && (mode === 'full' || section.processing === 'full'))} onClick={event => { event.stopPropagation(); setSelectedId(section.id); onProcessingChange({ sectionId: section.id, mode }) }}>{letter}</button>)}</div></td>
               <td title={pending ? 'Saving P1 membership choice' : section.processing === 'full' ? 'Included in P1' : 'Outside P1'}><span className={displayedMode === 'full' ? 'prepare-p1 included' : 'prepare-p1'} aria-label={pending ? 'Saving P1 membership choice' : displayedMode === 'full' ? 'Included in P1' : 'Outside P1'}>{displayedMode === 'full' ? 'in' : '—'}</span></td>
             </tr>
