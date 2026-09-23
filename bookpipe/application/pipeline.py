@@ -17,6 +17,19 @@ from .results import PipelineResult
 from .sessions import OperationScope
 
 
+class ReloadAtCheckpoint(Exception):
+    """The current pass is durable; resume the remaining translation after reload."""
+
+    def __init__(self, completed_units: int):
+        self.completed_units = completed_units
+        super().__init__("Reload requested after a translation checkpoint.")
+
+
+def _reload_after_pass(progress: ProgressSink, completed_units: int) -> None:
+    if getattr(progress, "reload_requested", False):
+        raise ReloadAtCheckpoint(completed_units)
+
+
 def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) -> None:
     old = book.get("model_identity", {})
     if old and digest(old) != digest(client.identity):
@@ -155,6 +168,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
             "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
         }))
+        _reload_after_pass(progress, run_index - 1)
         key = f"pass3/{chunk['id']}"
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 3, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
@@ -165,6 +179,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
             "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
         }))
+        _reload_after_pass(progress, run_index - 1)
         key = f"pass4/{chunk['id']}"
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 4, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
@@ -178,6 +193,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
             "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
         }))
+        _reload_after_pass(progress, run_index - 1)
         key = f"pass5/{chunk['id']}"
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 5, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
@@ -197,6 +213,9 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
             "chunk_index": chunk["index_in_chapter"], "chunk_total": len(chapter["chunk_ids"]),
         }))
+        # Let the final chunk finish the job, including automatic publication.
+        if run_index < len(todo):
+            _reload_after_pass(progress, run_index)
     export_text(store, book)
     progress.emit(ProgressEvent(kind="translation_stopped", values={"completed_units": len(todo)}))
     return PipelineResult(store.root, completed_units=len(todo))

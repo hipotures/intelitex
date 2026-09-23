@@ -21,6 +21,12 @@ if mode in {"stubborn", "stubborn_child"}:
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 spec = parse_spec(json.loads(sys.stdin.readline()))
 sink = JsonlProgressSink(sys.stdout)
+reload_requested = False
+if mode in {"reloadable", "late_ready"}:
+    def reload_at_checkpoint(signum, frame):
+        global reload_requested
+        reload_requested = True
+    signal.signal(signal.SIGUSR1, reload_at_checkpoint)
 if mode == "malformed":
     print('{"type":"failure","error":[]}', flush=True)
     time.sleep(60)
@@ -29,6 +35,8 @@ if mode == "malformed":
 
 def operation(command):
     with project_lock(command.project):
+        if mode == "late_ready":
+            time.sleep(0.5)
         if mode == "stubborn_child":
             child = subprocess.Popen([sys.executable, "-u", "-c",
                 "import signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); "
@@ -48,6 +56,11 @@ def operation(command):
         if mode in {"hold", "stubborn", "stubborn_child"}:
             while True:
                 time.sleep(0.05)
+        if mode in {"reloadable", "late_ready"}:
+            time.sleep(0.5)  # Simulated in-flight pass; never interrupted by reload.
+            if reload_requested:
+                sink.send({"type": "reload", "completed_units": 0})
+                raise SystemExit(0)
         sink.emit(ProgressEvent(kind="publication_completed", values={"target_language": "pl"}))
 
 

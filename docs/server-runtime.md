@@ -9,6 +9,23 @@ uv run intelitex serve \
   --bind 127.0.0.1 --port 8780
 ```
 
+After changing Python code, request a full code reload without stopping the server by hand:
+
+```bash
+uv run intelitex reload --workspace-root ./workspaces
+```
+
+The command signals the locally registered `serve` process and returns immediately.
+Sending `SIGHUP` directly to that process has the same effect.
+The server rejects new jobs while draining. Each active translation worker finishes
+its current P2, P3, P4, or P5 pass and commits its checkpoint before exiting.
+Other active operations finish normally. The HTTP process then re-executes itself
+on the same bind address and port and starts new translation jobs for the remaining
+work. A P5 on the last chunk also finishes automatic publication before reload.
+The browser's SSE connection reconnects to the restarted server. Stop and SIGTERM
+retain their existing cancellation behavior. The first deployment of this feature
+requires a normal server start, since an older process does not yet handle reload.
+
 The root must already exist. Its immediate child directories are workspaces;
 `book.json` marks an imported project. Workspace IDs are directory names, using
 ASCII letters, digits, `_`, `-`, and single dots (maximum 128 characters, starting

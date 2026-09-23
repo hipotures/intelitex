@@ -22,8 +22,12 @@ class JobConflict(Exception):
 @dataclass
 class OwnedWorker:
     process: subprocess.Popen
+    spec: JobSpec | ImportJobSpec
     monitor: threading.Thread | None = None
     stopper: threading.Thread | None = None
+    ready: bool = False
+    reload_requested: bool = False
+    reload_signalled: bool = False
 
 
 def worker_command(spec: JobSpec | ImportJobSpec) -> list[str]:
@@ -41,6 +45,7 @@ class JobSupervisor:
         self.interrupt_grace, self.terminate_grace = interrupt_grace, terminate_grace
         self.lock = threading.RLock()
         self.owned: dict[str, OwnedWorker] = {}
+        self.reload_specs: list[JobSpec] = []
         self.closing = False
 
     def get(self, job_id: str) -> Job:
@@ -99,7 +104,7 @@ class JobSupervisor:
             except OSError:
                 return self._state(job.job_id, state="failed", finished_at=now(), error={
                     "type": "WorkerLaunchError", "message": "Unable to start worker."})
-            owned = OwnedWorker(proc)
+            owned = OwnedWorker(proc, spec)
             self.owned[job.job_id] = owned
             self._state(job.job_id, state="running", pid=proc.pid)
             owned.monitor = threading.Thread(target=self._monitor, args=(job.job_id, owned), daemon=True)
@@ -121,7 +126,9 @@ class JobSupervisor:
                     raise ValueError("Frame after terminal result")
                 if frame["type"] == "progress":
                     with self.lock:
+                        owned.ready = True
                         self.broker.publish(job_id, frame["event"])
+                        self._signal_reload(owned)
                 else:
                     terminal = frame
         except (ValueError, TypeError, KeyError, UnicodeError):
@@ -134,6 +141,16 @@ class JobSupervisor:
             job = self.get(job_id)
             if job.state == "stopping" and not protocol_error:
                 state, error = "cancelled", None
+            elif (not protocol_error and terminal and terminal["type"] == "reload" and code == 0
+                  and self.closing and owned.reload_signalled and owned.stopper is None
+                  and isinstance(owned.spec, JobSpec) and owned.spec.operation == "translate"
+                  and (owned.spec.chunk_limit == 0 or terminal["completed_units"] <= owned.spec.chunk_limit)):
+                state, error = "cancelled", None
+                remaining = owned.spec.chunk_limit
+                if remaining:
+                    remaining = max(0, remaining - terminal["completed_units"])
+                if remaining != 0 or owned.spec.chunk_limit == 0:
+                    self.reload_specs.append(replace(owned.spec, chunk_limit=remaining))
             elif not protocol_error and terminal and terminal["type"] == "result" and code == 0:
                 state, error = "succeeded", None
             elif not protocol_error and terminal and terminal["type"] == "cancelled":
@@ -190,6 +207,29 @@ class JobSupervisor:
         with self.lock:
             self.closing = True
         self.broker.close()
+
+    def request_reload(self):
+        """Drain running translation workers at their next durable pass boundary."""
+        with self.lock:
+            self.closing = True
+            for owned in self.owned.values():
+                if owned.spec.operation == "translate":
+                    owned.reload_requested = True
+                    self._signal_reload(owned)
+
+    def _signal_reload(self, owned: OwnedWorker):
+        if (owned.reload_requested and owned.ready and not owned.reload_signalled
+                and owned.stopper is None and owned.process.poll() is None):
+            try:
+                # Signal only the Python worker; provider children must finish.
+                owned.process.send_signal(signal.SIGUSR1)
+                owned.reload_signalled = True
+            except ProcessLookupError:
+                pass
+
+    def reload_drained(self) -> bool:
+        with self.lock:
+            return not self.owned
 
     def shutdown(self):
         with self.lock:

@@ -62,7 +62,7 @@ def decode(line: str) -> dict:
     if len(line) > MAX_FRAME or not line.endswith("\n"):
         raise ValueError("Invalid worker frame size.")
     value = json.loads(line)
-    if not isinstance(value, dict) or value.get("type") not in {"progress", "result", "failure", "cancelled"}:
+    if not isinstance(value, dict) or value.get("type") not in {"progress", "result", "failure", "cancelled", "reload"}:
         raise ValueError("Invalid worker frame.")
     if value["type"] == "progress":
         event = ProgressEvent(**value["event"])
@@ -86,6 +86,11 @@ def decode(line: str) -> dict:
             raise ValueError("Invalid error type.")
         value = {"type": "failure", "error": {"type": error_type,
                  "message": "Operation failed; inspect project configuration and attempt evidence locally."}}
+    elif value["type"] == "reload":
+        count = value.get("completed_units")
+        if type(count) is not int or count < 0:
+            raise ValueError("Invalid reload checkpoint count.")
+        value = {"type": "reload", "completed_units": count}
     else:
         value = {"type": "cancelled"}
     return value

@@ -4,6 +4,7 @@ from dataclasses import asdict
 import http.client
 import io
 import json
+import os
 from pathlib import Path
 import signal
 import sqlite3
@@ -117,6 +118,33 @@ def test_atomic_conflict_under_simultaneous_starts(runtime):
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(lambda _: start(), range(8)))
     assert sum(value is not None for value in results) == 1
+
+
+def test_reload_waits_for_owned_worker_checkpoint_and_preserves_resume_spec(runtime):
+    root, _, supervisor = runtime
+    supervisor.command_factory = lambda spec: [sys.executable, "-u", str(HELPER), "reloadable"]
+    job = supervisor.start(spec(root, "a"))
+    running(supervisor, job)
+    supervisor.request_reload()
+    assert supervisor.closing
+    with pytest.raises(JobConflict):
+        supervisor.start(spec(root, "b"))
+    assert terminal(supervisor, job).state == "cancelled"
+    wait_for(supervisor.reload_drained)
+    assert supervisor.reload_specs == [spec(root, "a")]
+
+
+def test_reload_signal_waits_until_worker_has_initialized(runtime):
+    root, _, supervisor = runtime
+    supervisor.command_factory = lambda spec: [sys.executable, "-u", str(HELPER), "late_ready"]
+    job = supervisor.start(spec(root, "a"))
+    supervisor.request_reload()
+    with supervisor.lock:
+        owned = supervisor.owned[job.job_id]
+        assert owned.reload_requested and not owned.reload_signalled
+    assert terminal(supervisor, job).state == "cancelled"
+    wait_for(supervisor.reload_drained)
+    assert supervisor.reload_specs == [spec(root, "a")]
 
 
 def test_success_failure_events_and_failure_isolation(runtime):
@@ -482,6 +510,72 @@ def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, s
     finally:
         supervisor.shutdown()
         registry.close()
+
+
+def test_worker_reload_finishes_current_pass_then_reuses_its_checkpoint(tmp_path, server, monkeypatch):
+    from test_pipeline import make_epub_source
+    from bookpipe.cli import main
+    from bookpipe.engine import Runner
+    from bookpipe.util import atomic_json, read_json
+
+    state, port = server
+    root = tmp_path / "book"
+    args = ["--project", str(root), "--quiet"]
+    assert main(["import", str(make_epub_source(tmp_path)), *args,
+                 "--host", "127.0.0.1", "--port", str(port)]) == 0
+    assert main(["analyze", *args]) == 0
+    review = read_json(root / "terms.review.json")
+    review["confirmed"] = True
+    review["terms"][0]["select"] = 1
+    atomic_json(root / "terms.review.json", review)
+    assert main(["approve", *args]) == 0
+
+    first_stream = io.StringIO()
+    first_sink = JsonlProgressSink(first_stream)
+    original_run = Runner.run
+
+    def request_after_p2(self, pass_no, *args, **kwargs):
+        result = original_run(self, pass_no, *args, **kwargs)
+        if pass_no == 2:
+            first_sink.reload_requested = True
+        return result
+
+    job_spec = JobSpec(str(tmp_path), "book", str(root), "translate")
+    with monkeypatch.context() as patch:
+        patch.setattr(Runner, "run", request_after_p2)
+        assert execute(job_spec, first_sink) == 0
+    assert decode(first_stream.getvalue().splitlines()[-1] + "\n") == {
+        "type": "reload", "completed_units": 0,
+    }
+    assert state.calls[2] == 1 and state.calls[3] == 0
+
+    resumed_stream = io.StringIO()
+    assert execute(job_spec, JsonlProgressSink(resumed_stream)) == 0
+    assert decode(resumed_stream.getvalue().splitlines()[-1] + "\n")["type"] == "result"
+    assert state.calls[2] == len(read_json(root / "book.json")["chunks"])
+    assert create_application().projects.status(StatusCommand(root)).publication.current
+
+
+def test_reload_protocol_requires_nonnegative_checkpoint_count():
+    assert decode('{"type":"reload","completed_units":2}\n') == {
+        "type": "reload", "completed_units": 2,
+    }
+    for invalid in (-1, 1.5, True, None):
+        with pytest.raises(ValueError):
+            decode(json.dumps({"type": "reload", "completed_units": invalid}) + "\n")
+
+
+def test_reload_handoff_preserves_finite_remaining_chunk_limit(tmp_path, monkeypatch):
+    from bookpipe.server.reload import HANDOFF_ENV, read_handoff, write_handoff
+
+    root = tmp_path / "workspaces"
+    (root / "book").mkdir(parents=True)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    intended = JobSpec(str(root), "book", str(root / "book"), "translate", chunk_limit=3)
+    handoff = write_handoff(root, [intended])
+    monkeypatch.setenv(HANDOFF_ENV, str(handoff))
+    assert read_handoff(root) == [intended]
+    assert not handoff.exists() and HANDOFF_ENV not in os.environ
 
 
 def test_malformed_protocol_and_launch_failure_do_not_leave_active_jobs(runtime):

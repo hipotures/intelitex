@@ -8,6 +8,7 @@ import re
 import select
 import shutil
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -57,6 +58,57 @@ def test_canonical_serve_starts_http_server(tmp_path):
             process.terminate()
         stdout, stderr = process.communicate(timeout=15)
         assert process.returncode == 0, f"{stdout}\n{stderr}"
+
+
+def test_reload_command_reexecs_server_without_manual_restart(tmp_path):
+    assert UV is not None
+    workspaces = tmp_path / "workspaces"
+    workspaces.mkdir()
+    env = {**os.environ, "XDG_STATE_HOME": str(tmp_path / "state")}
+    with socket.socket() as available:
+        available.bind(("127.0.0.1", 0))
+        port = available.getsockname()[1]
+    process = subprocess.Popen(
+        [UV, "run", "--locked", "intelitex", "serve", "--workspace-root", str(workspaces),
+         "--bind", "127.0.0.1", "--port", str(port)],
+        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    record = tmp_path / "state" / "intelitex" / "serve.json"
+    try:
+        deadline = time.monotonic() + 15
+        while not record.is_file() and time.monotonic() < deadline:
+            time.sleep(.05)
+        before = json.loads(record.read_text())
+        rejected = subprocess.run(
+            [UV, "run", "--locked", "intelitex", "reload", "--workspace-root", str(tmp_path)],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=10,
+        )
+        assert rejected.returncode == 1
+        assert json.loads(record.read_text())["token"] == before["token"]
+        result = subprocess.run(
+            [UV, "run", "--locked", "intelitex", "reload", "--workspace-root", str(workspaces)],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                after = json.loads(record.read_text())
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=1) as response:
+                    if after["token"] != before["token"] and json.load(response) == {"status": "ok"}:
+                        break
+            except (OSError, ValueError):
+                pass
+            time.sleep(.05)
+        else:
+            raise AssertionError("Reloaded server did not return on the same port")
+        assert after["pid"] == before["pid"]
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        stdout, stderr = process.communicate(timeout=15)
+        assert process.returncode == 0, f"{stdout}\n{stderr}"
+        assert not record.exists()
 
 
 def test_ctrl_c_closes_sse_without_traceback(tmp_path):

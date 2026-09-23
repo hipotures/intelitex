@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand
+from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
 from .models import JobSpec, ImportJobSpec, parse_spec
 from .protocol import JsonlProgressSink, MAX_FRAME
@@ -60,6 +61,9 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
     except KeyboardInterrupt:
         sink.send({"type": "cancelled"})
         return 130
+    except ReloadAtCheckpoint as exc:
+        sink.send({"type": "reload", "completed_units": exc.completed_units})
+        return 0
     except Exception as exc:
         sink.send({"type": "failure", "error": {
             "type": type(exc).__name__,
@@ -77,6 +81,10 @@ def main() -> int:
 
     signal.signal(signal.SIGINT, interrupt)
     sink = JsonlProgressSink(sys.stdout)
+    if hasattr(signal, "SIGUSR1"):
+        def request_reload(signum, frame):
+            sink.reload_requested = True
+        signal.signal(signal.SIGUSR1, request_reload)
     try:
         spec = parse_spec(json.loads(sys.stdin.readline(MAX_FRAME + 1)))
         with contextlib.redirect_stdout(sys.stderr):

@@ -32,6 +32,8 @@ def parser() -> argparse.ArgumentParser:
     server.add_argument("--import-root", type=Path, help="Optional confined source folders for web import.")
     server.add_argument("--bind", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8780)
+    reload_command = sub.add_parser("reload", help="Reload the running server after active translation passes checkpoint.")
+    reload_command.add_argument("--workspace-root", type=Path, help="Require the running server to use this workspace root.")
     pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
@@ -185,6 +187,15 @@ def main(argv: list[str] | None = None) -> int:
             serve(args.workspace_root, args.bind, args.port, import_root=args.import_root)
             return 0
         except (PipelineError, OSError, ValueError, sqlite3.Error) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "reload":
+        from .server.reload import request_reload
+        try:
+            request_reload(args.workspace_root)
+            print("Reload requested. Current translation passes will finish before the server restarts.")
+            return 0
+        except (OSError, ValueError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
     root = args.project.resolve()

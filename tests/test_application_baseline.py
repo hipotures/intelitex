@@ -17,7 +17,7 @@ def _parse(*arguments: str):
 def test_cli_command_inventory_and_shared_flags(tmp_path):
     project = str(tmp_path / "project")
     choices = next(action for action in parser()._actions if action.dest == "command").choices
-    assert set(choices) == COMMANDS | {"serve"}
+    assert set(choices) == COMMANDS | {"serve", "reload"}
     for command in COMMANDS - {"import", "catalog-import"}:
         args = [command, "--project", project, "--quiet"]
         if command == "smoke":
