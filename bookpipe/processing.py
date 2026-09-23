@@ -68,8 +68,8 @@ def dormant_section(section, limit):
     return chapter, chunks
 
 
-def effective_book(book, root, *, phase='translation', include_dormant=False):
-    config = configuration(root)
+def effective_book(book, root, *, phase='translation', include_dormant=False, config=None):
+    config = config if config is not None else configuration(root)
     if not config['sections'] and not config.get('pass_profiles'):
         return book
     result = copy.deepcopy(book)

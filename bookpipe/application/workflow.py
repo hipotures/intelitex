@@ -51,14 +51,20 @@ class WorkflowQueries:
                 'memory_tokens': settings.get('memory_tokens')}
 
     def pipeline(self, root: Path, *, busy: bool = False) -> dict:
+        return self.pipeline_with_evidence(root, busy=busy)[0]
+
+    def pipeline_with_evidence(self, root: Path, *, busy: bool = False) -> tuple[dict, dict, object, dict]:
+        """Build one authoritative snapshot and retain its validated inputs for the HTTP projection."""
         files = self.dependencies.files
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
-            book = load_valid_book(root, self.dependencies.plan_fingerprint, files)
-            book = effective_book(book, root)
+            source_book = load_valid_book(root, self.dependencies.plan_fingerprint, files)
+            config = configuration(root)
+            book = effective_book(source_book, root, config=config)
             analyzed, approved = bool(store.get('analysis_done')), approval_current(store, files)
             plan = files.read_json(root / 'analysis_plan.json') if files.is_file(root / 'analysis_plan.json') else []
-            usage = {unit.unit_id: unit for unit in usage_by_unit_report(root).units}
+            usage_report = usage_by_unit_report(root, book=source_book, plan=plan)
+            usage = {unit.unit_id: unit for unit in usage_report.units}
             analysis = []
             for unit in plan:
                 receipt = store.get('analysis:' + unit['id'])
@@ -100,7 +106,7 @@ class WorkflowQueries:
                                   and review.get('analysis_revision') == digest(store.terms()))
             confirmed = bool(review_current and review.get('confirmed') is True)
             complete = bool(chunks) and all(c['passes']['5']['checkpoint_state'] == 'completed' for c in chunks)
-            publication = self.publishing.query_snapshot(root, book, store)
+            publication = self.publishing.query_snapshot(root, book, store, projected=True)
             stage = ('analysis' if not analyzed else 'review' if not approved else
                      'translation' if not complete else 'complete' if publication.current else 'publication')
             def action(reason=None):
@@ -122,7 +128,7 @@ class WorkflowQueries:
             percent = (100 if publication.current else 32 if analyzed and not approved else 98 if complete else
                        int(35 + 58 * translated / len(chunks) + .5) if approved and chunks else
                        32 if analyzed else int(5 + 25 * analysis_done / len(analysis) + .5) if analysis else None)
-            return {'stage': stage, 'progress': {'percent': percent, 'basis': 'Workflow progress — not an ETA',
+            result = {'stage': stage, 'progress': {'percent': percent, 'basis': 'Workflow progress — not an ETA',
                         'analysis': {'completed': analysis_done, 'required': len(analysis),
                                      'denominator': 'required P1 analysis units'},
                         'translation': {'completed': translated, 'required': len(chunks),
@@ -138,3 +144,4 @@ class WorkflowQueries:
                     'excluded_sections': [{'id': c['id'], 'title': c.get('title'), 'role': c.get('role')}
                                           for c in book.get('non_narrative_sections', [])],
                     'publication': publication, 'actions': actions}
+            return result, source_book, usage_report, config

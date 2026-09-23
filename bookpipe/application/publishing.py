@@ -280,9 +280,11 @@ class PublishingService:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
             return self.query_snapshot(root, book, scope.store, target)
 
-    def query_snapshot(self, root: Path, book: dict, store, target: str = "pl") -> PublicationStatus:
+    def query_snapshot(self, root: Path, book: dict, store, target: str = "pl",
+                       *, projected: bool = False) -> PublicationStatus:
         """Validate publication against the caller's short-lived project snapshot."""
-        return self._status_from(root, effective_book(book, root), store, target, self._read_record(root))
+        return self._status_from(root, book if projected else effective_book(book, root),
+                                 store, target, self._read_record(root))
 
     def _status_from(self, root: Path, book: dict, store, target: str, record: dict,
                      *, prepared=None) -> PublicationStatus:

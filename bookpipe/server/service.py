@@ -323,22 +323,24 @@ class ServerService:
         root = self.workspaces.resolve(workspace_id)
         active = self.supervisor.active_for_project(root)
         busy = active is not None or self.supervisor.owns_project(root)
-        result = self.application.workflow.pipeline(root, busy=busy)
+        result, book, usage, config_snapshot = self.application.workflow.pipeline_with_evidence(root, busy=busy)
         result['publication'] = dto.publication(result['publication'])
-        result['sections'] = self.application.web.section_summaries(root, result)
-        usage = self.usage(workspace_id)
+        config = self.application.web.config(root, config=config_snapshot)
+        result['sections'] = self.application.web.section_summaries(root, result, book=book, config=config)
         colors = self.catalog.read().get('profile_colors', {})
+        by_section = {}
+        for unit in usage.units:
+            for attempt in unit.passes:
+                by_section.setdefault((unit.chapter_id, attempt.pass_no), set()).add(
+                    (attempt.profile, attempt.provider, attempt.reported_model or attempt.requested_model))
         for section in result['sections']:
             for number, cell in section['passes'].items():
-                actual = [p for unit in usage['units'] if unit['chapter_id'] == section['id']
-                          for p in unit['passes'] if p['pass_no'] == int(number)]
-                provenance = {(p['profile'], p['provider'], p['reported_model'] or p['requested_model']) for p in actual}
+                provenance = by_section.get((section['id'], int(number)), set())
                 cell['provenance'] = [{'profile': profile, 'provider': provider, 'model': model,
                         'stable_palette_index': colors.get(profile)} for profile, provider, model in sorted(provenance, key=str)]
-        result['config'] = self.application.web.config(root)
-        result['metadata'] = self.application.web.metadata(root)
+        result['config'] = config
+        result['metadata'] = self.application.web.metadata(root, book=book)
         result['artifacts'] = {name: self.application.web.dependencies.files.is_file(root / filename) for name, filename in [('terminology', 'terms.review.json'), ('book_memory', 'book_memory.json')]}
-        book = self.application.web.book(root)
         result['preparation'] = {'source_id': Path(book.get('source_archive', book['source_root'])).name, 'checks': ['Frozen source/chunk manifest verified']}
         if result['metadata']['lifecycle']['archived']:
             for value in result['actions'].values():

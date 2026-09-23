@@ -153,9 +153,9 @@ def _number(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
-def _project_units(project: Path) -> dict[str, tuple[str | None, str | None, str | None, int | None]]:
+def _project_units(project: Path, *, book: dict | None = None, plan: list | None = None) -> dict[str, tuple[str | None, str | None, str | None, int | None]]:
     result: dict[str, tuple[str | None, str | None, str | None, int | None]] = {}
-    book_value = _optional_json(project / "book.json")
+    book_value = book if book is not None else _optional_json(project / "book.json")
     book = book_value if isinstance(book_value, dict) else {}
     for order, chunk in enumerate(book.get("chunks") or (), 1):
         if not isinstance(chunk, dict) or not isinstance(chunk.get("id"), str):
@@ -165,8 +165,8 @@ def _project_units(project: Path) -> dict[str, tuple[str | None, str | None, str
             chunk.get("chapter_id"), unit_id, None,
             _integer(chunk.get("number")) or order,
         )
-    plan = _optional_json(project / "analysis_plan.json")
-    plan_rows = plan if isinstance(plan, list) else []
+    plan_value = plan if plan is not None else _optional_json(project / "analysis_plan.json")
+    plan_rows = plan_value if isinstance(plan_value, list) else []
     for order, unit in enumerate(plan_rows, 1):
         if not isinstance(unit, dict) or not isinstance(unit.get("id"), str):
             continue
@@ -278,10 +278,11 @@ def _aggregate_cost(attempts: Iterable[AttemptUsage]) -> CostEstimate | None:
                         "Some physical attempts have unknown pricing or usage.")
 
 
-def usage_by_unit_report(project: Path, unit_filter: str | None = None) -> UsageByUnitResult:
+def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
+                         book: dict | None = None, plan: list | None = None) -> UsageByUnitResult:
     """Read evidence internally and return immutable semantic usage values."""
     project = project.resolve()
-    known_units = _project_units(project)
+    known_units = _project_units(project, book=book, plan=plan)
     recovered_sources = _recovery_sources(project)
     records: list[_AttemptRecord] = []
     for manifest_path in sorted(project.glob("artifacts/**/attempt_*/attempt.json")):

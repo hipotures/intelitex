@@ -70,6 +70,10 @@ against the approved review digest; historical approval alone cannot authorize c
 decisions. Confirm-and-approve checks one exact revision under the application lock.
 It never starts translation. `PublishingService` retains existing automatic publication
 and explicit retry semantics; the download verifies currentness and exact response bytes.
+The HTTP pipeline projection reuses one validated book and one usage report for
+workflow, section aggregates, metadata and model provenance. The publisher receives
+the already projected eligible book. This preserves one authoritative read snapshot
+while avoiding repeated large `book.json` and attempt scans.
 
 ## Frontend structure and real bindings
 
@@ -172,8 +176,11 @@ persisted P1 work and while a job owns the workspace; the backend rechecks all
 conditions. Analyse is labeled P1 whole-book analysis in the phase rail/detail page.
 For F/T/E, the successful PATCH revision updates the selected section in the query
 cache immediately; old in-flight pipeline reads are cancelled and full reconciliation
-runs in the background. This avoids holding the control on unrelated workspace-list
-refetches while the backend remains authoritative for final counts and readiness.
+runs in the background for that workspace only. The global workspace list is marked
+stale, but not refetched until it is next used, so this avoids scanning every book
+after each click. The backend remains authoritative for final counts and readiness.
+Resource invalidation checks the full workspace ID boundary, so a similarly
+prefixed workspace is never swept into this refresh.
 The original v33 does not depict a persisted pre-import draft or provider-dependent
 Prepare; these are intentional production differences from that mock.
 

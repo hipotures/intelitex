@@ -92,6 +92,23 @@ def approve(service):
     return service.approve('book', {'revision': value['revision']})
 
 
+def test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage(api, monkeypatch):
+    app, root, service, _ = api
+    files = app.web.dependencies.files
+    original = type(files).read_json
+    reads = []
+
+    def counted(instance, path):
+        if path == root / 'book.json':
+            reads.append(path)
+        return original(instance, path)
+
+    monkeypatch.setattr(type(files), 'read_json', counted)
+    value = service.pipeline('book')
+    assert value['sections'] and value['metadata']['title']
+    assert len(reads) == 1
+
+
 def test_pipeline_lifecycle_and_stale_approval(api):
     app, root, service, server = api
     first = service.pipeline('book')
@@ -293,7 +310,7 @@ def test_errors_and_evidence_do_not_leak_paths_or_provider_bodies(api, monkeypat
     assert str(root) not in raw
     def fail(*args, **kwargs):
         raise RuntimeError(f'{root} secret-provider-response credential=private')
-    monkeypatch.setattr(service.application.workflow, 'pipeline', fail)
+    monkeypatch.setattr(service.application.workflow, 'pipeline_with_evidence', fail)
     code, value = request(server, 'GET', '/api/workspaces/book/pipeline')
     assert code == 500 and value == {'error': {'code': 'internal_error', 'message': 'Internal server error.', 'details': {}}}
 

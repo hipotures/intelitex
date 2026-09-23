@@ -41,10 +41,14 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
     page.setDefaultTimeout(8000)
     const errors = [], failed = [], mutations = []
-    let slowReads = 0
+    let slowReads = 0, globalReadsAfterPatch = 0
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-    page.on('requestfailed', request => failed.push(request.url()))
+    page.on('requestfailed', request => {
+      const reason = request.failure()?.errorText
+      if (new URL(request.url()).pathname === '/api/workspaces' && reason === 'net::ERR_ABORTED') return
+      failed.push(`${request.url()}: ${reason}`)
+    })
     await page.addInitScript(() => { window.EventSource = class {
       static OPEN = 1; readyState = 1; listeners = {}
       constructor() { window.testStream = this }
@@ -59,7 +63,10 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         review: true, reader: true, sse: true, multi_workspace: true, drafts: true, archive: true,
         section_configuration: true, diagnostics: false }
       else if (path === '/api/jobs') body = { jobs: [], cursor: 0 }
-      else if (path === '/api/workspaces') body = workspaces
+      else if (path === '/api/workspaces') {
+        if (mutations.some(item => item.method === 'PATCH')) globalReadsAfterPatch++
+        body = workspaces
+      }
       else if (path === '/api/workspaces/w-1/pipeline') body = pipeline
       else if (path === '/api/workspaces/w-1/profiles') body = profiles
       else if (path === '/api/workspaces/w-1/preparation') body = { checks: ['Frozen source/chunk manifest verified'],
@@ -107,9 +114,25 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       assert.ok(Date.now() - started < 1200, 'F/T/E remains responsive while global refreshes are slow')
       assert.equal(mutations.length, 1)
       await page.waitForTimeout(3800)
+      assert.equal(globalReadsAfterPatch, 0, 'section processing does not refetch the global workspace list')
       await page.getByRole('button', { name: /Prepare.*Source structure frozen/ }).click()
-      await page.getByRole('button', { name: 'Run Prepare again' }).waitFor()
+      const rebuildButton = page.getByRole('button', { name: 'Run Prepare again' })
+      await rebuildButton.waitFor()
+      assert.equal(await rebuildButton.evaluate(button => button.classList.contains('primary-btn')), true,
+        'Prepare rebuild has a prominent button style')
+      assert.equal(await rebuildButton.evaluate(button => {
+        const actions = button.parentElement.getBoundingClientRect()
+        const control = button.getBoundingClientRect()
+        const description = button.parentElement.previousElementSibling.getBoundingClientRect()
+        return Math.abs(actions.right - control.right) < 2 && control.top - description.bottom >= 30
+      }), true, 'Prepare rebuild is right-aligned and separated from its description')
       await page.screenshot({ path: `${output}/prepare-dark-1440.png`, animations: 'disabled' })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await page.screenshot({ path: `${output}/prepare-light-390-full.png`, fullPage: true, animations: 'disabled' })
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await page.setViewportSize({ width: 1440, height: 1000 })
       await page.getByRole('button', { name: 'Run Prepare again' }).click()
       await page.locator('[data-ui-debug-id="RPM"]').waitFor()
       assert.equal(mutations.length, 1, 'opening confirmation does not start a job')

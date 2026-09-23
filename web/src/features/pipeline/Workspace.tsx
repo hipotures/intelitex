@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
-import { endpoint, queryClient, reconcile, Scope, useApi } from '../../api/client'
+import { endpoint, matchesWorkspaceResource, queryClient, Scope, useApi } from '../../api/client'
 import { activitySchema, configSchema, lifecycleSchema, pipelineSchema, previewSchema, profilesSchema, workspacesSchema, type Pipeline, type Section } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Back, Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
@@ -88,7 +88,11 @@ export function WorkspacePage() {
         ...current, config: { ...current.config, revision: result.revision },
         sections: current.sections.map(item => item.id === sectionId ? { ...item, processing: processing as Section['processing'] } : item),
       }))
-      void reconcile(id).catch(() => { /* Query errors stay in their query state. */ })
+      if (result) void queryClient.invalidateQueries({ queryKey: [scope, '/api/workspaces'], exact: true,
+        refetchType: 'none' })
+      void queryClient.invalidateQueries({ predicate: query => query.queryKey[0] === scope &&
+        matchesWorkspaceResource(String(query.queryKey[1]), id) &&
+        !String(query.queryKey[1]).includes('/reader/chapters/') }).catch(() => { /* Query errors stay in their query state. */ })
     }
     return result
   }

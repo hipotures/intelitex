@@ -78,8 +78,12 @@ fresh pipeline read and current config revision, then follows the supervised imp
 job. Analyse/P1 is displayed as whole-book work; section cells show actual counts.
 For F/T/E PATCH, a successful returned revision updates the affected cached cell,
 old in-flight pipeline reads are cancelled, and reconciliation proceeds without
-holding the control on unrelated workspace-list queries. Subsequent server reads
-replace the provisional cell/readiness with authoritative state.
+holding the control on unrelated workspace-list queries. The global list is marked
+stale for its next use without refetching it on this screen. Only queries scoped to
+that workspace are immediately refetched; Reader prose remains protected from replacement.
+Workspace resource matches require the complete ID boundary (`w-1` must not match
+`w-10`). Subsequent server reads replace the provisional cell/readiness with
+authoritative state.
 The application checks persisted P1 receipts and P1 attempt manifests directly
 for membership locking, without constructing the full historical usage report on
 every Processing change.

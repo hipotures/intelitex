@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "794890bc294fb5287758a6dd631f44ee52d8d647",
+  "inspected_commit": "7da44ef551e84c8e29eff4da8ff0d431a141feb3",
   "audit_date": "2026-09-23",
-  "audit_basis": "Manually inspected same-workspace versioned reprepare application/HTTP/worker boundaries, persisted-work gate, source-heading auto import, direct P1 membership evidence check, revision/idempotency handling, and regression tests. Source hashes are a drift guard, not runtime certification.",
+  "audit_basis": "Manually inspected current pipeline read projection, usage source mapping, publication readiness, one configuration snapshot and F/T/E configuration after eliminating repeated validated plan and usage reads. Source hashes guard drift; API/behavior regressions are tested separately.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
@@ -39,7 +39,8 @@
       "compatibility",
       "save_setup",
       "configure",
-      "reprepare"
+      "reprepare",
+      "pipeline single-snapshot projection"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -62,12 +63,15 @@
       "configure",
       "section_summaries",
       "preparation",
-      "configure direct P1 attempt check"
+      "configure direct P1 attempt check",
+      "metadata supplied book",
+      "section_summaries supplied book/config"
     ],
     "bookpipe/application/workflow.py": [
       "WorkflowQueries",
       "pipeline",
-      "settings"
+      "settings",
+      "pipeline_with_evidence"
     ],
     "bookpipe/application/review.py": [
       "approval_current",
@@ -82,7 +86,8 @@
     "bookpipe/application/publishing.py": [
       "PublishingService",
       "download",
-      "query_snapshot"
+      "query_snapshot",
+      "query_snapshot projected book"
     ],
     "bookpipe/application/imports.py": [
       "workspace_destination",
@@ -94,7 +99,8 @@
     "bookpipe/processing.py": [
       "configuration",
       "effective_book",
-      "reconcile_membership"
+      "reconcile_membership",
+      "effective_book supplied configuration"
     ],
     "bookpipe/runtime/registry.py": [
       "JobRegistry",
@@ -173,6 +179,10 @@
     "bookpipe/application/workspace_setup.py": [
       "read_workspace_setup",
       "validate_draft_destination"
+    ],
+    "bookpipe/usage.py": [
+      "usage_by_unit_report supplied validated book/plan",
+      "_project_units"
     ]
   },
   "evidence": [
@@ -186,23 +196,24 @@
     "web/tests/library-refresh.test.mjs",
     "web/tests/library-setup.test.mjs",
     "tests/test_pipeline.py",
-    "web/tests/reprepare.test.mjs"
+    "web/tests/reprepare.test.mjs",
+    "tests/test_server_api.py::test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage"
   ],
   "source_blobs": {
     "bookpipe/server/asgi.py": "83c1da58fa756cb4c053b7002dcff35f9859d3ef",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
     "bookpipe/server/routes.py": "a89fab59bf67b9da59d7843917e79b2f49f3c468",
     "bookpipe/server/http.py": "d9400cf306b50eef5eff910891345920ee9c7a5d",
-    "bookpipe/server/service.py": "06e9e9cabafa228caa43c76b3c004a6b77331549",
+    "bookpipe/server/service.py": "8c9c2fd4f7925f6e35fd12f8f49e8b4788a9f67b",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
     "bookpipe/application/catalog.py": "c48e64d755374b622ff60c6d219f543e2e66c327",
-    "bookpipe/application/web.py": "6746412341dac4741b3cea31a38e40eaa783172c",
-    "bookpipe/application/workflow.py": "7ff85de560f5adf295a25c0ed317d1980e30e550",
+    "bookpipe/application/web.py": "3e394bace20db570c1b81c3a81edb84335a7b868",
+    "bookpipe/application/workflow.py": "eab2c6f4ecb4d38f68cdf1e1f3c1a242b5f2e031",
     "bookpipe/application/review.py": "7b31ed9da9472f425b2a1cb8c46316c6266af6bc",
     "bookpipe/application/pipeline.py": "4f36023da0c8829f1ac7497d44addbd4756aba06",
-    "bookpipe/application/publishing.py": "f3dd0289871b68faf8421a3a569ec92544426984",
+    "bookpipe/application/publishing.py": "fbb703d308631918128d7d2581d10ac66c2c997f",
     "bookpipe/application/imports.py": "6baec0cae30d9cd0dc25d1f940928209b115533f",
-    "bookpipe/processing.py": "3fc026cd72dc3418a3df4308dcd489840c13a822",
+    "bookpipe/processing.py": "456dab0677bfb6106f7cfe0e712012af4c0e656a",
     "bookpipe/runtime/registry.py": "d7dfd1cc89347e7eff9ca56cd312c9de5628cf52",
     "bookpipe/runtime/supervisor.py": "a1d814c1010047ccf0edb01e0d11557b9267d4bb",
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
@@ -218,6 +229,7 @@
     "bookpipe/runtime/worker.py": "8abea8e568f5fc148ef85bd383148b82e58bad58",
     "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
     "bookpipe/application/source_preflight.py": "38fe9386c077b78f1dfe112d3fe2629910d82178",
-    "bookpipe/application/workspace_setup.py": "701b025ac4a151d8db380d8f993b8d6211482562"
+    "bookpipe/application/workspace_setup.py": "701b025ac4a151d8db380d8f993b8d6211482562",
+    "bookpipe/usage.py": "4a7d3a255f2f6a950f9a9946a0263e002cfb0d93"
   }
 }

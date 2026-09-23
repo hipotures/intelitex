@@ -144,3 +144,42 @@ from the mock's seeded book. The mobile source table scrolls inside its card so
 column headings remain separate without widening the page. The browser test also
 confirmed an acknowledged F/T/E change appears in under 1.2 seconds while two
 authoritative background reads were delayed by 3.5 seconds.
+
+## 2026-09-23: targeted Processing reconciliation and visible Prepare rebuild
+
+The F/T/E response path now refetches only the selected workspace's resources and
+marks the global workspace list stale without refetching it immediately. Complete
+workspace ID matching prevents `w-1` from also invalidating `w-10`. The pipeline
+HTTP projection uses one validated `book.json` read and reuses its usage/plan
+snapshot for section, metadata and model
+provenance. On a disposable synthetic 32.07 MB book, a local pipeline read measured
+0.488 s after this change, versus about 0.85 s before it; the PATCH measured 0.685 s.
+These are isolated local measurements, not timings from the user's running server.
+The server process was left untouched, so it must be restarted by its owner to serve
+the new backend and built frontend. No active workspace was mutated and no model was
+contacted.
+
+The Prepare phase now places the guarded rebuild action at the right edge of the
+Checks card, with a divider and filled primary button style. Offline Chromium
+captures at dark 1440×1000 and light 390×844 in
+`/tmp/intelitex-reprepare-evidence/` were inspected against the original v33 Prepare
+page. Its page geometry remains aligned; the rebuild action is an intentional
+production addition. The mobile page has no horizontal overflow, and its source
+table scrolls within the card.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 853 passed, 3 existing dependency/ZIP-fixture warnings |
+| `node --test tests/*.cjs` | 31 passed |
+| `npm --prefix web run test:unit` | 16 passed in 6 files |
+| `npm --prefix web run lint` | Passed |
+| `npm --prefix web run build` | Strict TypeScript and production build passed; existing >500 kB chunk advisory |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf node --test tests/reprepare.test.mjs` (from `web/`) | 1 passed; button style, alignment and spacing, responsive capture, no console/page/request failures |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and contract unchanged |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual audit |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf npm --prefix web run test:browser` | 8 passed; offline workflow, same-origin integration, Library, SSE, responsive and Prepare rebuild; no unexpected console/page/request failures |
+| `git diff --check` | Passed |
+
+The browser test asserts the rebuild button's primary style, right alignment and
+spacing from the description on desktop, and captures the complete mobile page.

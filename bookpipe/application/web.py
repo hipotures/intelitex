@@ -46,9 +46,9 @@ class WebWorkspaceService:
     def book(self, root):
         return load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
 
-    def metadata(self, root):
+    def metadata(self, root, *, book=None):
         from .workspace_setup import read_workspace_setup
-        book = self.book(root)
+        book = book if book is not None else self.book(root)
         metadata = book.get('metadata', {})
         sections = self.sections(book)
         setup = read_workspace_setup(root)
@@ -83,10 +83,10 @@ class WebWorkspaceService:
         return sorted([*book['chapters'], *book.get('non_narrative_sections', [])],
                       key=lambda s: min((b['order'] for b in s.get('blocks', [])), default=0))
 
-    def section_summaries(self, root, pipeline):
+    def section_summaries(self, root, pipeline, *, book=None, config=None):
         from ..processing import processing
-        book = self.book(root)
-        config = self.config(root)
+        book = book if book is not None else self.book(root)
+        config = config if config is not None else self.config(root)
         result = []
         for ordinal, section in enumerate(self.sections(book), 1):
             ident = section['id']
@@ -125,9 +125,9 @@ class WebWorkspaceService:
         return {'id': section_id, 'blocks': blocks[start:start + 20],
                 'next_page': page + 1 if start + 20 < len(blocks) else None}
 
-    def config(self, root):
+    def config(self, root, *, config=None):
         from ..processing import configuration
-        value = configuration(root)
+        value = config if config is not None else configuration(root)
         return {**value, 'revision': digest(value)}
 
     def configure(self, root, payload, section_id=None):

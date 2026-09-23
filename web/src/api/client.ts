@@ -6,6 +6,10 @@ export class ApiError extends Error {
 }
 export const Scope = createContext('boot')
 export const endpoint = (workspace: string, resource = '') => `/api/workspaces/${encodeURIComponent(workspace)}${resource ? '/' + resource : ''}`
+export const matchesWorkspaceResource = (path: string, workspace: string) => {
+  const base = endpoint(workspace)
+  return path === base || path.startsWith(`${base}/`)
+}
 export async function request<T>(path: string, schema: z.ZodType<T>, options: { signal?: AbortSignal; method?: string; body?: unknown } = {}): Promise<T> {
   let response: Response
   try {
@@ -35,5 +39,5 @@ export function useApi<T>(path: string, schema: z.ZodType<T>, enabled = true) {
   return useQuery({ queryKey: [scope, path], queryFn: ({ signal }) => request(path, schema, { signal }), enabled })
 }
 export async function reconcile(workspace?: string) {
-  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || String(q.queryKey[1]).startsWith(endpoint(workspace)) || ['/api/workspaces', '/api/jobs'].includes(String(q.queryKey[1]))) })
+  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || matchesWorkspaceResource(String(q.queryKey[1]), workspace) || ['/api/workspaces', '/api/jobs'].includes(String(q.queryKey[1]))) })
 }
