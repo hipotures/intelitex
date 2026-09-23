@@ -815,12 +815,19 @@ def test_translation_preview_pages_keep_source_sentences_and_results_together(ap
                      if item['block_id'] == chunk['blocks'][5]['id'])
     store = Store(root)
     try:
-        for number, value in [(2, {'checks': [{'sid': item['id'], 'risk': 'medium'} for item in chunk['sentences']],
+        for number, value in [(2, {'checks': [{'sid': item['id'], 'risk': 'high' if item['id'] == sixth_sid else 'low'}
+                                               for item in chunk['sentences']],
                                    'issues': [{'sid': sixth_sid, 'source_span': 'Source sentence',
                                                'type': 'style', 'meaning': 'Sixth block issue',
                                                'constraint': 'Keep the tone.', 'confidence': 'high'}]}),
                               (3, {'translations': [{'id': item['id'], 'text': f"Translation {item['id']}"}
-                                                    for item in chunk['blocks']]})]:
+                                                    for item in chunk['blocks']]}),
+                              (4, {'checks': [{'sid': item['id'], 'status': 'needs_correction' if item['id'] == sixth_sid else 'ok'}
+                                               for item in chunk['sentences']],
+                                   'corrections': [{'sid': sixth_sid, 'block_id': chunk['blocks'][5]['id'],
+                                                    'source_span': 'Source sentence', 'draft_span': 'Translation',
+                                                    'problem': 'Tone shifted.', 'constraint': 'Keep the tone.',
+                                                    'severity': 'minor', 'confidence': 'high'}]})]:
             path = root / 'artifacts' / f'pass{number}' / chunk['id'] / 'result.json'
             atomic_json(path, value)
             store.save_job(f"pass{number}/{chunk['id']}", 'preview-test', path, {})
@@ -838,11 +845,22 @@ def test_translation_preview_pages_keep_source_sentences_and_results_together(ap
     assert p2_next['findings'][0]['meaning'] == 'Sixth block issue'
     code, p3_next = request(server, 'GET', f'{path}/3?page=1')
     assert code == 200 and [item['id'] for item in p3_next['translations']] == [item['id'] for item in p3_next['source']]
-    code, unsaved = request(server, 'GET', f'{path}/4?page=1')
+    code, p2_high = request(server, 'GET', f'{path}/2?page=0&status=high')
+    assert code == 200 and p2_high['next_page'] is None
+    assert [item['id'] for item in p2_high['sentences']] == [sixth_sid]
+    assert [item['id'] for item in p2_high['source']] == [chunk['blocks'][5]['id']]
+    code, p2_low = request(server, 'GET', f'{path}/2?page=0&status=low')
+    assert code == 200 and len(p2_low['source']) == 5 and p2_low['next_page'] == 1
+    code, p4_needs = request(server, 'GET', f'{path}/4?page=0&status=needs_correction')
+    assert code == 200 and [item['id'] for item in p4_needs['sentences']] == [sixth_sid]
+    assert p4_needs['findings'][0]['problem'] == 'Tone shifted.'
+    code, unsaved = request(server, 'GET', f'{path}/5?page=1')
     assert code == 200 and not unsaved['available'] and unsaved['next_page'] is None
     assert [item['id'] for item in unsaved['source']] == [item['id'] for item in p3_next['source']]
-    for invalid in ('page=-1', 'page=x', 'page=0&page=1', 'other=1'):
+    for invalid in ('page=-1', 'page=x', 'page=0&page=1', 'other=1', 'status=critical',
+                    'status=low&status=high'):
         assert request(server, 'GET', f'{path}/3?{invalid}')[0] == 400
+    assert request(server, 'GET', f'{path}/4?status=high')[0] == 400
     assert request(server, 'GET', '/api/workspaces/book/pipeline?page=1')[0] == 400
 
 

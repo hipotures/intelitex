@@ -125,7 +125,7 @@ class WebWorkspaceService:
         return {'id': section_id, 'blocks': blocks[start:start + 20],
                 'next_page': page + 1 if start + 20 < len(blocks) else None}
 
-    def translation_pass_preview(self, root, chunk_id, pass_no, page=0):
+    def translation_pass_preview(self, root, chunk_id, pass_no, page=0, status=None):
         """Bounded, validated saved pass output for one eligible translation chunk."""
         from ..processing import effective_book
         from .sessions import ProjectReadScope
@@ -133,24 +133,14 @@ class WebWorkspaceService:
             raise ValueError('Invalid translation pass.')
         if type(page) is not int or page < 0 or page > 10000:
             raise ValueError('Invalid preview page.')
+        allowed_statuses = {2: {'low', 'medium', 'high'}, 4: {'ok', 'needs_correction'}}
+        if status is not None and status not in allowed_statuses.get(pass_no, set()):
+            raise ValueError('Invalid preview status.')
         book = effective_book(self.book(root), root)
         chunk = next((item for item in book['chunks'] if item['id'] == chunk_id), None)
         if chunk is None:
             raise KeyError(chunk_id)
         key = f'pass{pass_no}/{chunk_id}'
-        page_size = 5
-        start = page * page_size
-        blocks = chunk['blocks'][start:start + page_size]
-        block_ids = {item['id'] for item in blocks}
-        sentences = [item for item in chunk['sentences'] if item['block_id'] in block_ids]
-        sentence_ids = {item['id'] for item in sentences}
-        next_page = page + 1 if start + page_size < len(chunk['blocks']) else None
-        text_limit = 20000
-        source = [{'id': item['id'], 'text': item['text'][:text_limit]} for item in blocks]
-        source_truncated = any(len(item['text']) > text_limit for item in blocks)
-        sentence_preview = [{'id': item['id'], 'block_id': item['block_id'], 'text': item['text'][:text_limit]}
-                            for item in sentences]
-        sentence_truncated = any(len(item['text']) > text_limit for item in sentences)
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
             selected = store.get('selected_pass:' + key)
@@ -161,12 +151,33 @@ class WebWorkspaceService:
             if not saved:
                 saved = store.latest_job(key)
             current = pass_no == 5 and store.chunk(chunk_id)['status'] == 'done' and saved is not None and store.chunk(chunk_id)['final_path'] == saved['path']
+            value = saved['value'] if saved else {}
+            matching_ids = ({item['sid'] for item in value.get('checks', [])
+                             if item['risk' if pass_no == 2 else 'status'] == status}
+                            if status is not None else None)
+            all_sentences = ([item for item in chunk['sentences'] if item['id'] in matching_ids]
+                             if matching_ids is not None else chunk['sentences'])
+            matching_blocks = {item['block_id'] for item in all_sentences}
+            all_blocks = ([item for item in chunk['blocks'] if item['id'] in matching_blocks]
+                          if status is not None else chunk['blocks'])
+            page_size = 5
+            start = page * page_size
+            blocks = all_blocks[start:start + page_size]
+            block_ids = {item['id'] for item in blocks}
+            sentences = [item for item in all_sentences if item['block_id'] in block_ids]
+            sentence_ids = {item['id'] for item in sentences}
+            next_page = page + 1 if start + page_size < len(all_blocks) else None
+            text_limit = 20000
+            source = [{'id': item['id'], 'text': item['text'][:text_limit]} for item in blocks]
+            source_truncated = any(len(item['text']) > text_limit for item in blocks)
+            sentence_preview = [{'id': item['id'], 'block_id': item['block_id'], 'text': item['text'][:text_limit]}
+                                for item in sentences]
+            sentence_truncated = any(len(item['text']) > text_limit for item in sentences)
             if not saved:
                 return {'chunk_id': chunk_id, 'pass_no': pass_no, 'page': page, 'next_page': next_page,
                         'available': False, 'current': False, 'source': source, 'sentences': sentence_preview,
                         'translations': [], 'checks': [], 'findings': [],
                         'truncated': source_truncated or sentence_truncated}
-            value = saved['value']
             raw_translations = [item for item in value.get('translations', []) if item['id'] in block_ids]
             translations = [{'id': item['id'], 'text': item['text'][:text_limit]}
                             for item in raw_translations]

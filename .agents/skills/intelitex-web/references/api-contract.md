@@ -22,7 +22,7 @@ validated identifiers, not paths.
 | GET | /api/workspaces?archived=false or ?archived=true | filtered active/archive list; excluded prepared projects are not validated |
 | GET | /api/workspaces/{id} | workspace_id,status,active_job |
 | GET | /api/workspaces/{id}/pipeline | workflow snapshot described below |
-| GET | /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}?page={n} | Five source blocks plus matching P2/P4 sentence checks or P3/P5 translations; `next_page` for explicit loading |
+| GET | /api/workspaces/{id}/translation/chunks/{chunk_id}/passes/{pass_no}?page={n}&status={value} | Five source blocks plus matching P2/P4 sentence checks or P3/P5 translations; `next_page` for explicit loading; optional P2 risk or P4 check status filters before paging |
 | GET | /api/workspaces/{id}/summary | checkpoint-validated Work card stage/progress/actions without section or physical-attempt history; unpublished completed work defers full publication readiness to Publish detail |
 | GET | /api/workspaces/{id}/usage | retained usage by unit/pass/attempt |
 | GET | /api/workspaces/{id}/profiles | sanitized effective settings |

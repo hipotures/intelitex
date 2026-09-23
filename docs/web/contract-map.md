@@ -116,7 +116,9 @@ validated current completions. Runtime `running` is a separate cell decoration.
 Translate's P2–P4 previews identify saved output without claiming current input
 compatibility. The TPV reads five source blocks and their matching P2–P5 data per
 page, then loads more on click. P2/P4 findings are grouped with the source sentence
-identified by `sid`; P3/P5 source and translation blocks share a row. P5 alone can
+identified by `sid`; a server-side risk/status selector filters all chunk sentences
+before paging. Block IDs appear once on the stronger divider, sentence IDs once on
+the lighter divider. P3/P5 source and translation blocks share a row. P5 alone can
 show a verified current final. A targeted pass reuses
 saved prior-pass inputs or stops before a model call; `rerun` stores a new attempt,
 and a changed P2–P4 marks a finished chunk stale until P5 completes again.

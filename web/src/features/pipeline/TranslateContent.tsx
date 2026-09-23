@@ -44,27 +44,29 @@ function languageName(code: string | null | undefined, fallback: string) {
 
 export function PreviewPage({ page, passNo }: { page: TranslationPassPreview; passNo: number | null }) {
   const translations = new Map(page.translations.map(item => [item.id, item.text]))
-  return <>{page.source.map(block => (passNo === 2 || passNo === 4) && page.available ?
-    <div className="translate-preview-block" key={block.id}>
-      <div className="translate-preview-block-label">{block.id}</div>
-      {page.sentences.filter(sentence => sentence.block_id === block.id).map(sentence => {
+  const analysis = (passNo === 2 || passNo === 4) && page.available
+  return <>{page.source.map(block => <div className="translate-preview-block" key={block.id}>
+    <div className="translate-preview-block-label"><span>{block.id}</span></div>
+    {analysis ? page.sentences.filter(sentence => sentence.block_id === block.id).map(sentence => {
         const check = page.checks.find(item => item.sid === sentence.id)
         const findings = page.findings.filter(item => item.sid === sentence.id)
-        return <div className="translate-preview-pair" key={sentence.id}>
-          <div className="translate-preview-text"><small>{sentence.id}</small>{sentence.text}</div>
-          <div className="translate-preview-analysis"><small>{sentence.id}</small>
-            {check && <strong>{passNo === 2 ? `Risk: ${String(check.risk)}` : `Status: ${String(check.status).replaceAll('_', ' ')}`}</strong>}
+        const flagged = passNo === 2 ? check?.risk !== 'low' : check?.status === 'needs_correction'
+        return <div className="translate-preview-sentence" key={sentence.id}>
+          <div className="translate-preview-sentence-label"><span>{sentence.id}</span></div>
+          <div className="translate-preview-pair">
+          <div className="translate-preview-text">{sentence.text}</div>
+          <div className="translate-preview-analysis">
+            {check && <strong className={`translate-preview-check${flagged ? ' attention' : ''}`}>{passNo === 2 ? `Risk: ${String(check.risk)}` : `Status: ${String(check.status).replaceAll('_', ' ')}`}</strong>}
             {findings.map((finding, index) => <p key={index}>{describeFinding(finding)}</p>)}
             {!check && !findings.length && <span className="subtitle">No saved check.</span>}
           </div>
+          </div>
         </div>
-      })}
-    </div> :
-    <div className={`translate-preview-pair${page.available && passNo ? '' : ' source-only'}`} key={block.id}>
-      <div className="translate-preview-text"><small>{block.id}</small>{block.text}</div>
-      {page.available && passNo && <div className="translate-preview-text"><small>{block.id}</small>{translations.get(block.id) ?? 'No saved translation for this block.'}</div>}
-    </div>
-  )}</>
+      }) : <div className={`translate-preview-pair${page.available && passNo ? '' : ' source-only'}`}>
+      <div className="translate-preview-text">{block.text}</div>
+      {page.available && passNo && <div className="translate-preview-text">{translations.get(block.id) ?? 'No saved translation for this block.'}</div>}
+    </div>}
+  </div>)}</>
 }
 
 type ChunkPass = Pipeline['units'][number]['passes'][string]
@@ -103,6 +105,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const previewStack = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedPass, setSelectedPass] = useState<number | null>(null)
+  const [checkFilter, setCheckFilter] = useState<{ chunkId: string; passNo: number; status: string } | null>(null)
   const [pendingRun, setPendingRun] = useState<{ chunkId: string; passNo: number; rerun: boolean } | null>(null)
   const [localError, setLocalError] = useState<unknown>(null)
   const [unknownOutcome, setUnknownOutcome] = useState(false)
@@ -110,15 +113,17 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const runLatch = useRef(false)
   const unit = pipeline.units.find(item => item.id === selectedId) ?? pipeline.units[0]
   const previewPass = selectedPass ?? highestSavedPass(unit)
+  const selectedCheckStatus = checkFilter?.chunkId === unit?.id && checkFilter?.passNo === previewPass ? checkFilter.status : ''
   const sections = new Map(pipeline.sections.map(section => [section.id, section]))
   const titles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const overriddenSections = pipeline.sections.filter(section => passNumbers.some(number => !!section.profiles[String(number)]))
   const previewPath = endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${previewPass ?? 2}`)
-  const preview = useInfiniteQuery({ queryKey: [scope, previewPath],
-    queryFn: ({ pageParam, signal }) => request(`${previewPath}?page=${pageParam}`, translationPassPreviewSchema, { signal }),
+  const preview = useInfiniteQuery({ queryKey: [scope, previewPath, selectedCheckStatus],
+    queryFn: ({ pageParam, signal }) => request(`${previewPath}?page=${pageParam}${selectedCheckStatus ? `&status=${encodeURIComponent(selectedCheckStatus)}` : ''}`, translationPassPreviewSchema, { signal }),
     initialPageParam: 0, getNextPageParam: page => page.next_page ?? undefined, enabled: !!unit })
   const previewPages = preview.data?.pages ?? []
   const firstPreview = previewPages[0]
+  const canFilterPreview = (previewPass === 2 || previewPass === 4) && !!unit?.passes[String(previewPass)]?.retained_count
   const sourceLanguage = languageName(pipeline.metadata.source_language ?? pipeline.metadata.language, 'Source language unknown')
   const targetLanguage = languageName(pipeline.metadata.target_language ?? pipeline.publication.target_language, 'Target language unknown')
   const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived
@@ -260,11 +265,15 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
         <div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <>
           <div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div>
           <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
-          {preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : firstPreview && <>
-            <p className="subtitle">{!previewPass ? 'Source text · no saved passes yet.' : firstPreview.available ? previewPass === 5 && firstPreview.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
+          <div className="translate-preview-tools"><p className="subtitle" role={preview.isPending ? 'status' : undefined}>{preview.isPending ? 'Loading saved result…' : !firstPreview ? 'Preview unavailable.' : !previewPass ? 'Source text · no saved passes yet.' : firstPreview.available ? previewPass === 5 && firstPreview.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
+              {canFilterPreview && <label className="translate-preview-filter">{previewPass === 2 ? 'Risk' : 'Status'}<select value={selectedCheckStatus} onChange={event => setCheckFilter({ chunkId: unit.id, passNo: previewPass, status: event.target.value })}>
+                <option value="">All</option>{(previewPass === 2 ? [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']] : [['ok', 'OK'], ['needs_correction', 'Needs correction']]).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+              </select></label>}</div>
+          {firstPreview && <>
             <div className="translate-preview-scroll">
               <div className={`translate-preview-head${previewPass && firstPreview.available ? '' : ' source-only'}`}><h3>{sourceLanguage}</h3>{previewPass && firstPreview.available && <h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : targetLanguage}</h3>}</div>
               {previewPages.map(page => <PreviewPage key={page.page} page={page} passNo={previewPass && page.available ? previewPass : null} />)}
+              {selectedCheckStatus && firstPreview.available && !firstPreview.source.length && <Empty>No sentences with this {previewPass === 2 ? 'risk' : 'status'} in this chunk.</Empty>}
               {preview.hasNextPage && <div className="translate-preview-more"><span>{previewPages.reduce((sum, page) => sum + page.source.length, 0)} blocks shown</span><Button disabled={preview.isFetchingNextPage} onClick={() => void preview.fetchNextPage()}>{preview.isFetchingNextPage ? 'Loading…' : 'Load next 5 blocks'}</Button></div>}
             </div>
             {previewPages.some(page => page.truncated) && <p className="subtitle">Some very long entries were shortened.</p>}
