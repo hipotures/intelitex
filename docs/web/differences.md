@@ -64,6 +64,10 @@ and responsive breakpoints. The following differences carry real application sem
 - Review term edits update the saved draft view from the acknowledged PATCH response;
   Next advances after that response while workspace summaries refresh in the background.
   Failed writes keep the local form for explicit reapplication or discard.
+- Review & next follows the legacy next-unreviewed order within the current
+  category/search scope, including wraparound. Review remaining in this view uses
+  the existing revision-checked bulk command and keeps final glossary confirmation
+  separate.
 - P2–P4 retained receipts display amber retained/unverified state where the existing
   checkpoint query cannot establish current input fingerprints. They are not fabricated
   green completion. Checked P5 counts determine translation completion.

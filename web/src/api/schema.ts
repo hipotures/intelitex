@@ -53,6 +53,7 @@ export const termSchema = z.object({ id: text, source: text, aliases: z.array(te
   evidence: z.array(z.object({ chapter_id: text, block_id: text, excerpt: text.optional() })).default([]) })
 export const reviewSchema = z.object({ _revision: text, confirmed: z.boolean(), terms: z.array(termSchema) })
 export const patchSchema = z.object({ revision: text, term: termSchema, summary })
+export const bulkReviewSchema = z.object({ revision: text, terms: z.array(termSchema), changed_count: count, summary })
 export const approvalSchema = z.object({ approved_terms: count, stale_chunks: count, pipeline: pipelineSchema })
 export const evidenceSchema = z.object({ term_id: text, warnings: z.array(text), choice_pending_approval: z.boolean(),
   entries: z.array(z.object({ block_id: text, chapter_id: text, source_text: text.optional(), polish_text: nullableText.optional(),

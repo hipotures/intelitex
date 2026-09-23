@@ -36,7 +36,8 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   await page.getByRole('button', { name: 'Run', exact: true }).click()
   await page.getByRole('button', { name: 'Open Review', exact: true }).waitFor()
 
-  let firstId = '', firstPatches = 0, secondPatches = 0, heldPipelineReads = 0
+  let firstId = '', firstPatches = 0, secondPatches = 0, heldPipelineReads = 0, fakeSecond
+  const bulkBodies = []
   let holdPipeline = false
   let releasePipeline
   const pipelineGate = new Promise(resolve => { releasePipeline = resolve })
@@ -48,8 +49,9 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
     const response = await route.fetch()
     const review = await response.json()
     firstId = review.terms[0].id
+    fakeSecond = { ...review.terms[0], id: 'T_TEST_SECOND', source: 'Second term', custom: '', reviewed: false }
     await route.fulfill({ response, json: { ...review, terms: [...review.terms,
-      { ...review.terms[0], id: 'T_TEST_SECOND', source: 'Second term', custom: '', reviewed: false }] } })
+      fakeSecond, { ...review.terms[0], id: 'T_TEST_THIRD', source: 'Person term', category: 'People', custom: '', reviewed: false }] } })
   })
   await page.route('**/api/workspaces/prepared/review/terms/**', async route => {
     const path = new URL(route.request().url()).pathname
@@ -65,10 +67,16 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
     if (route.request().method() === 'PATCH') firstPatches++
     await route.continue()
   })
+  await page.route('**/api/workspaces/prepared/review/bulk-review', async route => {
+    bulkBodies.push(JSON.parse(route.request().postData()))
+    await route.fulfill({ json: { revision: 'bulk-test-revision', terms: [{ ...fakeSecond, reviewed: true }],
+      changed_count: 1, summary: { total: 3, reviewed: 2, unreviewed: 1, uncertain: 0,
+        confirmed: false, categories: { technology: 2, People: 1 } } } })
+  })
   await page.getByRole('button', { name: 'Open Review', exact: true }).click()
   await page.getByRole('heading', { name: 'Terminology Review' }).waitFor()
   assert.equal(await page.title(), 'Intelitex')
-  assert.equal(await page.locator('.review-term-row').count(), 2)
+  assert.equal(await page.locator('.review-term-row').count(), 3)
   const custom = page.getByRole('textbox', { name: 'Custom Polish form' })
   await custom.fill('Relay custom')
   holdPipeline = true
@@ -85,11 +93,25 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   await mkdir('/tmp/intelitex-review-navigation-evidence', { recursive: true })
   await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/next-dark-1440.png', animations: 'disabled' })
 
+  await page.locator('#reviewPrevBtn').click()
+  await page.locator('.review-detail-heading h2').getByText('Relay', { exact: true }).waitFor()
+  await page.locator('[data-ui-debug-id="RVC"] button').filter({ hasText: 'technology' }).click()
+  await page.getByRole('button', { name: 'Unreviewed', exact: true }).click()
+  await custom.fill('Relay custom revised')
+  await page.locator('#reviewNextBtn').getByText('Review & next').click()
+  await page.locator('.review-detail-heading h2').getByText('Second term').waitFor()
+  assert.equal(firstPatches, 3, 'Review & next saves the changed form and then marks the term reviewed')
+  assert.equal(await page.locator('.review-term-row').count(), 1, 'reviewed term leaves the Unreviewed filter')
+  const afterReview = await page.request.get(`${config.url}/api/workspaces/prepared/review`)
+  assert.equal((await afterReview.json()).terms.find(term => term.id === firstId).reviewed, true)
+  assert.equal((await afterReview.json()).terms.find(term => term.id === firstId).custom, 'Relay custom revised')
+
+  const latestReview = await afterReview.json()
   const remote = await page.request.patch(`${config.url}/api/workspaces/prepared/review/terms/${firstId}`,
-    { data: { revision: savedReview._revision, user_notes: 'Concurrent editor' } })
+    { data: { revision: latestReview._revision, user_notes: 'Concurrent editor' } })
   assert.equal(remote.status(), 200)
   await custom.fill('Unsent choice')
-  await page.locator('#reviewPrevBtn').click()
+  await page.locator('#reviewNextBtn').click()
   await page.getByText('Revision changed.', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Reapply my form' }).waitFor()
   assert.equal(secondPatches, 1)
@@ -100,6 +122,15 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   await page.getByRole('dialog', { name: 'Keep your unsaved form?' }).waitFor()
   await page.getByRole('button', { name: 'Stay', exact: true }).click()
   assert.equal(await custom.inputValue(), 'Unsent choice')
+  await page.getByRole('button', { name: 'Discard my form' }).click()
+  await page.getByRole('button', { name: 'Review remaining in this view (1)' }).click()
+  await page.getByRole('dialog', { name: 'Review remaining terms?' }).waitFor()
+  await page.getByRole('dialog', { name: 'Review remaining terms?' }).getByText('Unreviewed / technology').waitFor()
+  await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/bulk-confirm-dark-1440.png', animations: 'disabled' })
+  await page.getByRole('dialog', { name: 'Review remaining terms?' }).getByRole('button', { name: 'Review 1 term' }).click()
+  await page.getByText('1 term reviewed. Current choices and notes kept.').waitFor()
+  assert.deepEqual(bulkBodies.map(body => body.term_ids), [['T_TEST_SECOND']])
+  assert.equal(await page.getByRole('button', { name: 'Review remaining in this view (0)' }).isDisabled(), true)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Toggle theme' }).click()
   await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/draft-light-390.png', fullPage: true, animations: 'disabled' })
