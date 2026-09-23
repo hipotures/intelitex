@@ -260,6 +260,7 @@ def test_settings_are_read_only_and_allowlisted(api):
 
 MUTATIONS = [
     ('POST', '/api/workspaces'), ('POST', '/api/workspaces/book/prepare'),
+    ('POST', '/api/workspaces/book/reprepare'), ('POST', '/api/workspaces/book/analysis-reset'),
     ('PATCH', '/api/workspaces/book/settings'), ('PATCH', '/api/workspaces/book/sections/ch0001'),
     ('POST', '/api/workspaces/book/archive'), ('POST', '/api/workspaces/book/restore'),
     ('POST', '/api/workspaces/book/review/confirm-and-approve'),
@@ -269,7 +270,7 @@ MUTATIONS = [
     ('POST', '/api/workspaces/book/approve'), ('POST', '/api/workspaces/book/reader/context'),
     ('POST', '/api/workspaces/book/reader/markers'), ('DELETE', '/api/workspaces/book/reader/markers/M000001'),
 ]
-READS = ['/api/library', '/api/requests/unknown', '/api/workspaces/book/preparation', '/api/workspaces/book/activity', '/api/workspaces/book/sections/ch0001/0', '/api/workspaces/book/publication/download', '/api/profiles', '/api/capabilities', '/api/import-sources', '/api/workspaces/book/pipeline',
+READS = ['/api/library', '/api/requests/unknown', '/api/workspaces/book/preparation', '/api/workspaces/book/analysis-reset', '/api/workspaces/book/activity', '/api/workspaces/book/sections/ch0001/0', '/api/workspaces/book/publication/download', '/api/profiles', '/api/capabilities', '/api/import-sources', '/api/workspaces/book/pipeline',
          '/api/workspaces/book/review', '/api/workspaces/book/review/terms/T000001/evidence',
          '/api/workspaces/book/reader', '/api/workspaces/book/reader/progress',
          '/api/workspaces/book/reader/markers', '/api/workspaces/book/reader/chapters/ch0001',

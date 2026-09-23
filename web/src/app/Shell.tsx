@@ -8,7 +8,7 @@ import { preference, resetPreferences, savePreference } from './preferences'
 import { debugTag } from '../debug/regions'
 export function Shell() {
   const capabilities = useApi('/api/capabilities', capabilitiesSchema)
-  if (!capabilities.data) return <main className="main"><h1>Intelitex</h1><ErrorNote error={capabilities.error} retry={() => void capabilities.refetch()} />{!capabilities.error && <p>Connecting to the local server…</p>}</main>
+  if (!capabilities.data) return <div className="app"><header className="topbar" {...debugTag('HDR')}><div className="brand"><div className="brand-mark">IX</div><div className="brand-name">Intelitex</div></div></header><main className="main connecting-screen" {...debugTag('BLS')} aria-busy={!capabilities.error}><div className="eyebrow">Intelitex</div><h1>Connecting to the local server</h1><p className="subtitle">Waiting for the application state before opening this workspace.</p><ErrorNote error={capabilities.error} retry={() => void capabilities.refetch()} /><div className="connecting-panel" aria-hidden="true"><span /><span /><span /></div></main></div>
   return <Scope.Provider value={capabilities.data.scope_id}><ConnectedShell key={capabilities.data.scope_id} scope={capabilities.data.scope_id} importEnabled={capabilities.data.import_enabled} /></Scope.Provider>
 }
 function ConnectedShell({ scope, importEnabled }: { scope: string; importEnabled: boolean }) {

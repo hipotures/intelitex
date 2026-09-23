@@ -49,6 +49,7 @@ and the current API has cancellation plus new resumable jobs.
 | D07 | Settings | Read-only safe profile queries exist; mock Test/Add profile are simulations | Do not invent an editor, live diagnostic contract, credentials or automatic model request |
 | D08 | Approval freshness — approved | Terminology edits after approval invalidate freshness; Python blocks translation until latest revision is confirmed and committed again. | Historical approved flag is insufficient. Retain checkpoints; application validation decides downstream staleness. |
 | D09 | HTTP framework | Authorized production migration now uses FastAPI/Starlette behind the existing serve entrypoint. | One supervisor/ASGI worker; compatibility HTTP remains for regression coverage. |
+| D10 | Explicit P1 reset — approved 2026-09-23 | Analyse may clear its current P1 plan, attempts, generated terms and Review draft, then return to the workspace. The application keeps a versioned history copy and leaves Prepare/F/T/E intact. | Require a current reset revision and an idle, unarchived workspace. Reject when P2–P5, approved work or series inheritance depends on P1. A no-data Analyse page says so and offers return without a fake reset. |
 
 For a task touching a U entry: inspect for a newer accepted implementation/decision,
 record the concrete source, then proceed. If none exists, state the exact decision
@@ -75,6 +76,13 @@ in project history; section-specific choices reset because changed boundaries ca
 reuse IDs with different meanings. Any persisted P1–P5/Review work blocks in-place
 replacement. This is distinct from preparing a second workspace. The same request
 also called for visible whole-book P1 labeling and prompt F/T/E feedback.
+
+Later on 2026-09-23 the task owner explicitly requested a P1 clearing control in
+Analyse. D10 supersedes the earlier no-reset-UI exclusion in the immutable handoff
+for this specific guarded command. It does not authorize clearing dependent P2–P5
+work. The task owner also moved F/T/E editing into Prepare beside source text;
+workspace overview shows those choices read-only. The old handoff remains a historical
+reference for other behavior.
 
 The supplied implementation contract is an immutable historical handoff, so its sections 5.2, 16.1 and V33-02 retain the superseded one-draft wording; read those sections through this decision register. The original v33 bytes also remain unchanged. The separate multilingual pipeline and derived SQLite cache items in issue #1 are not silently included in this Library/setup/Prepare implementation; their scope and evidence stay separate in `docs/web/contract-map.md`.
 

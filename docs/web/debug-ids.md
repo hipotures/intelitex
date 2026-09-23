@@ -10,6 +10,7 @@ only in Debug mode and are not product terminology.
 | ID | Conceptual component | Source component/file |
 | --- | --- | --- |
 | HDR | Application header | `web/src/app/Shell.tsx` |
+| BLS | Server connection loading screen | `web/src/app/Shell.tsx` |
 | WRK | Whole Work home content region | `web/src/features/work/Home.tsx` |
 | WHT | Work home title and description group | `web/src/features/work/Home.tsx` |
 | ACT | Active workspaces | `web/src/features/work/Home.tsx` |
@@ -68,6 +69,7 @@ only in Debug mode and are not product terminology.
 | RMK | Reader markers accordion | `web/src/features/reader/Reader.tsx` |
 | RCM | Reader context modal | `web/src/features/reader/Reader.tsx` |
 | PHD | Phase detail page | `web/src/features/pipeline/Phase.tsx` |
+| PLD | Phase loading card | `web/src/features/pipeline/Phase.tsx` |
 | PHH | Phase detail heading | `web/src/features/pipeline/Phase.tsx` |
 | PHM | Phase metrics group | `web/src/features/pipeline/Phase.tsx` |
 | PMT | Phase metric card | `web/src/features/pipeline/Phase.tsx` |
@@ -77,6 +79,9 @@ only in Debug mode and are not product terminology.
 | PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PAN | Analyse units card | `web/src/features/pipeline/Phase.tsx` |
+| PAE | Analyse empty-state card | `web/src/features/pipeline/Phase.tsx` |
+| PAC | Analyse P1 data action card | `web/src/features/pipeline/Phase.tsx` |
+| PRM | P1 reset confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PGD | Analyse generated data card | `web/src/features/pipeline/Phase.tsx` |
 | PAR | Analyse artifacts card | `web/src/features/pipeline/Phase.tsx` |
 | PTS | Translate pass summary card | `web/src/features/pipeline/Phase.tsx` |
@@ -93,6 +98,4 @@ only in Debug mode and are not product terminology.
 | SPI | Settings · Interface | `web/src/app/Shell.tsx` |
 | SPD | Settings · Debug | `web/src/app/Shell.tsx` |
 
-The workspace creation/setup modal is not present in the current frontend.
-Its debug ID will be registered when that separate issue item is implemented;
-TODO 0 does not create or simulate that modal.
+The workspace creation/setup modal uses the registered `WCM` ID.

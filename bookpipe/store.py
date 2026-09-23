@@ -59,6 +59,45 @@ class Store:
             self.set('analysis_done', False)
             self.set('approved', False)
 
+    def p1_reset_records(self):
+        """Read the durable rows that define the current P1 reset revision."""
+        tables = {
+            'jobs': "SELECT key,fingerprint,result_path,result_hash,metadata FROM jobs WHERE key LIKE 'pass1/%' ORDER BY key,fingerprint",
+            'merged': "SELECT key,fingerprint FROM merged WHERE key LIKE 'pass1/%' ORDER BY key,fingerprint",
+            'terms': 'SELECT id,data,choice,approved FROM terms ORDER BY id',
+            'facts': 'SELECT id,data FROM facts ORDER BY id',
+            'history': 'SELECT id,kind,data FROM history ORDER BY id',
+            'kv': "SELECT key,value FROM kv WHERE key LIKE 'analysis:%' OR key IN ('analysis_done','approved','approval_review_digest','observability_hold') ORDER BY key",
+        }
+        return {name: [tuple(row) for row in self.db.execute(sql)] for name, sql in tables.items()}
+
+    def has_dependent_p1_work(self):
+        if self.db.execute("SELECT 1 FROM jobs WHERE key NOT LIKE 'pass1/%' LIMIT 1").fetchone():
+            return True
+        if self.db.execute("SELECT 1 FROM merged WHERE key NOT LIKE 'pass1/%' LIMIT 1").fetchone():
+            return True
+        if self.db.execute("SELECT 1 FROM chunks WHERE status!='pending' OR final_path IS NOT NULL LIMIT 1").fetchone():
+            return True
+        return self.get('series_seed') is not None or self.get('approved') is True
+
+    def backup_to(self, path: Path):
+        backup = sqlite3.connect(path)
+        try:
+            self.db.backup(backup)
+        finally:
+            backup.close()
+
+    def clear_p1(self):
+        """Clear current P1 rows after application guards and versioned backup."""
+        with self.db:
+            self.db.execute("DELETE FROM jobs WHERE key LIKE 'pass1/%'")
+            self.db.execute("DELETE FROM merged WHERE key LIKE 'pass1/%'")
+            for table in ('terms', 'facts', 'history'):
+                self.db.execute(f'DELETE FROM {table}')
+            self.db.execute("DELETE FROM kv WHERE key LIKE 'analysis:%' OR key IN ('approval_review_digest','observability_hold')")
+            self.set('analysis_done', False)
+            self.set('approved', False)
+
     def get(self, key: str, default=None):
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else default

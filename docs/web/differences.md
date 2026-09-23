@@ -34,17 +34,24 @@ and responsive breakpoints. The following differences carry real application sem
   P1–P5 profile selectors before Prepare. The setup modal and draft model panel are product additions absent
   from v33. The language selector currently offers the supported English→Polish pair;
   broader translation and Review language support is a separate issue item.
-- Prepared workspaces add `Run Prepare again` in the Prepare detail page. It versions
+- Prepared workspaces add `Rebuild` in the Prepare detail page. It versions
   the old plan in the same workspace and resets section-specific choices only before
   any persisted pipeline work. The original v33 has no in-place rebuild control.
 - Prepare places a compact Source structure table beside an on-demand first-1-KiB
   source preview. Source metadata and checks follow the preview; v33 has no
-  row-driven Prepare preview. Processing is shown as F/T/E and P1 membership as
+  row-driven Prepare preview. Processing is edited as F/T/E beside the preview and
+  shown read-only on the workspace overview. P1 membership appears as
   lowercase `in`, with full meanings available through labels/tooltips. It does not
   claim that P1 has completed.
 - The Analyse phase explicitly says `P1` and `whole book`; section P1 cells still
   report only real per-section unit evidence rather than fabricated progress. A ready
   Analyse phase is neutral and says Ready; only an active `analyze` job says Running.
+- Before P1 has a saved plan, Analyse shows one clear empty state and a return action
+  rather than empty token and artifact panels. Saved P1 can be cleared through a
+  confirmed, revision-controlled action when no dependent work exists; historical
+  evidence is preserved in the workspace's versioned history. V33 has no reset UI.
+- Reload first shows a stable connection shell and phase loading card while backend
+  state arrives. Neither screen uses mock pipeline data.
 - Confirm glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
 - P2–P4 retained receipts display amber retained/unverified state where the existing

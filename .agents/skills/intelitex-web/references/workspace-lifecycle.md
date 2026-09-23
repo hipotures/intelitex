@@ -110,3 +110,7 @@ and keeps pass assignments. The worker rechecks source fingerprint, current conf
 revision and project evidence under the project lock. A failed staging or ordinary
 commit error leaves the prior plan in place. The UI requires confirmation and never
 silently resubmits after an unknown job-start acknowledgement.
+Legacy imported workspaces may use this command when their recorded original source
+is an exact direct child of the configured Library root. The staged book must retain
+the imported source-file fingerprint before the old plan is replaced. Other legacy
+projects remain ineligible; no arbitrary source path is inferred.

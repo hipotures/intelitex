@@ -21,6 +21,8 @@ def dispatch(service, method, parts, body=None, query=None):
     if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
         ident, tail = parts[2], parts[3:]
         if method == 'POST':
+            if tail == ['analysis-reset']:
+                return response(200, service.reset_analysis(ident, body))
             if tail == ['prepare']:
                 return response(202, service.prepare(ident, body))
             if tail == ['reprepare']:
@@ -35,6 +37,8 @@ def dispatch(service, method, parts, body=None, query=None):
             if len(tail) == 2 and tail[0] == 'sections':
                 return response(200, service.configure(ident, body, tail[1]))
         if method == 'GET':
+            if tail == ['analysis-reset']:
+                return response(200, service.analysis_reset_status(ident))
             if tail == ['preparation']:
                 return response(200, service.application.web.preparation(service.workspaces.resolve(ident)))
             if tail == ['activity']:

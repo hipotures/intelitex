@@ -215,12 +215,15 @@ class ProjectsService:
 
         old_book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
         setup = read_workspace_setup(root)
-        if not setup or source.name != setup['source_id']:
-            raise ReprepareLocked('Only configured workspaces can rebuild their source plan.')
+        if setup:
+            if source.name != setup['source_id']:
+                raise ReprepareLocked('The saved Library source does not match this workspace.')
+        elif Path(old_book.get('source_archive', old_book['source_root'])).resolve() != source:
+            raise ReprepareLocked('This workspace has no matching Library source.')
         config = configuration(root)
         if digest(config) != expected_revision:
             raise ConfigConflict('Configuration changed.')
-        if source_signature(source.parent, source.name) != setup['source_fingerprint']:
+        if setup and source_signature(source.parent, source.name) != setup['source_fingerprint']:
             raise ReprepareLocked('The source changed since setup; use a new workspace.')
         allowed = {'book.json', 'settings.json', 'workspace.json', 'web.config.json',
                    'web.lifecycle.json', 'state.sqlite3', 'state.sqlite3-wal', 'state.sqlite3-shm',
@@ -245,6 +248,7 @@ class ProjectsService:
 
     def reprepare(self, command: ImportBookCommand, expected_revision: str) -> ImportResult:
         """Build a new local plan, then replace an untouched plan with a versioned backup."""
+        from .workspace_setup import read_workspace_setup
         root, source = command.project.resolve(), command.source.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
             old_book, config, settings, versions = self._reprepare_inputs(root, source, expected_revision, scope)
@@ -256,6 +260,8 @@ class ProjectsService:
                 if source_folder != source:
                     book['source_archive'] = str(source)
                     book['source_root'] = str(root / 'source-package')
+                if not read_workspace_setup(root) and book['source_fingerprint'] != old_book['source_fingerprint']:
+                    raise ReprepareLocked('The source changed since import; use a new workspace.')
                 _mark_local_estimates(book)
                 book['planning_settings'] = {'whole_section_char_limit': settings['whole_section_char_limit']}
                 book['content_fingerprint'] = plan_fingerprint(book)

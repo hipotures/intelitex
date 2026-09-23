@@ -1,16 +1,17 @@
 {
   "format_version": 1,
   "repository": "hipotures/intelitex",
-  "inspected_commit": "7da44ef551e84c8e29eff4da8ff0d431a141feb3",
+  "inspected_commit": "a58a26a1882d05dd2a7ad9919a6953d7a1a8de93",
   "audit_date": "2026-09-23",
-  "audit_basis": "Manually inspected current pipeline read projection, usage source mapping, publication readiness, one configuration snapshot and F/T/E configuration after eliminating repeated validated plan and usage reads. Source hashes guard drift; API/behavior regressions are tested separately.",
+  "audit_basis": "Manually re-audited the current worktree on the inspected commit for versioned P1 reset, Store-backed reset records and backup, project-operation recovery guard, legacy source reprepare verification, and shared HTTP/ASGI error mappings. Source hashes guard drift; full Python and offline browser regressions test behavior separately.",
   "purpose": "Source drift guard only; matching hashes do not prove runtime correctness or complete API coverage.",
   "audited_symbols": {
     "bookpipe/server/asgi.py": [
       "create_app",
       "stream",
       "ASGIServer",
-      "ReprepareLocked error mapping"
+      "ReprepareLocked error mapping",
+      "AnalysisResetLocked error mapping"
     ],
     "bookpipe/server/__init__.py": [
       "serve",
@@ -21,11 +22,13 @@
       "dispatch",
       "library preflight and inspect routes",
       "workspace setup route",
-      "workspace reprepare route"
+      "workspace reprepare route",
+      "analysis-reset GET/POST routes"
     ],
     "bookpipe/server/http.py": [
       "Handler",
-      "ReprepareLocked error mapping"
+      "ReprepareLocked error mapping",
+      "AnalysisResetLocked error mapping"
     ],
     "bookpipe/server/service.py": [
       "ServerService",
@@ -40,7 +43,11 @@
       "save_setup",
       "configure",
       "reprepare",
-      "pipeline single-snapshot projection"
+      "pipeline single-snapshot projection",
+      "analysis_reset_status",
+      "reset_analysis",
+      "last_job reset projection",
+      "legacy reprepare source resolution"
     ],
     "bookpipe/server/serialization.py": [
       "safe_json",
@@ -126,7 +133,11 @@
       "save_approval_revision",
       "mark_chunks_stale",
       "has_work_since_import",
-      "has_p1_attempt"
+      "has_p1_attempt",
+      "p1_reset_records",
+      "has_dependent_p1_work",
+      "backup_to",
+      "clear_p1"
     ],
     "docs/server-runtime.md": [
       "FastAPI"
@@ -140,7 +151,9 @@
       "import_book",
       "check_reprepare",
       "reprepare",
-      "_reprepare_inputs"
+      "_reprepare_inputs",
+      "legacy source matching",
+      "staged source fingerprint verification"
     ],
     "bookpipe/application/commands.py": [
       "ImportBookCommand.local_token_estimate"
@@ -157,7 +170,8 @@
     "bookpipe/runtime/models.py": [
       "ImportJobSpec",
       "__post_init__",
-      "ImportJobSpec.reprepare"
+      "ImportJobSpec.reprepare",
+      "legacy reprepare destination validation"
     ],
     "bookpipe/runtime/worker.py": [
       "execute",
@@ -183,6 +197,23 @@
     "bookpipe/usage.py": [
       "usage_by_unit_report supplied validated book/plan",
       "_project_units"
+    ],
+    "bookpipe/application/analysis_reset.py": [
+      "AnalysisResetService.status",
+      "AnalysisResetService.reset",
+      "_file_state",
+      "_dependent_work",
+      "_history_root"
+    ],
+    "bookpipe/application/sessions.py": [
+      "OperationScope.__enter__ interrupted-reset guard"
+    ],
+    "bookpipe/application/api.py": [
+      "Application.analysis_reset"
+    ],
+    "bookpipe/infrastructure/read_store.py": [
+      "ReadStore.p1_reset_records",
+      "ReadStore.has_dependent_p1_work"
     ]
   },
   "evidence": [
@@ -197,14 +228,17 @@
     "web/tests/library-setup.test.mjs",
     "tests/test_pipeline.py",
     "web/tests/reprepare.test.mjs",
-    "tests/test_server_api.py::test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage"
+    "tests/test_server_api.py::test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage",
+    "tests/test_web_production.py::test_analysis_reset_is_revisioned_and_keeps_versioned_evidence",
+    "tests/test_web_production.py::test_interrupted_p1_reset_blocks_other_project_mutations",
+    "web/tests/analysis-reset.test.mjs"
   ],
   "source_blobs": {
-    "bookpipe/server/asgi.py": "83c1da58fa756cb4c053b7002dcff35f9859d3ef",
+    "bookpipe/server/asgi.py": "74932fa8f8dbebe6b9b8133b5b69dc4ac394d051",
     "bookpipe/server/__init__.py": "5aa8f17af48fe614690583b21342eec1ea79c516",
-    "bookpipe/server/routes.py": "a89fab59bf67b9da59d7843917e79b2f49f3c468",
-    "bookpipe/server/http.py": "d9400cf306b50eef5eff910891345920ee9c7a5d",
-    "bookpipe/server/service.py": "8c9c2fd4f7925f6e35fd12f8f49e8b4788a9f67b",
+    "bookpipe/server/routes.py": "a32e17b534440531251902763eeb33169e93e382",
+    "bookpipe/server/http.py": "550e07a7d877fcf6e60bd4c50917fc31b4bb5f5b",
+    "bookpipe/server/service.py": "d78986df613dc003f8ab5c2ff363036a441da357",
     "bookpipe/server/serialization.py": "7ce2aff3928ea6e3c9f953d7fd2314953f0c9417",
     "bookpipe/application/catalog.py": "c48e64d755374b622ff60c6d219f543e2e66c327",
     "bookpipe/application/web.py": "3e394bace20db570c1b81c3a81edb84335a7b868",
@@ -218,18 +252,22 @@
     "bookpipe/runtime/supervisor.py": "a1d814c1010047ccf0edb01e0d11557b9267d4bb",
     "bookpipe/provider_registry.py": "6ed1b39316cf6023897d325cd5c4744c6b5a08c3",
     "bookpipe/reader_context.py": "cc7e9070994220fe4e415e91d759608fd90d0e84",
-    "bookpipe/store.py": "f66643c091450d29fe8519879b8c86dbb7ddfd5b",
+    "bookpipe/store.py": "26cb93aeb3d306c0eda403bf6e2d181e9aee1703",
     "docs/server-runtime.md": "9c334000170d6074e06cd16525715ca08753c587",
     "bookpipe/application/epub_sources.py": "77883c7b0e01424d1a29551362e49522688d2021",
-    "bookpipe/application/projects.py": "d05df487cf75433dee9c702f7d34a57a9db21832",
+    "bookpipe/application/projects.py": "a0303605ab937a4f0cf22ae31cfb2d773e428aba",
     "bookpipe/application/commands.py": "61fb441e10145e922be0b5b5be300b6663d383be",
     "bookpipe/engine.py": "1adfdd7636f6ab6df58c340c004dfb5578cf9e7c",
     "bookpipe/importer.py": "eac63e5eafcd780ad2a309c2d92e29c4993c3166",
-    "bookpipe/runtime/models.py": "b05251c2b506e124a23219cebb0a268de94e512b",
+    "bookpipe/runtime/models.py": "39be9dc9f415170f9d00db727648fb0d237cb852",
     "bookpipe/runtime/worker.py": "8abea8e568f5fc148ef85bd383148b82e58bad58",
     "bookpipe/profiles.py": "a6c7d8fbf998d85f39800c8ccc0c8ea3efcfbd6d",
     "bookpipe/application/source_preflight.py": "38fe9386c077b78f1dfe112d3fe2629910d82178",
     "bookpipe/application/workspace_setup.py": "701b025ac4a151d8db380d8f993b8d6211482562",
-    "bookpipe/usage.py": "4a7d3a255f2f6a950f9a9946a0263e002cfb0d93"
+    "bookpipe/usage.py": "4a7d3a255f2f6a950f9a9946a0263e002cfb0d93",
+    "bookpipe/application/analysis_reset.py": "c15050dd778ea20514bbb8817df48b40594e0799",
+    "bookpipe/application/sessions.py": "cdbcc96feaea5400ff44fd34c1f603e841808684",
+    "bookpipe/application/api.py": "8a1c5fa4e8a599cb8b953deb59b97ebffff22092",
+    "bookpipe/infrastructure/read_store.py": "2b6ec60148639a57132d1a86fb0def198e924fe1"
   }
 }

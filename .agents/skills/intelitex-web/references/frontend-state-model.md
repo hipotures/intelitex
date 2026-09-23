@@ -76,6 +76,9 @@ The prepared Prepare detail page offers a confirmed in-place rebuild only when t
 snapshot permits it; the backend remains the final guard. It uses a request key,
 fresh pipeline read and current config revision, then follows the supervised import
 job. Analyse/P1 is displayed as whole-book work; section cells show actual counts.
+Prepare owns F/T/E mutation beside its source preview. Workspace overview presents
+the same Processing value read-only; clicking a row still opens its source drawer.
+Selecting a Prepare row must not auto-scroll the page or the structure table.
 For F/T/E PATCH, the selected mode is shown immediately as local **saving intent**,
 separate from pipeline truth. A rejected mutation clears that intent and restores the
 authoritative cached choice; no job starts. A successful returned revision updates
@@ -90,3 +93,9 @@ authoritative state.
 The application checks persisted P1 receipts and P1 attempt manifests directly
 for membership locking, without constructing the full historical usage report on
 every Processing change.
+Analyse reads a separate P1 reset status/revision. No saved plan or evidence shows
+an explicit empty state and workspace return, without fabricated usage. A saved P1
+offers a confirmed reset only when the backend says it is eligible; the command
+rechecks its revision, job ownership and dependent work. Unknown outcomes require a
+new status read, never a blind repeat. Successful reset navigates to the workspace
+after authoritative reconciliation.

@@ -157,6 +157,11 @@ is shared with the compatibility HTTP adapter.
   usual config shape. It rejects stale revisions, active/cleanup jobs, archived
   drafts, disabled/unknown profiles and declared language incompatibility.
 - GET `/api/workspaces/{id}/sections/{section}/{page}`: bounded text-only preview.
+- GET `/api/workspaces/{id}/analysis-reset`: current P1 reset revision, data presence,
+  eligibility and reason. POST with that revision clears current P1 state through the
+  application layer, retaining a versioned project-history copy. Idle/unarchived
+  workspaces only; dependent P2–P5, approval and series inheritance reject with
+  `analysis_reset_locked`. A stale revision returns `config_revision_conflict`.
 - POST `/api/workspaces/{id}/archive` or `/restore`: lifecycle revision.
 - POST `/api/workspaces/{id}/review/confirm-and-approve`: exact Review revision, atomic confirmation/approval.
 - GET `/api/workspaces/{id}/preparation`: actual frozen-manifest and source-package checks.
@@ -172,7 +177,7 @@ persistent palette index. Runtime projections remain separate from checkpoint tr
 
 New 409 codes: analysis_membership_locked, config_revision_conflict,
 lifecycle_revision_conflict, model_change_confirmation_required, workspace_archived,
-request_key_conflict, preparation_locked. Existing codes and mutation revisions are retained.
+request_key_conflict, preparation_locked, analysis_reset_locked. Existing codes and mutation revisions are retained.
 
 P2–P4 retained receipts remain explicitly unverified; they are never relabeled current
 complete. Profile-definition editing and model diagnostics have no public production

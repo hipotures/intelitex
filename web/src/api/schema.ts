@@ -93,3 +93,5 @@ export type Profiles = z.infer<typeof profilesSchema>
 export type Usage = z.infer<typeof usageSchema>
 
 export const preparationSchema = z.object({checks:z.array(text),unavailable:nullableText,reading_order:nullableText,source_id:text})
+export const analysisResetSchema = z.object({ revision: text, has_data: z.boolean(), can_reset: z.boolean(),
+  reason: nullableText, history_available: z.boolean() })

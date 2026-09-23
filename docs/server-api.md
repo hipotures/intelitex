@@ -31,6 +31,8 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
 | POST | `/api/workspaces/setup` | Setup payload below → `{workspace_id,source_id}`; creates a durable unprepared draft |
 | POST | `/api/workspaces/{id}/reprepare` | `{revision,request_key?}` → supervised import job that rebuilds an untouched prepared plan in the same workspace |
+| GET | `/api/workspaces/{id}/analysis-reset` | `{revision,has_data,can_reset,reason,history_available}` for a guarded P1 reset |
+| POST | `/api/workspaces/{id}/analysis-reset` | `{revision}` → new reset status after archiving and clearing current P1 state |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
 | GET | `/api/jobs` | `{jobs:[job],cursor}` |
@@ -246,7 +248,8 @@ lower-level headings do not create a new chapter. Leading matter before an expli
 Prologue and a lower-level `ABOUT THE AUTHOR` section are classified as non-narrative.
 
 `POST /api/workspaces/{id}/reprepare` requires the current configuration revision,
-a configured Library source with unchanged fingerprint, an idle unarchived workspace,
+a configured Library source with unchanged fingerprint or an original legacy source
+directly beneath the configured Library root, an idle unarchived workspace,
 and no persisted P1–P5, Review or publication work. It runs in the supervised web
 worker without a model request. The previous `book.json`, section configuration and
 derived source files are saved under `history/prepare_versions/` before the new plan
@@ -255,6 +258,17 @@ workspace pass assignments remain. The application rechecks eligibility under th
 project lock. A stale revision returns `config_revision_conflict`; saved work or a
 changed source returns `preparation_locked`. The old plan remains current if staging
 or the in-process installation fails. This route does not delete checkpoints.
+For a legacy import, the worker compares the staged source-file fingerprint to the
+original imported fingerprint before switching plans.
+
+`POST /api/workspaces/{id}/analysis-reset` is a separate explicit operation. It
+requires the revision returned by its GET status and an idle unarchived workspace.
+It archives the current P1 plan, attempts, analysis inputs, terminology/Review files
+and a SQLite backup under `history/p1_resets/<version>/`, then clears active P1
+rows. Prepare and section configuration stay intact. Any P2–P5 checkpoint, approved
+work or inherited series state blocks reset with `analysis_reset_locked`; stale
+revision returns `config_revision_conflict`. An interrupted reset is left for local
+recovery, not silently treated as complete. Runtime job history is retained.
 
 Source IDs reject absolute paths, `..`, empty/dot segments and backslashes.
 OPF paths are source-confined. Escaping source symlinks (including nested/sidecar

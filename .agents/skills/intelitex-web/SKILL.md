@@ -113,7 +113,7 @@ overlay layer so it never changes layout or application/API/pipeline state. Upda
 checked [ID reference table](../../../docs/web/debug-ids.md) and registry test when
 adding IDs. Test badge toggle, persistence, layout stability, console and network
 behavior in a real browser. Do not create absent UI solely to assign it an ID; the
-workspace setup modal receives an ID when its separate product work is authorized.
+implemented workspace setup modal uses the registered `WCM` ID.
 For an unboxed page region, show its boundary in Debug mode without reflow. Attach
 heading-group IDs to the actual text group so badges do not float over empty space.
 

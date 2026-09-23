@@ -170,13 +170,19 @@ and a confirmation dialog without a provider request.
 The action first reads current workspace state before POST, while the backend keeps
 the final concurrency and destination checks. A prepared workspace with its pipeline
 query still loading shows a disabled loading action, not another Prepare command.
-The prepared Prepare detail screen offers `Run Prepare again` behind a confirmation
+The prepared Prepare detail screen offers `Rebuild` behind a confirmation
 that says section choices reset and the old plan is versioned. It is disabled after
 persisted P1 work and while a job owns the workspace; the backend rechecks all
 conditions. The Prepare detail layout narrows Source structure and shows an on-demand
 source preview beside it; the existing read-only section-preview API supplies the
 text, of which the UI displays at most the first 1 KiB of UTF-8. Metadata and checks
-remain below the preview. Analyse is labeled P1 whole-book analysis; it is explicitly
+remain below the preview. F/T/E choices are edited in this table after reading the
+source; workspace overview shows them read-only. A selected section and its scroll
+position remain stable during background reads and section mutations. A legacy
+workspace with its original source directly inside the configured Library can also
+rebuild; the application verifies the imported file fingerprint before switching
+plans. An external or unlinked source remains ineligible.
+Analyse is labeled P1 whole-book analysis; it is explicitly
 Ready until an `analyze` job is active, avoiding an apparent running state.
 For F/T/E, the chosen mode appears immediately as pending local intent; no durable
 pipeline counts or readiness are inferred from it. A failed mutation clears the
@@ -188,6 +194,17 @@ stale, but not refetched until it is next used, so this avoids scanning every bo
 after each click. The backend remains authoritative for final counts and readiness.
 Resource invalidation checks the full workspace ID boundary, so a similarly
 prefixed workspace is never swept into this refresh.
+The Analyse detail page has a dedicated no-plan state instead of empty usage cards.
+GET `/api/workspaces/{id}/analysis-reset` supplies an independent revision and
+eligibility; POST with that revision moves current P1 files and a SQLite backup into
+`history/p1_resets/<version>` and clears active P1 database rows under the project
+lock. The command rejects active/cleanup ownership and dependent P2–P5, approved or
+series work. The browser confirms before sending and returns to the workspace after
+success; an unknown outcome is never blindly resubmitted. A prior Analyse job remains
+in runtime history but is not projected as the current last job after reset.
+Reload shows a visible connection shell followed by a phase loading card while
+backend queries complete; neither invents pipeline values. Missing author/language
+metadata is labeled `Not recorded`, with the saved source language used when present.
 The original v33 does not depict a persisted pre-import draft or provider-dependent
 Prepare; these are intentional production differences from that mock.
 

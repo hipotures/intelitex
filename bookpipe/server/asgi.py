@@ -13,6 +13,7 @@ import uvicorn
 
 from ..application.imports import DestinationConflict, ImportDisabled, workspace_destination
 from ..application.projects import ReprepareLocked
+from ..application.analysis_reset import AnalysisResetLocked
 from ..application.reader import MarkerConflict
 from ..application.review import ReviewConflict
 from ..application.web import LifecycleConflict, WorkspaceArchived
@@ -41,6 +42,7 @@ def error(exc):
         (ConfigConflict, 409, 'config_revision_conflict', 'Configuration changed. Reload before saving.'),
         (AnalysisMembershipLocked, 409, 'analysis_membership_locked', 'P1 membership is frozen after its first attempt.'),
         (ReprepareLocked, 409, 'preparation_locked', 'This workspace has saved work or a changed source; its plan cannot be rebuilt in place.'),
+        (AnalysisResetLocked, 409, 'analysis_reset_locked', 'P1 cannot be cleared while dependent work exists.'),
         (ModelChangeRequired, 409, 'model_change_confirmation_required', 'Confirm model changes for future work.'),
         (WorkspaceArchived, 409, 'workspace_archived', 'Restore this workspace before running or editing.'),
         (RequestConflict, 409, 'request_key_conflict', 'Request key already belongs to another operation.'),

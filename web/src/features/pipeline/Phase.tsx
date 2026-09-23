@@ -1,7 +1,7 @@
-import { useContext, useState } from 'react'
-import { useParams } from '@tanstack/react-router'
-import { endpoint, queryClient, request, Scope, useApi } from '../../api/client'
-import { jobSchema, pipelineSchema, preparationSchema, profilesSchema, usageSchema, workspacesSchema, type Usage } from '../../api/schema'
+import { useContext, useRef, useState } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import { endpoint, matchesWorkspaceResource, queryClient, request, Scope, useApi } from '../../api/client'
+import { analysisResetSchema, configSchema, jobSchema, pipelineSchema, preparationSchema, profilesSchema, usageSchema, workspacesSchema, type Pipeline, type Section, type Usage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
 import { Back, Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
@@ -27,10 +27,17 @@ export function PhasePage() {
   const usage = useApi(endpoint(id,'usage'), usageSchema, !!workspace?.prepared && ['analyse','translate'].includes(phase))
   const profiles = useApi(endpoint(id,'profiles'), profilesSchema, !!workspace?.prepared)
   const preparation = useApi(endpoint(id,'preparation'), preparationSchema, !!workspace?.prepared && phase === 'prepare')
+  const analysisReset = useApi(endpoint(id,'analysis-reset'), analysisResetSchema, !!workspace?.prepared && phase === 'analyse')
   const command = useCommand(id)
+  const navigate = useNavigate()
   const scope = useContext(Scope)
   const [rebuildOpen, setRebuildOpen] = useState(false)
   const [rebuildError, setRebuildError] = useState<unknown>(null)
+  const [resetRevision, setResetRevision] = useState<string | null>(null)
+  const [resetError, setResetError] = useState<unknown>(null)
+  const [resetUnknown, setResetUnknown] = useState(false)
+  const [pendingProcessing, setPendingProcessing] = useState<{ sectionId: string; mode: Section['processing'] } | null>(null)
+  const processingLatch = useRef(false)
   const p = query.data
   const title = ({ prepare: 'Prepare', analyse: 'Analyse', translate: 'Translate', publish: 'Publish' } as Record<string,string>)[phase] ?? phase
   const state = p ? phaseStatus(p,phase) : 'blocked'
@@ -70,9 +77,52 @@ export function PhasePage() {
     }
   }
   const canReprepare = !!p && !!workspace?.source_id && !p.busy && !p.analysis.membership_locked && !p.metadata.lifecycle.archived
+  async function changeProcessing(sectionId: string, mode: Section['processing']) {
+    if (!p || command.disabled || processingLatch.current) return
+    processingLatch.current = true
+    setPendingProcessing({ sectionId, mode })
+    try {
+      const result = await command.send(endpoint(id, `sections/${encodeURIComponent(sectionId)}`), configSchema,
+        { revision: p.config.revision, processing: mode }, 'PATCH', true)
+      await queryClient.cancelQueries({ queryKey: [scope, endpoint(id, 'pipeline')] })
+      if (result) queryClient.setQueryData<Pipeline>([scope, endpoint(id, 'pipeline')], current => current && ({
+        ...current, config: { ...current.config, revision: result.revision },
+        sections: current.sections.map((section: Section) => section.id === sectionId ? { ...section, processing: mode } : section),
+      }))
+      if (result) void queryClient.invalidateQueries({ queryKey: [scope, '/api/workspaces'], exact: true,
+        refetchType: 'none' })
+      void queryClient.invalidateQueries({ predicate: query => query.queryKey[0] === scope &&
+        matchesWorkspaceResource(String(query.queryKey[1]), id) &&
+        !String(query.queryKey[1]).includes('/reader/chapters/') }).catch(() => {})
+    } finally {
+      setPendingProcessing(null)
+      processingLatch.current = false
+    }
+  }
+  const analysisEmpty = phase === 'analyse' && !!p && !p.analysis.planned && !p.analysis.complete
+  async function clearAnalysis() {
+    if (!resetRevision || command.disabled) return
+    setResetError(null)
+    try {
+      const latest = await request(endpoint(id, 'analysis-reset'), analysisResetSchema)
+      queryClient.setQueryData([scope, endpoint(id, 'analysis-reset')], latest)
+      if (latest.revision !== resetRevision || !latest.can_reset) {
+        setResetError(new Error('P1 state changed. Close this dialog and review the current state.'))
+        return
+      }
+    } catch (error) { setResetError(error); return }
+    const result = await command.send(endpoint(id, 'analysis-reset'), analysisResetSchema,
+      { revision: resetRevision })
+    if (result) {
+      setResetRevision(null)
+      await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: id } })
+    } else if (command.unknownOutcome()) {
+      setResetUnknown(true)
+    }
+  }
   return <main className="main phase-detail-page" {...debugTag('PHD')}><Back id={id} /><div className="phase-detail-head" {...debugTag('PHH')}><div className="phase-detail-title"><div className="eyebrow">{title} · {p?.metadata.title ?? workspace?.metadata.title ?? 'Workspace'}</div><h1>{phase === 'analyse' ? 'Analyse · P1' : title}</h1><div className="phase-detail-meta">{phase === 'analyse' ? `Whole-book analysis · ${p?.progress.analysis.required ? `${p.progress.analysis.completed}/${p.progress.analysis.required} required units` : 'plan not created yet'}` : 'Phase details and execution diagnostics'}</div></div><span className={`phase-status-badge ${state}`}>{state === 'done' ? 'Complete' : state === 'blocked' ? 'Blocked' : state === 'error' ? 'Failed' : p?.active_job ? 'Running' : 'Ready'}</span></div><ErrorNote error={query.error ?? usage.error ?? profiles.error} retry={() => void query.refetch()} />
-    <div className="phase-metrics" {...debugTag('PHM')}>{metrics.map(([label,value]) => <div className="phase-metric" key={label} {...debugTag('PMT', String(label))}><div className="phase-metric-label">{label}</div><div className="phase-metric-value" title={String(value)}>{value}</div></div>)}</div>
-    {!p ? <Empty>{workspace?.prepared ? 'Loading phase details…' : <>Source structure has not been inspected yet. Run Prepare from the workspace to create the frozen section and chunk plan.{workspace && <Action workspace={workspace} />}</>}</Empty> : state === 'blocked' && phase !== 'prepare' ? <Empty>Complete the preceding phase before {title.toLowerCase()}.</Empty> : phase === 'prepare' ? <PrepareContent id={id} pipeline={p} preparation={preparation.data} preparationError={preparation.error} workspace={workspace} canReprepare={canReprepare} commandDisabled={command.disabled} onReprepare={() => setRebuildOpen(true)} /> : <div className="phase-detail-grid"><div className="phase-detail-stack">
+    {p && !analysisEmpty && <div className="phase-metrics" {...debugTag('PHM')}>{metrics.map(([label,value]) => <div className="phase-metric" key={label} {...debugTag('PMT', String(label))}><div className="phase-metric-label">{label}</div><div className="phase-metric-value" title={String(value)}>{value}</div></div>)}</div>}
+    {!p ? <Panel debugId="PLD" title={all.isPending || workspace?.prepared ? 'Loading workspace state' : 'Prepare required'}><p className="subtitle" role="status">{all.isPending || workspace?.prepared ? 'Reading the saved workspace and pipeline state…' : workspace ? 'Run Prepare from the workspace before opening phase details.' : 'Workspace unavailable.'}</p>{workspace && !workspace.prepared && <Action workspace={workspace} />}</Panel> : state === 'blocked' && phase !== 'prepare' ? <Empty>Complete the preceding phase before {title.toLowerCase()}.</Empty> : phase === 'prepare' ? <PrepareContent id={id} pipeline={p} preparation={preparation.data} preparationError={preparation.error} workspace={workspace} canReprepare={canReprepare} commandDisabled={command.disabled} pendingProcessing={pendingProcessing} onProcessingChange={mode => void changeProcessing(mode.sectionId, mode.mode)} processingError={command.error} onReprepare={() => setRebuildOpen(true)} /> : analysisEmpty ? <Panel debugId="PAE" title={!analysisReset.data ? 'Checking saved P1 state' : analysisReset.data.has_data ? 'P1 has no saved plan' : 'P1 has not been started'}><ErrorNote error={analysisReset.error} retry={() => void analysisReset.refetch()} /><p className="subtitle">{analysisReset.error ? 'Could not read the current P1 state.' : !analysisReset.data ? 'Reading the saved analysis state…' : analysisReset.data.has_data ? 'There is P1 evidence without a current plan. Clear it before starting again if no later work depends on it.' : 'No analysis plan, units, or model results are saved for this workspace.'}</p><div className="analysis-empty-actions"><Button variant="primary" onClick={() => void navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: id } })}>Return to workspace</Button></div></Panel> : <div className="phase-detail-grid"><div className="phase-detail-stack">
       {phase === 'analyse' && <Panel debugId="PAN" title="Analysis units"><div className="diagnostic-scroll"><table className="phase-detail-table usage-table"><thead><tr><th>Section / unit</th><th>Model</th><th>Status</th>{labels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{p.analysis.units.map(unit => { const actual = usage.data?.units.find(u => u.unit_id === unit.id)?.passes.find(v => v.pass_no === 1); return <tr key={unit.id}><td title={unit.id}>{unit.id}</td><td title={actual?.reported_model ?? actual?.requested_model ?? 'Unavailable'}>{actual?.reported_model ?? actual?.requested_model ?? '—'}</td><td>{unit.state}</td>{fields.map(f => <td className="num" key={f}>{actual?.[f].value?.toLocaleString() ?? '—'}</td>)}</tr> })}</tbody></table></div>{!p.analysis.units.length && <Empty>No persisted analysis plan yet.</Empty>}</Panel>}
       {phase === 'translate' && <><Panel debugId="PTS" title="Pass summary"><div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Default profile</th><th>Units</th>{labels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{[2,3,4,5].map(n => <tr key={n}><td>P{n}</td><td title="Current default; actual historical models may differ by section.">{currentProfile(n)}</td><td title={n < 5 ? 'Retained checkpoints have not been revalidated against current inputs.' : 'Verified completed final units'}>{p.units.filter(u => u.passes[String(n)]?.checkpoint_state === 'completed').length}/{p.units.length}{n < 5 ? ' verified' : ''}</td>{usageTotals(usage.data,[n]).map((t,i) => <td className="num" key={i} title={measured(t)}>{measured(t)}</td>)}</tr>)}</tbody></table></div></Panel><Panel debugId="PSC" title="Section progress"><table className="phase-detail-table"><thead><tr><th>Section</th>{[2,3,4,5].map(n => <th key={n}>P{n}</th>)}</tr></thead><tbody>{p.sections.filter(s => s.processing !== 'excluded').map(s => <tr key={s.id}><td title={s.title ?? s.fallback_excerpt}>{s.title || s.fallback_excerpt}</td>{[2,3,4,5].map(n => <td key={n}><PassMark section={s} number={n} /></td>)}</tr>)}</tbody></table></Panel></>}
       {phase === 'publish' && <><Panel debugId="PPO" title="Published output"><dl className="phase-kv"><dt>File</dt><dd>{p.publication.filename ?? '—'}</dd><dt>Resource</dt><dd>{p.publication.current ? 'Current workspace EPUB' : 'Unavailable'}</dd><dt>Language</dt><dd>{p.publication.target_language}</dd><dt>Edition</dt><dd>{p.publication.generated_by ?? '—'}</dd><dt>Source sections</dt><dd>{p.sections.length}</dd><dt>Excluded</dt><dd>{p.sections.filter(s => s.processing === 'excluded').length}</dd></dl>{p.publication.current && <a className="secondary-btn download" href={endpoint(id,'publication/download')}>Open EPUB</a>}{p.publication.last_error && <p className="subtitle">{p.publication.last_error}</p>}</Panel><Panel debugId="PPV" title="Package validation">{p.publication.checks.length ? p.publication.checks.map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>) : <Empty>No current publication validation results.</Empty>}</Panel></>}
@@ -82,6 +132,8 @@ export function PhasePage() {
       {phase === 'translate' && <Panel debugId="PDG" title="Diagnostics"><p className="subtitle">Usage covers recorded attempts, including retries. Cache and reasoning can be subsets; do not add these totals together.</p><ErrorNote error={usage.error} />{usage.data?.warning && <p className="subtitle">{usage.data.warning}</p>}<div className="execution-diagnostics">{usage.data?.units.flatMap(u => u.passes.filter(pass => pass.pass_no > 1).map(pass => <details key={`${u.unit_id}-${pass.pass_no}`}><summary>{u.unit_id} · P{pass.pass_no} · {pass.physical_attempt_count} attempts</summary><p>{pass.provider ?? '—'} · {pass.reported_model ?? pass.requested_model ?? '—'} · {pass.result_status} · {pass.failed_attempt_count} failed · {pass.elapsed_seconds.value == null ? '—' : `${pass.elapsed_seconds.value.toFixed(2)} s`}</p>{pass.attempts.map(a => <p key={a.attempt_id}>{a.attempt_id} · {a.acceptance_status} · {a.generation_status} · {a.reported_model ?? '—'} · {a.elapsed_seconds == null ? '—' : `${a.elapsed_seconds.toFixed(2)} s`}</p>)}</details>))}</div></Panel>}
       {phase === 'publish' && <Activity id={id} publicationOnly expanded title="Publication log" />}
     </div></div>}
+    {phase === 'analyse' && p && (!analysisEmpty || analysisReset.data?.has_data) && <Panel debugId="PAC" title="P1 data"><ErrorNote error={analysisReset.error} retry={() => void analysisReset.refetch()} />{analysisReset.data?.has_data ? <div className="analysis-reset-actions"><p className="subtitle">Clear the current P1 plan, attempts, terminology and Review draft. A versioned copy is kept in this workspace's history. Prepare and section choices remain.</p><Button variant="danger" disabled={!analysisReset.data.can_reset || command.disabled} onClick={() => { setResetError(null); setResetUnknown(false); setResetRevision(analysisReset.data!.revision) }}>Clear P1</Button>{!analysisReset.data.can_reset && <p className="subtitle">{analysisReset.data.reason === 'dependent_work' ? 'P2–P5 or approved work depends on P1; this workspace cannot be reset.' : analysisReset.data.reason === 'workspace_busy' ? 'Stop the active job and wait for cleanup before clearing P1.' : 'P1 cannot be cleared in the current workspace state.'}</p>}</div> : analysisReset.data ? <p className="subtitle">There is no saved P1 data to clear.</p> : <p className="subtitle" role="status">Checking saved P1 data…</p>}</Panel>}
     {rebuildOpen && <Overlay title="Run Prepare again?" debugId="RPM" compact close={() => { if (!command.pending) setRebuildOpen(false) }}><div className="modal-body"><p>Rebuild source sections in this workspace without contacting a model. The current Prepare plan will be saved as a version. Your section F/T/E choices will be reset because section boundaries and IDs may change.</p><ErrorNote error={rebuildError ?? command.error} /></div><div className="modal-foot"><Button onClick={() => setRebuildOpen(false)}>Cancel</Button><Button variant="primary" disabled={!canReprepare || command.disabled} onClick={() => void runReprepare()}>Rebuild Prepare</Button></div></Overlay>}
+    {resetRevision && <Overlay title="Clear P1?" debugId="PRM" compact close={() => { if (!command.pending) setResetRevision(null) }}><div className="modal-body"><p>The current P1 plan, attempts, terminology and Review draft will be removed from the active workflow. A versioned copy remains in this workspace's history. Prepare and F/T/E choices stay in place.</p><ErrorNote error={resetError ?? command.error} />{resetUnknown && <p className="subtitle">The request outcome is unknown. Refresh the current P1 state before trying again.</p>}</div><div className="modal-foot"><Button onClick={() => setResetRevision(null)}>Cancel</Button><Button variant="danger" disabled={command.disabled || resetUnknown} onClick={() => void clearAnalysis()}>Clear P1 and return</Button></div></Overlay>}
   </main>
 }

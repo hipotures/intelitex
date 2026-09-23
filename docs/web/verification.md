@@ -221,3 +221,38 @@ the UI displays the conflict and restores the server-confirmed mode. Canceled GE
 from query reconciliation are expected and ignored only for the known workspace and
 pipeline paths. Source preview text comes from the existing read-only section API;
 only its first 1 KiB of UTF-8 is rendered. The test did not run Analyse or any model.
+
+## 2026-09-23: Processing controls in Prepare and guarded P1 reset
+
+Processing F/T/E is edited in Prepare beside the selected source excerpt; the
+workspace overview and its section drawer display the saved value read-only. The
+Prepare row and page scroll positions remain stable when a section is selected.
+Analyse shows an explicit empty state before P1 and offers a confirmed, revisioned
+reset of saved P1 when the Python application finds no dependent work. This run used
+only disposable pytest projects and intercepted/offline browser fixtures; no active
+workspace, running server, or model provider was used.
+
+| Command | Result |
+| --- | --- |
+| `uv run --group dev python -m pytest -q` | 903 passed, 3 existing dependency/ZIP-fixture warnings, including Host/Origin and request-body checks for the new routes. |
+| `node --test tests/*.cjs` | 31 passed. |
+| `npm --prefix web run lint` | Passed. |
+| `npm --prefix web run test:unit` | 18 passed in 7 files. |
+| `npm --prefix web run build` | Strict TypeScript and production build passed; existing >500 kB chunk advisory. |
+| `LD_LIBRARY_PATH=/tmp/intelitex-browser-libs/root/usr/lib/x86_64-linux-gnu FONTCONFIG_FILE=/tmp/intelitex-browser-libs/fonts.conf node --test --test-concurrency=1 tests/*.test.mjs` (from `web/`) | 9 passed; offline workflow, real Vite proxy/SSE, Library, Prepare F/T/E, and P1 reset. Browser assertions found no unexpected console/page/request errors or mobile page overflow. |
+| `uv run python .agents/skills/intelitex-web/scripts/verify-mockup.py` | Passed; original v33 and supplied contract unchanged. |
+| `uv run python .agents/skills/intelitex-web/scripts/check-api-contract.py --repo .` | `baseline_matched` after manual source re-audit. |
+| `uv run python -m unittest discover -s .agents/skills/intelitex-web/scripts -p 'test_*.py' -q` | 31 passed. |
+| `git diff --check` | Passed. |
+
+The default parallel browser run first passed 8 of 9 tests; the Library setup
+fixture recorded one failed `compatibility` request during that run.
+That test passed alone and all 9 passed when run serially. At 1440 px dark and
+390 px light, the Prepare captures in `/tmp/intelitex-reprepare-evidence/` were
+compared with `/tmp/intelitex-visual-evidence/original-phase-prepare-dark-1440.png`.
+The header, metrics, typography and card treatment remain aligned with v33. The
+narrower structure table, adjacent real excerpt, editable F/T/E, metadata/checks
+below, and Rebuild action are intentional differences. The injected 409 conflict
+is visible in the test capture; it verifies that a rejected Processing change
+returns to the authoritative saved value. The mobile capture has no horizontal
+overflow. Empty Analyse evidence is in `/tmp/intelitex-analysis-reset-evidence/`.

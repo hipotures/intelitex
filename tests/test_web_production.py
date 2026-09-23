@@ -14,7 +14,7 @@ from test_server_api import api, analyze, approve, translate
 from bookpipe.server.asgi import create_app
 from bookpipe.application.web import LifecycleConflict, WorkspaceArchived
 from bookpipe.processing import AnalysisMembershipLocked, ConfigConflict, effective_book
-from bookpipe.util import read_json, PipelineError, project_lock
+from bookpipe.util import read_json, atomic_json, PipelineError, project_lock
 from bookpipe.application.commands import TranslateCommand
 from bookpipe.application.commands import ImportBookCommand
 from bookpipe.application.epub_sources import unpack_epub
@@ -238,6 +238,31 @@ def test_reprepare_versions_untouched_plan_and_resets_section_choices(api):
                          {'revision': current, 'request_key': 'reprepare-another-0123456789'})
     assert code == 409 and busy['error']['code'] == 'workspace_busy'
     service.supervisor.stop(job['job_id'])
+
+
+def test_legacy_workspace_can_reprepare_only_from_its_original_library_source(api):
+    app, root, service, _ = api
+    assert next(w for w in service.list_workspaces() if w['workspace_id'] == 'book')['source_id'] == 'book'
+    revision = app.web.config(root)['revision']
+    source = service.imports.root / 'book'
+    old = read_json(root / 'book.json')
+    app.projects.reprepare(ImportBookCommand(root, source, local_token_estimate=True), revision)
+    assert (root / 'history' / 'prepare_versions').is_dir()
+    current = read_json(root / 'book.json')
+    assert current['source_fingerprint'] == old['source_fingerprint']
+    (source / 'chapter0.html').write_text('<h1>Changed</h1><p>Different source content.</p>')
+    with pytest.raises(PipelineError, match='source changed since import'):
+        app.projects.reprepare(ImportBookCommand(root, source, local_token_estimate=True), revision)
+    assert read_json(root / 'book.json') == current
+
+
+def test_legacy_reprepare_route_accepts_saved_library_source(api):
+    app, root, service, server = api
+    code, accepted = request(server, 'POST', '/api/workspaces/book/reprepare',
+                             {'revision': app.web.config(root)['revision'],
+                              'request_key': 'legacy-reprepare-0123456789'})
+    assert code == 202 and accepted['operation'] == 'import', accepted
+    service.supervisor.stop(accepted['job_id'])
 
 
 def test_reprepare_packed_epub_keeps_durable_source_package(api, tmp_path):
@@ -597,6 +622,97 @@ def test_p1_attempt_manifest_locks_membership_before_checkpoint(api):
     with pytest.raises(AnalysisMembershipLocked):
         service.configure('book', {'revision': revision, 'processing': 'translate'}, 'ch0001')
     assert app.web.config(root)['revision'] == revision
+
+
+def test_analysis_reset_is_revisioned_and_keeps_versioned_evidence(api):
+    app, root, service, server = api
+    code, empty = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+    assert code == 200 and not empty['has_data'] and empty['can_reset']
+    assert request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                   {'revision': empty['revision']})[0] == 200
+    assert not list((root / 'history').glob('p1_resets/*'))
+
+    book = app.web.book(root)
+    unit = {'id': 'ch0001_a001', 'chapter_id': book['chapters'][0]['id']}
+    atomic_json(root / 'analysis_plan.json', [unit])
+    attempt = root / 'artifacts' / 'pass1' / unit['id'] / 'fingerprint' / 'attempt_001' / 'attempt.json'
+    atomic_json(attempt, {'identity': {'pass_no': 1, 'task_key': 'pass1/' + unit['id']}})
+    assert service.pipeline('book')['analysis']['membership_locked']
+    code, current = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+    assert code == 200 and current['has_data'] and current['can_reset']
+    code, conflict = request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                             {'revision': empty['revision']})
+    assert code == 409 and conflict['error']['code'] == 'config_revision_conflict'
+    code, cleared = request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                            {'revision': current['revision']})
+    assert code == 200 and not cleared['has_data']
+    assert not (root / 'analysis_plan.json').exists() and not attempt.exists()
+    versions = list((root / 'history' / 'p1_resets').iterdir())
+    assert len(versions) == 1 and (versions[0] / 'state.sqlite3').is_file()
+    assert (versions[0] / 'analysis_plan.json').is_file()
+    assert (versions[0] / attempt.relative_to(root)).is_file()
+    assert service.pipeline('book')['analysis']['membership_locked'] is False
+    revision = app.web.config(root)['revision']
+    assert service.configure('book', {'revision': revision, 'processing': 'translate'}, 'ch0001')
+
+
+def test_analysis_reset_rejects_dependent_or_busy_work(api):
+    app, root, service, server = api
+    analyze(root)
+    translate(root, 1)
+    code, state = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+    assert code == 200 and state['has_data'] and not state['can_reset']
+    assert state['reason'] == 'dependent_work'
+    code, error = request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                          {'revision': state['revision']})
+    assert code == 409 and error['error']['code'] == 'analysis_reset_locked'
+    assert (root / 'analysis_plan.json').is_file()
+
+    from bookpipe.runtime.models import JobSpec
+    job = service.supervisor.start(JobSpec(str(root.parent), 'book', str(root), operation='analyze'))
+    try:
+        code, busy = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+        assert code == 200 and busy['reason'] == 'workspace_busy'
+        assert request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                       {'revision': state['revision']})[1]['error']['code'] == 'workspace_busy'
+    finally:
+        service.supervisor.stop(job.job_id)
+
+
+def test_analysis_reset_clears_completed_p1_but_keeps_its_snapshot(api):
+    _, root, service, server = api
+    analyze(root)
+    before = service.pipeline('book')
+    assert before['analysis']['complete'] and before['analysis']['membership_locked']
+    code, state = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+    assert code == 200 and state['can_reset']
+    code, cleared = request(server, 'POST', '/api/workspaces/book/analysis-reset',
+                            {'revision': state['revision']})
+    assert code == 200 and not cleared['has_data']
+    after = service.pipeline('book')
+    assert not after['analysis']['complete'] and not after['analysis']['planned']
+    assert not after['analysis']['membership_locked'] and not after['approved']
+    from bookpipe.store import Store
+    store = Store(root)
+    try:
+        assert not store.terms() and not store.has_p1_attempt()
+    finally:
+        store.close()
+    version = next((root / 'history' / 'p1_resets').iterdir())
+    assert (version / 'analysis_plan.json').is_file()
+    assert (version / 'state.sqlite3').is_file()
+
+
+def test_interrupted_p1_reset_blocks_other_project_mutations(api):
+    app, root, service, server = api
+    pending = root / 'history' / 'p1_resets' / 'interrupted' / 'pending.json'
+    atomic_json(pending, {'revision': 'interrupted'})
+    revision = app.web.config(root)['revision']
+    with pytest.raises(PipelineError, match='interrupted P1 reset'):
+        service.configure('book', {'revision': revision, 'processing': 'excluded'}, 'ch0001')
+    assert app.web.config(root)['revision'] == revision
+    code, error = request(server, 'GET', '/api/workspaces/book/analysis-reset')
+    assert code == 409 and error['error']['code'] == 'analysis_reset_locked'
 
 
 def test_d08_edit_blocks_application_before_provider_and_atomic_confirmation(api):

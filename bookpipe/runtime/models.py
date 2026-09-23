@@ -110,10 +110,19 @@ class ImportJobSpec:
             raise ValueError('Revision applies only to reprepare.')
         if self.reprepare:
             from ..application.workspace_setup import read_workspace_setup
+            from ..util import read_json
             if (destination.is_symlink() or not destination.is_dir() or
+                    (destination / 'book.json').is_symlink() or
                     not (destination / 'book.json').is_file() or
-                    not (destination / 'state.sqlite3').is_file() or
-                    read_workspace_setup(destination).get('source_id') != self.source_id or
+                    not (destination / 'state.sqlite3').is_file()):
+                raise DestinationConflict('Prepared workspace is unavailable for rebuilding.')
+            setup = read_workspace_setup(destination)
+            legacy_matches = False
+            if not setup and (destination / 'book.json').is_file():
+                book = read_json(destination / 'book.json')
+                recorded = Path(book.get('source_archive', book.get('source_root', ''))).resolve()
+                legacy_matches = recorded == Path(self.import_root).resolve(strict=True) / self.source_id
+            if (not (setup.get('source_id') == self.source_id or legacy_matches) or
                     not isinstance(self.expected_revision, str) or
                     not re.fullmatch(r'[0-9a-f]{64}', self.expected_revision)):
                 raise DestinationConflict('Prepared workspace is unavailable for rebuilding.')

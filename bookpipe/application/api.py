@@ -11,6 +11,7 @@ from .review import ReviewService
 from .reader import ReaderService
 from .workflow import WorkflowQueries
 from .web import WebWorkspaceService
+from .analysis_reset import AnalysisResetService
 
 
 class Application:
@@ -27,3 +28,4 @@ class Application:
         self.operations = OperationsService(dependencies, sink)
         self.workflow = WorkflowQueries(dependencies, self.publishing)
         self.web = WebWorkspaceService(dependencies)
+        self.analysis_reset = AnalysisResetService(dependencies)

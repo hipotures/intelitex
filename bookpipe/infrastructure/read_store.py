@@ -12,6 +12,8 @@ class ReadStore:
     chunk = Store.chunk
     checked_result = Store.checked_result
     job = Store.job
+    p1_reset_records = Store.p1_reset_records
+    has_dependent_p1_work = Store.has_dependent_p1_work
     close = Store.close
 
     def __init__(self, root: Path):

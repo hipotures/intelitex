@@ -21,6 +21,7 @@ const index = createRoute({ getParentRoute: () => rootRoute, path: '/', beforeLo
 const work = createRoute({ getParentRoute: () => rootRoute, path: '/work', component: Home })
 const workspace = createRoute({ getParentRoute: () => rootRoute, path: '/work/workspaces/$workspaceId', component: WorkspacePage, remountDeps: ({params}) => params.workspaceId })
 const phase = createRoute({ getParentRoute: () => rootRoute, path: '/work/workspaces/$workspaceId/$phase', component: PhasePage,
+  remountDeps: ({ params }) => `${params.workspaceId}:${params.phase}`,
   beforeLoad: ({ params }) => { if (params.phase === 'review') throw redirect({ to: '/work/workspaces/$workspaceId/review', params: { workspaceId: params.workspaceId } }); if (!['prepare','analyse','translate','publish'].includes(params.phase)) throw redirect({ to: '/work/workspaces/$workspaceId', params: { workspaceId: params.workspaceId } }) } })
 const review = createRoute({ getParentRoute: () => rootRoute, path: '/work/workspaces/$workspaceId/review', component: ReviewPage, remountDeps: ({params}) => params.workspaceId })
 const reader = createRoute({ getParentRoute: () => rootRoute, path: '/reader', component: ReaderPage })

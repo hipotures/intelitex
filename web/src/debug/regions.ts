@@ -1,6 +1,7 @@
 /** Stable UI-debug API. Keep an ID with its conceptual panel across refactors. */
 export const debugRegions = [
   { id: 'HDR', description: 'Application header', source: 'app/Shell.tsx' },
+  { id: 'BLS', description: 'Server connection loading screen', source: 'app/Shell.tsx' },
   { id: 'WRK', description: 'Whole Work home content region', source: 'features/work/Home.tsx' },
   { id: 'WHT', description: 'Work home title and description group', source: 'features/work/Home.tsx' },
   { id: 'ACT', description: 'Active workspaces', source: 'features/work/Home.tsx' },
@@ -59,6 +60,7 @@ export const debugRegions = [
   { id: 'RMK', description: 'Reader markers accordion', source: 'features/reader/Reader.tsx' },
   { id: 'RCM', description: 'Reader context modal', source: 'features/reader/Reader.tsx' },
   { id: 'PHD', description: 'Phase detail page', source: 'features/pipeline/Phase.tsx' },
+  { id: 'PLD', description: 'Phase loading card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PHH', description: 'Phase detail heading', source: 'features/pipeline/Phase.tsx' },
   { id: 'PHM', description: 'Phase metrics group', source: 'features/pipeline/Phase.tsx' },
   { id: 'PMT', description: 'Phase metric card', source: 'features/pipeline/Phase.tsx' },
@@ -68,6 +70,9 @@ export const debugRegions = [
   { id: 'PCK', description: 'Prepare checks card', source: 'features/pipeline/PrepareContent.tsx' },
   { id: 'RPM', description: 'Prepare rebuild confirmation modal', source: 'features/pipeline/Phase.tsx' },
   { id: 'PAN', description: 'Analyse units card', source: 'features/pipeline/Phase.tsx' },
+  { id: 'PAE', description: 'Analyse empty-state card', source: 'features/pipeline/Phase.tsx' },
+  { id: 'PAC', description: 'Analyse P1 data action card', source: 'features/pipeline/Phase.tsx' },
+  { id: 'PRM', description: 'P1 reset confirmation modal', source: 'features/pipeline/Phase.tsx' },
   { id: 'PGD', description: 'Analyse generated data card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PAR', description: 'Analyse artifacts card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PTS', description: 'Translate pass summary card', source: 'features/pipeline/Phase.tsx' },

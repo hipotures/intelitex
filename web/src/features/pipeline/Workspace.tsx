@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
-import { endpoint, matchesWorkspaceResource, queryClient, Scope, useApi } from '../../api/client'
+import { endpoint, Scope, useApi } from '../../api/client'
 import { activitySchema, configSchema, lifecycleSchema, pipelineSchema, previewSchema, profilesSchema, workspacesSchema, type Pipeline, type Section } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Back, Button, Cover, Empty, ErrorNote, Overlay, ProfileSwatch } from '../../components/ui/common'
@@ -67,44 +67,20 @@ export function WorkspacePage() {
   const [draftModels, setDraftModels] = useState(true)
   const [archive, setArchive] = useState(false)
   const [assignment, setAssignment] = useState<{ section?: string; number: string; value: string | null } | null>(null)
-  const [pendingProcessing, setPendingProcessing] = useState<{ workspaceId: string; sectionId: string; mode: Section['processing'] } | null>(null)
-  const processingLatch = useRef(false)
   const p = query.data
   const draftJob = !workspace?.prepared && workspace?.last_job?.operation === 'import' ? workspace.last_job : null
   const draftPreparing = !!workspace && !workspace.prepared && !!workspace.active_job && workspace.active_job.operation === 'import'
   const draftFailed = !draftPreparing && draftJob?.state === 'failed'
   const draftP1 = profiles.data?.resolved_passes['1']
   const section = p?.sections.find(s => s.id === selected)
-  const sectionPending = pendingProcessing?.workspaceId === id && pendingProcessing.sectionId === section?.id ? pendingProcessing : null
   const [previewPage, setPreviewPage] = useState(0)
   const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selected ?? '')}/${previewPage}`), previewSchema, !!section)
   const setSearch = (values: Partial<typeof search>) => { if (values.filter) savePreference(scope, `${id}.filter`, values.filter); void navigate({ to: '.', search: old => ({ ...old, ...values }), replace: true }) }
   async function configure(body: Record<string, unknown>, sectionId?: string) {
     const revision = p?.config.revision ?? (!sectionId && !workspace?.prepared ? profiles.data?.revision : undefined)
     if (!revision) return
-    const processing = sectionId && typeof body.processing === 'string' ? body.processing : null
-    if (processing && (command.disabled || processingLatch.current)) return
-    if (processing) {
-      processingLatch.current = true
-      setPendingProcessing({ workspaceId: id, sectionId: sectionId!, mode: processing as Section['processing'] })
-    }
-    const result = await command.send(endpoint(id, sectionId ? `sections/${encodeURIComponent(sectionId)}` : 'settings'), configSchema,
-      { revision, ...body }, 'PATCH', !!processing)
-    if (processing) {
-      await queryClient.cancelQueries({ queryKey: [scope, endpoint(id, 'pipeline')] })
-      if (result) queryClient.setQueryData<Pipeline>([scope, endpoint(id, 'pipeline')], current => current && ({
-        ...current, config: { ...current.config, revision: result.revision },
-        sections: current.sections.map(item => item.id === sectionId ? { ...item, processing: processing as Section['processing'] } : item),
-      }))
-      if (result) void queryClient.invalidateQueries({ queryKey: [scope, '/api/workspaces'], exact: true,
-        refetchType: 'none' })
-      void queryClient.invalidateQueries({ predicate: query => query.queryKey[0] === scope &&
-        matchesWorkspaceResource(String(query.queryKey[1]), id) &&
-        !String(query.queryKey[1]).includes('/reader/chapters/') }).catch(() => { /* Query errors stay in their query state. */ })
-      setPendingProcessing(null)
-      processingLatch.current = false
-    }
-    return result
+    return command.send(endpoint(id, sectionId ? `sections/${encodeURIComponent(sectionId)}` : 'settings'), configSchema,
+      { revision, ...body }, 'PATCH')
   }
   if (!workspace) return <main className="main"><Back /><ErrorNote error={all.error} /><Empty>{all.isPending ? 'Loading workspace…' : 'Workspace not found.'}</Empty></main>
   const modelsOpen = workspace.prepared ? models : draftModels
@@ -127,14 +103,13 @@ export function WorkspacePage() {
       {p.analysis.complete && !p.approved && <div className="notice"><span>Analysis is complete. Review and confirm terminology before translation.</span><Button onClick={() => void navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: id, phase: 'review' } })}>Open Review</Button></div>}
       <div className="workspace-toolbar" {...debugTag('STF')}><div className="toolbar-left"><span className="toolbar-title">Sections</span><span className="toolbar-sub">{p.sections.length} detected · {p.sections.filter(s => s.processing === 'excluded').length} excluded</span></div><div className="filter-segment">{[['all','All'],['full','Full'],['translate','Translate only'],['excluded','Excluded']].map(([key, label]) => <button key={key} className={filter === key ? 'active' : ''} onClick={() => setSearch({ filter: key as typeof filter })}>{label}</button>)}</div></div>
       <div className="table-card" {...debugTag('SCT')}><table className="sections-table"><colgroup><col className="section-col" /><col className="processing-col" />{[1,2,3,4,5].map(n => <col className="pass-col" key={n} />)}</colgroup><thead><tr><th>Section</th><th>Processing</th>{[1,2,3,4,5].map(n => <th className="pass-cell" key={n}>P{n}</th>)}</tr></thead><tbody>{p.sections.filter(s => filter === 'all' || s.processing === filter).map(s => {
-        const pending = pendingProcessing?.workspaceId === id && pendingProcessing.sectionId === s.id ? pendingProcessing : null
-        const displayedMode = pending?.mode ?? s.processing
-        return <tr className={s.processing === 'excluded' ? 'excluded' : ''} key={s.id} onClick={e => { if (!(e.target as HTMLElement).closest('button')) { setPreviewPage(0); setSearch({ section: s.id }) } }}><td title={s.title || s.fallback_excerpt}><span className="section-number">{String(s.ordinal).padStart(2,'0')}</span><button className={`section-name section-open ${s.title ? '' : 'fallback'}`} onClick={() => { setPreviewPage(0); setSearch({ section: s.id }) }}>{s.title || s.fallback_excerpt || 'Untitled section'}</button></td><td><div className={`processing-switch ${pending ? 'saving' : ''}`} aria-label={`Processing ${s.title ?? s.id}${pending ? ' · saving change' : ''}`} aria-busy={!!pending}>{modes.map(([mode, letter, label]) => <button key={mode} data-mode-value={label} title={`${letter} — ${label}${pending && displayedMode === mode ? ' · saving' : ''}`} aria-pressed={displayedMode === mode} className={displayedMode === mode ? 'active' : ''} disabled={command.disabled || !!pending || p.busy || p.metadata.lifecycle.archived || (p.analysis.membership_locked && mode !== s.processing && (mode === 'full' || s.processing === 'full'))} onClick={() => void configure({ processing: mode }, s.id)}>{letter}</button>)}</div></td>{[1,2,3,4,5].map(n => <td className="pass-cell" key={n}><PassMark section={s} number={n} /></td>)}</tr>
+        const mode = modes.find(([value]) => value === s.processing)!
+        return <tr className={s.processing === 'excluded' ? 'excluded' : ''} key={s.id} onClick={e => { if (!(e.target as HTMLElement).closest('button')) { setPreviewPage(0); setSearch({ section: s.id }) } }}><td title={s.title || s.fallback_excerpt}><span className="section-number">{String(s.ordinal).padStart(2,'0')}</span><button className={`section-name section-open ${s.title ? '' : 'fallback'}`} onClick={() => { setPreviewPage(0); setSearch({ section: s.id }) }}>{s.title || s.fallback_excerpt || 'Untitled section'}</button></td><td><span className={`processing-readonly ${s.processing}`} title={mode[2]}>{mode[1]} <span>{mode[2]}</span></span></td>{[1,2,3,4,5].map(n => <td className="pass-cell" key={n}><PassMark section={s} number={n} /></td>)}</tr>
       })}</tbody></table></div>
       {modelPanel}<Activity id={id} /><div className="workspace-bottom-actions"><button className="archive-workspace-btn" disabled={command.disabled || p.busy || p.metadata.lifecycle.archived} onClick={() => setArchive(true)}>Archive workspace</button></div>
     </>}
     {!workspace.prepared && !workspace.metadata.lifecycle.archived && <div className="workspace-bottom-actions"><button className="archive-workspace-btn" disabled={command.disabled || !!workspace.active_job} onClick={() => setArchive(true)}>Archive workspace</button></div>}
-    {section && !assignment && <Overlay drawer title={section.title || section.fallback_excerpt || 'Untitled section'} eyebrow="Section" debugId="PVD" close={() => setSearch({ section: undefined })}><div className="drawer-body"><div className="field-row"><div className="field"><label htmlFor="section-mode">Processing</label><select id="section-mode" value={sectionPending?.mode ?? section.processing} aria-busy={!!sectionPending} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => void configure({ processing: e.target.value }, section.id)}>{modes.map(([mode, letter, label]) => <option key={mode} value={mode} disabled={p?.analysis.membership_locked && mode !== section.processing && (mode === 'full' || section.processing === 'full')}>{letter} — {label}</option>)}</select></div><div className="field"><label htmlFor="section-type">Content type · metadata only</label><select id="section-type" value={section.content_type} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => void configure({ content_type: e.target.value }, section.id)}>{[...new Set([...contentTypes, section.content_type])].map(t => <option key={t} value={t}>{t.replaceAll('_',' ')}</option>)}</select></div></div><div className="autosave-note">Changes are applied immediately. Only Processing controls pipeline inclusion; Content type is descriptive metadata.</div><ErrorNote error={command.error} />
+    {section && !assignment && <Overlay drawer title={section.title || section.fallback_excerpt || 'Untitled section'} eyebrow="Section" debugId="PVD" close={() => setSearch({ section: undefined })}><div className="drawer-body"><div className="field-row"><div className="field"><label>Processing · change in Prepare</label><div className="readonly-field">{modes.find(([mode]) => mode === section.processing)?.[2]}</div></div><div className="field"><label htmlFor="section-type">Content type · metadata only</label><select id="section-type" value={section.content_type} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => void configure({ content_type: e.target.value }, section.id)}>{[...new Set([...contentTypes, section.content_type])].map(t => <option key={t} value={t}>{t.replaceAll('_',' ')}</option>)}</select></div></div><div className="autosave-note">Review source and change Processing in Prepare. Content type is descriptive metadata.</div><ErrorNote error={command.error} />
       <div className="field"><label>Model overrides · optional</label><div className="drawer-model-grid" {...debugTag('SMG')}>{[1,2,3,4,5].map(n => <div className="drawer-model-slot" key={n} {...debugTag(sectionModelIds[n - 1]!)}><label className="drawer-model-label" htmlFor={`override-${n}`}><ProfileSwatch index={profiles.data?.profiles.find(v => v.name === (section.profiles[String(n)] ?? profiles.data?.resolved_passes[String(n)]?.name))?.stable_palette_index} name={section.profiles[String(n)] ?? profiles.data?.resolved_passes[String(n)]?.name ?? 'Unknown profile'} /><span>Pass {n}</span></label><select id={`override-${n}`} value={section.profiles[String(n)] ?? ''} disabled={command.disabled || !!p?.busy || p?.metadata.lifecycle.archived} onChange={e => setAssignment({ section: section.id, number: String(n), value: e.target.value || null })}><option value="">Inherit — {profiles.data?.resolved_passes[String(n)]?.name ?? '—'}</option>{profiles.data?.profiles.map(profile => <option key={profile.name} value={profile.name} disabled={!profile.enabled}>{profile.name}</option>)}</select></div>)}</div></div><ErrorNote error={preview.error} /><div className="preview-text">{preview.data?.blocks.map((b, i) => <p key={`${previewPage}-${b.id}-${i}`}>{b.text}</p>)}</div><div className="preview-pagination"><Button disabled={previewPage === 0} onClick={() => setPreviewPage(previewPage - 1)}>Previous</Button><span>Source preview · page {previewPage + 1}</span><Button disabled={preview.data?.next_page == null} onClick={() => setPreviewPage(preview.data!.next_page!)}>Load more</Button></div></div></Overlay>}
     {assignment && <Overlay title="Change model assignment?" debugId="MCM" compact close={() => setAssignment(null)}><div className="modal-body"><p>{workspace.prepared ? `Apply ${assignment.value ?? 'the inherited profile'} to future Pass ${assignment.number} work. Completed results and their model history are kept.` : `Use ${assignment.value} for Pass ${assignment.number} after Prepare. This saves the profile without contacting the model.`}</p><p className="subtitle">Saving an assignment does not start Analyse or translation.</p><ErrorNote error={command.error} /></div><div className="modal-foot"><Button onClick={() => setAssignment(null)}>Cancel</Button><Button variant="primary" disabled={command.disabled} onClick={async () => { if (await configure({ [assignment.section ? 'profiles' : 'pass_profiles']: { [assignment.number]: assignment.value }, allow_model_change: true }, assignment.section)) setAssignment(null) }}>Apply change</Button></div></Overlay>}
     {archive && (p || !workspace.prepared) && <Overlay title="Archive workspace?" eyebrow="Workspace" debugId="ACM" compact close={() => { if (!command.pending) setArchive(false) }}><div className="modal-body"><p className="subtitle"><strong>{workspace.metadata.title}</strong> will be removed from active workspaces. Its state will be kept in the archive and can be restored later.</p><ErrorNote error={command.error} /></div><div className="modal-foot"><Button onClick={() => setArchive(false)}>Cancel</Button><Button variant="danger" disabled={command.disabled} onClick={async () => { if (await command.send(endpoint(id, 'archive'), lifecycleSchema, { revision: (p?.metadata ?? workspace.metadata).lifecycle.revision })) { setArchive(false); announce('Workspace moved to archive.'); await navigate({ to: '/work' }) } }}>Archive workspace</Button></div></Overlay>}

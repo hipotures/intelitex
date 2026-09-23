@@ -7,6 +7,7 @@ from ..runtime.supervisor import JobConflict
 from ..util import digest
 from pathlib import Path
 from contextlib import contextmanager
+from datetime import datetime
 import re
 from ..application.imports import ImportDisabled, ImportQueries, confined_source, workspace_destination
 from ..runtime.models import ImportJobSpec, JobSpec
@@ -36,7 +37,19 @@ class ServerService:
         self.catalog.register_profiles(p['name'] for root in roots for p in self.application.workflow.settings(root)['profiles'])
 
     def last_job(self, ident):
-        return next((j.public() for j in reversed(self.supervisor.list()) if j.workspace_id == ident), None)
+        resets = self.workspaces.root / ident / 'history' / 'p1_resets'
+        reset_time = max((item.stat().st_mtime for item in resets.glob('*/completed.json')), default=None)
+        for job in reversed(self.supervisor.list()):
+            if job.workspace_id != ident:
+                continue
+            if job.operation == 'analyze' and reset_time is not None and job.started_at:
+                try:
+                    if datetime.fromisoformat(job.started_at).timestamp() <= reset_time:
+                        continue
+                except ValueError:
+                    pass
+            return job.public()
+        return None
 
     def capabilities(self):
         return {'import_enabled': self.imports.root is not None, 'review': True, 'reader': True,
@@ -126,6 +139,21 @@ class ServerService:
                     ident, revision(payload), payload['pass_profiles'], payload.get('allow_model_change', False))
         with self.mutable(ident) as root:
             return self.application.web.configure(root, payload, section_id)
+
+    def analysis_reset_status(self, ident):
+        root = self.workspaces.resolve(ident)
+        result = self.application.analysis_reset.status(root)
+        active = self.supervisor.active_for_project(root)
+        if active or self.supervisor.owns_project(root):
+            result.update(can_reset=False, reason='workspace_busy')
+        elif self.application.web.lifecycle(root)['archived']:
+            result.update(can_reset=False, reason='workspace_archived')
+        return result
+
+    def reset_analysis(self, ident, payload):
+        fields(payload, {'revision'}, {'revision'})
+        with self.mutable(ident) as root:
+            return self.application.analysis_reset.reset(root, revision(payload))
 
     def create_draft(self, payload):
         fields(payload, {'source_id', 'request_key'}, {'source_id'})
@@ -250,11 +278,16 @@ class ServerService:
             from ..application.workspace_setup import read_workspace_setup
             from ..processing import ConfigConflict
             setup = read_workspace_setup(root)
-            if not setup:
-                raise ValueError('This workspace has no saved Library source.')
             if self.application.web.config(root)['revision'] != revision(payload):
                 raise ConfigConflict('Configuration changed.')
-            source_id = setup['source_id']
+            if setup:
+                source_id = setup['source_id']
+            else:
+                book = self.application.web.book(root)
+                recorded = Path(book.get('source_archive', book['source_root'])).resolve()
+                if recorded.parent != self.imports.root:
+                    raise ValueError('This workspace has no matching Library source.')
+                source_id = recorded.name
             self.application.projects.check_reprepare(
                 root, confined_source(self.imports.root, source_id), payload['revision'])
             spec = ImportJobSpec(workspace_root=str(self.workspaces.root), workspace_id=ident,

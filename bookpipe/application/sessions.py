@@ -28,6 +28,13 @@ class OperationScope:
         stack = ExitStack()
         try:
             stack.enter_context(self.dependencies.project_lock(self.project))
+            resets = self.project / "history" / "p1_resets"
+            if resets.is_symlink() or (resets.exists() and any(
+                entry.is_dir() and (entry / "pending.json").exists()
+                for entry in resets.iterdir()
+            )):
+                from ..util import PipelineError
+                raise PipelineError("An interrupted P1 reset needs local recovery before another project operation.")
         except BaseException:
             stack.close()
             raise
