@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from 'react'
+import { useContext, useLayoutEffect, useRef, useState } from 'react'
 import { Play } from 'lucide-react'
 import { endpoint, queryClient, reconcile, request, Scope, useApi } from '../../api/client'
 import { jobSchema, pipelineSchema, translationPassPreviewSchema, type Pipeline, type Profiles, type Usage } from '../../api/schema'
@@ -47,6 +47,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const command = useCommand(id)
   const connection = useConnection()
   const live = useLive()
+  const previewStack = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedPass, setSelectedPass] = useState<number>(pipeline.units.some(item => item.passes['5']?.checkpoint_state === 'completed') ? 5 : 2)
   const [pendingRun, setPendingRun] = useState<{ chunkId: string; passNo: number; rerun: boolean } | null>(null)
@@ -85,6 +86,24 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const pendingChunk = pipeline.units.find(item => item.id === pendingRun?.chunkId)
   const pendingProfile = pendingRun ? assignedProfile(profiles, sections.get(pendingChunk?.chapter_id ?? ''), pendingRun.passNo) : undefined
   const selectedSection = unit ? sections.get(unit.chapter_id) : undefined
+
+  useLayoutEffect(() => {
+    const stack = previewStack.current
+    if (!stack) return
+    const updateTop = () => {
+      const top = stack.getBoundingClientRect().top + window.scrollY
+      stack.style.setProperty('--translate-preview-top', `${top}px`)
+    }
+    const observer = new ResizeObserver(updateTop)
+    const main = stack.closest('main')
+    if (main) observer.observe(main)
+    window.addEventListener('resize', updateTop)
+    updateTop()
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateTop)
+    }
+  }, [])
 
   async function startTarget() {
     if (!pendingRun || runLatch.current || disabled) return
@@ -140,29 +159,8 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   return <div className="translate-content">
     {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : 'This older job did not record a detailed reason.'} Saved passes remain available.</div>}
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
-    <Panel debugId="PTS" title="Models and usage">
-      <h3 className="translate-summary-heading">Current model assignments</h3>
-      <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary translate-model-grid"><thead><tr><th>Section</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>
-        <tr><td><strong>Default</strong><small>Inherited unless overridden</small></td>{passNumbers.map(number => {
-          const profile = assignedProfile(profiles, undefined, number)
-          return <td key={number}><span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={profile?.name ?? 'Unavailable'} />{profile?.name ?? '—'}</span></td>
-        })}</tr>
-        {overriddenSections.map(section => <tr key={section.id}><td title={section.id}><strong>{titles.get(section.id) ?? section.title ?? section.id}</strong><small>{section.id}</small></td>{passNumbers.map(number => {
-          const profile = assignedProfile(profiles, section, number)
-          const overridden = !!section.profiles[String(number)]
-          return <td key={number} className={overridden ? 'overridden' : 'inherited'}><span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={profile?.name ?? 'Unavailable'} />{profile?.name ?? '—'}</span><small>{overridden ? 'Override' : 'Inherited'}</small></td>
-        })}</tr>)}
-      </tbody></table></div>
-      <h3 className="translate-summary-heading">Recorded provider usage</h3>
-      <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{passNumbers.map(number => {
-        const used = recordedProfileNames(usage, number)
-        const saved = pipeline.units.filter(item => item.passes[String(number)]?.retained_count).length
-        const completed = pipeline.units.filter(item => item.passes[String(number)]?.checkpoint_state === 'completed').length
-        return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}</tr>
-      })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
-    </Panel>
     <div className="phase-detail-grid translate-detail-grid"><div className="phase-detail-stack">
-      <Panel debugId="PSC" title="Chunk progress">{working && <p className="translate-working" role="status">Running {working.chunkId} · P{working.passNo}{typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}</p>}<div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
+      <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
         const section = sections.get(item.chapter_id)
         return <tr key={item.id} className={unit?.id === item.id ? 'selected' : ''}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(2) }}>{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
           const pass = item.passes[String(number)]
@@ -171,10 +169,32 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           const previous = number === 2 || !!item.passes[String(number - 1)]?.retained_count
           const isWorking = working?.chunkId === item.id && working.passNo === number
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
-          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${state}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? 'running' : state}; preview`} aria-pressed={unit?.id === item.id && selectedPass === number} title={isWorking ? `P${number} is running with ${modelName}; open preview after it finishes.` : number < 5 && hasSaved ? `Assigned model: ${modelName}. Saved result; current inputs are checked before reuse. Open preview.` : `P${number}: ${state}. Assigned model: ${modelName}. Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : state === 'completed' ? '✓' : state === 'stale' ? '↻' : hasSaved ? '◐' : '○'}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
+          const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'
+          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${state}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : state}; preview`} aria-pressed={unit?.id === item.id && selectedPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : number < 5 && hasSaved ? `Assigned model: ${modelName}. Saved result; current inputs are checked before reuse. Open preview.` : `P${number}: ${state}. Assigned model: ${modelName}. Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : state === 'completed' ? '✓' : state === 'stale' ? '↻' : hasSaved ? '◐' : '○'}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
         })}</tr>
       })}</tbody></table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}</Panel>
-    </div><div className="phase-detail-stack">
+      <Panel debugId="PTS" title="Models and usage"><details className="translate-summary-details"><summary>Show details</summary>
+        <h3 className="translate-summary-heading">Current model assignments</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary translate-model-grid"><thead><tr><th>Section</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>
+          <tr><td><strong>Default</strong></td>{passNumbers.map(number => {
+            const profile = assignedProfile(profiles, undefined, number)
+            return <td key={number}><span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={profile?.name ?? 'Unavailable'} />{profile?.name ?? '—'}</span></td>
+          })}</tr>
+          {overriddenSections.map(section => <tr key={section.id}><td title={section.id}><strong>{titles.get(section.id) ?? section.title ?? section.id}</strong><small>{section.id}</small></td>{passNumbers.map(number => {
+            const profile = assignedProfile(profiles, section, number)
+            const overridden = !!section.profiles[String(number)]
+            return <td key={number} className={overridden ? 'overridden' : 'inherited'} title={overridden ? `Section model: ${profile?.name ?? 'Unavailable'}` : `Uses default: ${profile?.name ?? 'Unavailable'}`}>{overridden ? <span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={profile?.name ?? 'Unavailable'} />{profile?.name ?? '—'}</span> : '—'}</td>
+          })}</tr>)}
+        </tbody></table></div>
+        <h3 className="translate-summary-heading">Recorded provider usage</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{passNumbers.map(number => {
+          const used = recordedProfileNames(usage, number)
+          const saved = pipeline.units.filter(item => item.passes[String(number)]?.retained_count).length
+          const completed = pipeline.units.filter(item => item.passes[String(number)]?.checkpoint_state === 'completed').length
+          return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}</tr>
+        })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
+      </details></Panel>
+    </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>
       <Panel debugId="TPV" title={unit ? `P${selectedPass} preview · ${unit.id}` : 'Pass preview'}><div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <><div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div><ErrorNote error={preview.error} retry={() => void preview.refetch()} />{preview.isPending ? <p className="subtitle" role="status">Loading saved result…</p> : preview.data && <><p className="subtitle">{preview.data.available ? selectedPass === 5 && preview.data.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p><div className="translate-preview-scroll"><div className="translate-preview-column"><h3>Source</h3>{preview.data.source.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}</div><div className="translate-preview-column"><h3>{selectedPass === 2 ? 'Semantic checks' : selectedPass === 4 ? 'Correction checks' : 'Polish'}</h3>{preview.data.translations.map(block => <p key={block.id}><small>{block.id}</small>{block.text}</p>)}{preview.data.checks.map((check, index) => <p key={`check-${index}`}><small>{String(check.sid ?? `Check ${index + 1}`)}</small>{describeFinding(check)}</p>)}{preview.data.findings.map((finding, index) => <p key={`finding-${index}`}><small>{String(finding.sid ?? finding.block_id ?? `Finding ${index + 1}`)}</small>{describeFinding(finding)}</p>)}{preview.data.available && !preview.data.translations.length && !preview.data.findings.length && !preview.data.checks.length && <Empty>No findings in this saved result.</Empty>}</div></div>{preview.data.truncated && <p className="subtitle">Preview shortened for this chunk.</p>}</>}</>}</div></Panel>
     </div></div>
     <Activity id={id} expanded title="Recent execution" />
