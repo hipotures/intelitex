@@ -61,6 +61,9 @@ and responsive breakpoints. The following differences carry real application sem
   state arrives. Neither screen uses mock pipeline data.
 - Confirm glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
+- Review term edits update the saved draft view from the acknowledged PATCH response;
+  Next advances after that response while workspace summaries refresh in the background.
+  Failed writes keep the local form for explicit reapplication or discard.
 - P2–P4 retained receipts display amber retained/unverified state where the existing
   checkpoint query cannot establish current input fingerprints. They are not fabricated
   green completion. Checked P5 counts determine translation completion.

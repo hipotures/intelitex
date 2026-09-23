@@ -207,6 +207,12 @@ body:has(dialog.drawer[open])::before { display:none; }
 .phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }
 .execution-diagnostics { max-height:320px;overflow:auto;font-size:12px;overflow-wrap:anywhere; }.execution-diagnostics details { padding:8px 0;border-bottom:1px solid var(--line); }.execution-diagnostics p { margin-top:7px;color:var(--text-dim); }
 .activity-card-head { width:100%;background:transparent;cursor:pointer;font-size:14px; }
+@media (max-width:560px) {
+  .review-footer-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));white-space:normal; }
+  #reviewNextBtn { grid-column:1 / -1;grid-row:1; }
+  #reviewPrevBtn { grid-column:1;grid-row:2; }
+  #reviewOnlyNextBtn { grid-column:2;grid-row:2; }
+}
 
 /* Debug badges are a presentation-only overlay. The DOM ID stays available when off. */
 .debug-setting { display:flex;align-items:center;gap:10px; }
