@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { endpoint, useApi } from '../../api/client'
 import { previewSchema, type Pipeline, type Section, type Workspace } from '../../api/schema'
 import { Button, Empty, ErrorNote, Panel } from '../../components/ui/common'
+import { useConnection } from '../../realtime/coordinator'
 import { prepareExcerpt } from './prepareExcerpt'
 
 const shortTypes: Record<string, string> = {
@@ -25,6 +26,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
   onReprepare: () => void
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const connection = useConnection()
   const selected = pipeline.sections.find(section => section.id === selectedId)
   const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selected?.id ?? '')}/0`), previewSchema, !!selected)
   const excerpt = preview.data ? prepareExcerpt(preview.data.blocks) : null
@@ -32,7 +34,9 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
     : pipeline.busy ? 'Wait for the current workspace operation to finish before rebuilding Prepare.'
     : pipeline.analysis.membership_locked ? 'P1 has saved work. Clear P1 in Analyse first if the backend permits it.'
     : !workspace?.source_id ? 'This workspace is not linked to its original Library source, so Prepare cannot rebuild it.'
-    : commandDisabled ? 'Wait for the current change or reconnect to the server before rebuilding Prepare.' : null
+    : connection === 'Offline' ? 'The server is offline. Reconnect before rebuilding Prepare.'
+    : connection !== 'Live' ? 'The server is reconnecting. Wait for a live connection before rebuilding Prepare.'
+    : commandDisabled ? 'Wait for the current workspace change to finish before rebuilding Prepare.' : null
 
   return <div className="phase-detail-grid prepare-detail-grid">
     <div className="phase-detail-stack">
@@ -78,8 +82,10 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
         {preparation?.unavailable && <p className="subtitle">{preparation.unavailable}</p>}
         <p className="subtitle">Reading order: {preparation?.reading_order?.replaceAll('_', ' ') ?? '—'}</p>
         <div className="prepare-rerun"><p className="subtitle">Rebuild the source sections in this workspace. The previous plan is kept in versioned history; section F/T/E choices must be reviewed again.</p>
-          <div className="prepare-rerun-actions"><Button variant="primary" disabled={!canReprepare || commandDisabled} title={rebuildUnavailable ?? undefined} aria-describedby={rebuildUnavailable ? 'prepare-rebuild-reason' : undefined} onClick={onReprepare}>{pipeline.active_job?.operation === 'import' ? 'Rebuilding…' : 'Rebuild'}</Button></div>
-          {rebuildUnavailable && <p id="prepare-rebuild-reason" className="subtitle">{rebuildUnavailable}</p>}
+          <div className="prepare-rerun-actions">
+            {rebuildUnavailable && <p id="prepare-rebuild-reason" className="prepare-rerun-reason"><strong>Rebuild unavailable:</strong> {rebuildUnavailable}</p>}
+            <Button variant="primary" disabled={!canReprepare || commandDisabled} aria-describedby={rebuildUnavailable ? 'prepare-rebuild-reason' : undefined} onClick={onReprepare}>{pipeline.active_job?.operation === 'import' ? 'Rebuilding…' : 'Rebuild'}</Button>
+          </div>
           {pipeline.last_job?.operation === 'import' && pipeline.last_job.state === 'failed' && <p className="subtitle">The rebuild failed. The previous source plan remains available.</p>}
         </div>
       </Panel>

@@ -173,8 +173,9 @@ query still loading shows a disabled loading action, not another Prepare command
 The prepared Prepare detail screen offers `Rebuild` behind a confirmation
 that says section choices reset and the old plan is versioned. It is disabled after
 persisted P1 work and while a job owns the workspace; the backend rechecks all
-conditions. When disabled, the screen shows the snapshot reason, including an
-unlinked Library source, archived workspace, busy operation or unavailable connection.
+conditions. When disabled, selectable text immediately beside the Rebuild control
+shows the snapshot reason, including an unlinked Library source, archived workspace,
+busy operation or unavailable connection; it is not confined to a native tooltip.
 The Prepare detail layout narrows Source structure and shows an on-demand
 source preview beside it; the existing read-only section-preview API supplies the
 text, of which the UI displays at most the first 1 KiB of UTF-8. Metadata and checks
