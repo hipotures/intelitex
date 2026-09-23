@@ -27,6 +27,19 @@ function describeFinding(value: Record<string, unknown>) {
     .map(([key, item]) => `${key.replaceAll('_', ' ')}: ${String(item)}`).join(' · ')
 }
 
+type ChunkPass = Pipeline['units'][number]['passes'][string]
+
+export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string) {
+  const state = pass?.checkpoint_state ?? 'pending'
+  if (state === 'completed') return { tone: 'completed', symbol: '✓', label: 'verified final result' }
+  if (state === 'stale' || chunkStatus === 'stale' && !!pass?.retained_count)
+    return { tone: 'stale', symbol: '↻', label: 'saved result needs revalidation' }
+  if (state === 'error' || !pass?.retained_count && (pass?.failed_attempt_count || pass?.attempt_result === 'not_checkpointed'))
+    return { tone: 'error', symbol: '×', label: 'failed attempt' }
+  if (pass?.retained_count) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
+  return { tone: 'pending', symbol: '○', label: 'pending' }
+}
+
 export function assignedProfile(profiles: Profiles | undefined, section: Pipeline['sections'][number] | undefined, passNo: number) {
   const override = section?.profiles[String(passNo)]
   if (override) return profiles?.profiles.find(profile => profile.name === override) ?? {
@@ -162,15 +175,16 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
     <div className="phase-detail-grid translate-detail-grid"><div className="phase-detail-stack">
       <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
         const section = sections.get(item.chapter_id)
-        return <tr key={item.id} className={unit?.id === item.id ? 'selected' : ''}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(2) }}>{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
+        const finished = item.passes['5']?.checkpoint_state === 'completed' && passNumbers.every(number => !!item.passes[String(number)]?.retained_count)
+        return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(2) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
           const pass = item.passes[String(number)]
-          const state = pass?.checkpoint_state ?? 'pending'
+          const display = passDisplay(pass, item.status)
           const hasSaved = !!pass?.retained_count
           const previous = number === 2 || !!item.passes[String(number - 1)]?.retained_count
           const isWorking = working?.chunkId === item.id && working.passNo === number
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
           const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'
-          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${state}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : state}; preview`} aria-pressed={unit?.id === item.id && selectedPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : number < 5 && hasSaved ? `Assigned model: ${modelName}. Saved result; current inputs are checked before reuse. Open preview.` : `P${number}: ${state}. Assigned model: ${modelName}. Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : state === 'completed' ? '✓' : state === 'stale' ? '↻' : hasSaved ? '◐' : '○'}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
+          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && selectedPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
         })}</tr>
       })}</tbody></table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}</Panel>
       <Panel debugId="PTS" title="Models and usage"><details className="translate-summary-details"><summary>Show details</summary>

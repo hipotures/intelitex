@@ -162,12 +162,19 @@ body:has(dialog.drawer[open])::before { display:none; }
 .translate-chunk-table th:not(:first-child) { width:14%;text-align:center; }
 .translate-chunk-table td:not(:first-child) { text-align:center; }
 .translate-chunk-table tr.selected td { background:var(--panel-2); }
+.translate-chunk-table tr.finished td { background:color-mix(in srgb,var(--green) 7%,var(--panel)); }
+.translate-chunk-table tr.finished.selected td { background:color-mix(in srgb,var(--green) 7%,var(--panel-2)); }
+.translate-chunk-table tr.selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .translate-chunk-choice { width:100%;text-align:left;background:none;border:0;color:var(--text);font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.translate-mode-badge { display:inline-grid;place-items:center;width:17px;height:17px;margin-right:7px;border-radius:4px;font-size:10px;font-weight:800;vertical-align:middle; }
+.translate-mode-badge.full { background:var(--green-soft);color:var(--green); }
+.translate-mode-badge.translate { background:var(--accent-soft);color:var(--accent); }
 .translate-chunk-choice small { display:block;color:var(--text-dim);font:10px ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis; }
 .translate-pass-cell { display:flex;justify-content:center;align-items:center;gap:6px; }
 .translate-pass-cell button { display:inline-grid;place-items:center;width:25px;height:25px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text-soft);cursor:pointer; }
 .translate-pass-cell button:hover,.translate-pass-cell button[aria-pressed="true"] { border-color:var(--accent);color:var(--accent);background:var(--accent-soft); }
 .translate-pass-cell .translate-pass-state.completed { color:var(--green); }
+.translate-pass-cell .translate-pass-state.error { color:var(--red);border-color:var(--red);background:var(--red-soft); }
 .translate-pass-cell .translate-pass-state.stale { color:var(--amber); }
 .translate-pass-cell .translate-pass-run { color:var(--accent); }
 .translate-pass-cell .translate-pass-run:disabled { opacity:.35;cursor:not-allowed; }
