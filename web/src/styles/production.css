@@ -132,16 +132,20 @@ body:has(dialog.drawer[open])::before { display:none; }
 .usage-table { min-width:820px; }.usage-table th:first-child { width:26%; }.usage-table th:nth-child(2) { width:18%; }.usage-table th:nth-child(3) { width:14%; }
 .p1-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
 .p1-metrics .phase-metric-value { font-variant-numeric:tabular-nums; }
-.analyse-detail-grid { grid-template-columns:minmax(0,3.2fr) minmax(250px,1fr); }
-.analyse-detail-grid .usage-table { min-width:800px; }
-.analyse-detail-grid .usage-table th:first-child { width:22%; }
-.analyse-detail-grid .usage-table th:nth-child(2) { width:16%; }
-.analyse-detail-grid .usage-table th:nth-child(3) { width:10%; }
-.analyse-detail-grid .usage-table th:last-child { width:12%; }
+.analyse-detail-page { max-width:1480px; }
+.analyse-detail-page > [data-ui-debug-id="PGD"] { margin-bottom:14px; }
+.analyse-generated-facts { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0; }
+.analyse-generated-facts > div { min-width:0; }
+.analyse-generated-facts dt { color:var(--text-dim);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em; }
+.analyse-generated-facts dd { margin:5px 0 0;font-size:13px;overflow-wrap:anywhere; }
+.analyse-detail-grid { grid-template-columns:minmax(0,1fr); }
+.analyse-detail-grid .usage-table { min-width:max-content;table-layout:auto; }
+.analyse-detail-grid .usage-table th { width:auto; }
+.analyse-detail-grid .usage-table td { overflow:visible;text-overflow:clip; }
 @keyframes p1-counting { 0%,88%,100% { opacity:1; } 94% { opacity:.68; } }
 .p1-counting { animation:p1-counting 3.6s ease-in-out infinite; }
 .phase-detail-grid + [data-ui-debug-id="PAC"] { margin-top:14px; }
-@media (max-width:820px) { .p1-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.analyse-detail-grid { grid-template-columns:1fr; } }
+@media (max-width:820px) { .p1-metrics,.analyse-generated-facts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (prefers-reduced-motion:reduce) { .p1-counting { animation:none; } }
 .pass-summary { min-width:760px; }.pass-summary th:nth-child(2) { width:24%; }
 .prepare-detail-page { max-width:1520px; }

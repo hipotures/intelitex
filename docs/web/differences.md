@@ -50,6 +50,9 @@ and responsive breakpoints. The following differences carry real application sem
   gently pulses only while P1 runs; incomplete usage is described in tooltips instead
   of appending `(partial)` to the visible totals. The Cost tooltip explains saved
   versus current catalog rates and the API-equivalent nature of Codex estimates.
+- Analyse presents Generated data as a compact strip above the full-width Analysis
+  units table, with Artifacts below it. The table fills available width and scrolls
+  internally only when its content needs more space.
 - Before P1 has a saved plan, Analyse shows one clear empty state and a return action
   rather than empty token and artifact panels. Saved P1 can be cleared through a
   confirmed, revision-controlled action when no dependent work exists; historical

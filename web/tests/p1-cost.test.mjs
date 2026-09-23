@@ -93,6 +93,19 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
         'the Cost value is not ellipsized on desktop')
       assert.equal(await page.locator('[data-ui-debug-id="PAN"] .diagnostic-scroll').evaluate(node => node.scrollWidth <= node.clientWidth), true,
         'the new Cost column is visible without horizontal scrolling on desktop')
+      const layout = await page.evaluate(() => {
+        const generated = document.querySelector('[data-ui-debug-id="PGD"]').getBoundingClientRect()
+        const analysis = document.querySelector('[data-ui-debug-id="PAN"]').getBoundingClientRect()
+        const artifacts = document.querySelector('[data-ui-debug-id="PAR"]').getBoundingClientRect()
+        const main = document.querySelector('.analyse-detail-page').getBoundingClientRect()
+        const mainStyle = getComputedStyle(document.querySelector('.analyse-detail-page'))
+        return { generatedBottom: generated.bottom, analysisTop: analysis.top, analysisBottom: analysis.bottom,
+          artifactsTop: artifacts.top, analysisWidth: analysis.width,
+          mainWidth: main.width - parseFloat(mainStyle.paddingLeft) - parseFloat(mainStyle.paddingRight) }
+      })
+      assert.ok(layout.generatedBottom < layout.analysisTop, 'compact generated data precedes the table')
+      assert.ok(layout.artifactsTop > layout.analysisBottom, 'artifacts follow the table')
+      assert.ok(layout.analysisWidth >= layout.mainWidth - 1, 'analysis table gets the full content width')
       const gap = await page.evaluate(() => document.querySelector('[data-ui-debug-id="PAC"]').getBoundingClientRect().top -
         document.querySelector('.analyse-detail-grid').getBoundingClientRect().bottom)
       assert.ok(gap >= 13, `P1 data has spacing after the analysis grid: ${gap}px`)
@@ -119,6 +132,8 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
       await page.getByRole('button', { name: 'Toggle theme' }).click()
       await page.screenshot({ path: `${output}/complete-light-390.png`, fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+      assert.equal(await page.locator('[data-ui-debug-id="PAN"] .diagnostic-scroll').evaluate(node => node.scrollWidth > node.clientWidth), true,
+        'a narrow viewport scrolls inside the table')
       assert.deepEqual(errors, [])
       assert.deepEqual(failed, [])
     } finally { await page.close() }
