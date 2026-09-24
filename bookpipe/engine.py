@@ -451,6 +451,17 @@ def _compatible_completed_attempts(key_root: Path, body: dict, semantic: dict | 
     return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+def _decode_json_document(raw: str, *, diffusion_thought: bool = False) -> Any:
+    """Unwrap a complete JSON fence and the vLLM diffusion thought marker."""
+    clean = raw.strip()
+    if diffusion_thought:
+        clean = re.sub(r"\Athought[ \t]*\r?\n", "", clean, count=1, flags=re.I)
+    fence = re.fullmatch(r"```(?:json)?[ \t]*\r?\n?([\s\S]*?)\s*```", clean, flags=re.I)
+    if fence:
+        clean = fence.group(1).strip()
+    return json.loads(clean)
+
+
 class Runner:
     def __init__(self, store: Store, client: Client, settings: dict, ui: Any):
         self.store, self.client, self.settings, self.ui = store, client, settings, ui
@@ -515,9 +526,10 @@ class Runner:
         for attempt in ([] if force else _compatible_completed_attempts(key_root, recovery_body, base_semantic)):
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
-                clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
                 meta = read_json(attempt / "response_meta.json")
-                value = _decode_transport_result(json.loads(clean), meta.get("wire_format", "canonical"), inputs)
+                decoded = _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
+                                                and getattr(provider, "diffusion", False))
+                value = _decode_transport_result(decoded, meta.get("wire_format", "canonical"), inputs)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 validate_result(pass_no, value, inputs)
             except (OSError, json.JSONDecodeError, jsonschema.ValidationError, PipelineError):
@@ -636,9 +648,10 @@ class Runner:
                 snapshot = read_json(attempt / "pricing.json")
                 recorder.pricing(apply_estimate(snapshot, read_json(attempt / "usage.json")))
             try:
-                clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
                 value = _decode_transport_result(
-                    json.loads(clean), meta.get("wire_format", "canonical"), inputs, body.get("codec_context")
+                    _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
+                                          and getattr(provider, "diffusion", False)),
+                    meta.get("wire_format", "canonical"), inputs, body.get("codec_context")
                 )
                 if meta.get("wire_format") == "compact-v1":
                     recorder.decoded_canonical(value)

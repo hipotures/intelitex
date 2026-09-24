@@ -18,7 +18,7 @@ from bookpipe.application import (
 )
 from bookpipe.bootstrap import create_application
 from bookpipe.client import Client
-from bookpipe.engine import (Runner, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
+from bookpipe.engine import (Runner, _decode_json_document, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
                              response_schema, source_blocks, validate_result)
 from bookpipe.importer import extract_blocks, import_folder, pack_blocks, reading_order, split_long
 from bookpipe.infrastructure.epub_publisher import EpubPublicationBuilder
@@ -199,6 +199,17 @@ def test_p1_schema_constrains_evidence_to_current_blocks():
     assert obs_items["enum"] == ["B0000001", "B0000002"]
 
 
+def test_vllm_diffusion_thought_marker_and_complete_json_fence():
+    raw = 'thought\n```json\n{"checks":[],"issues":[]}\n```\n'
+    assert _decode_json_document(raw, diffusion_thought=True) == {"checks": [], "issues": []}
+    with pytest.raises(json.JSONDecodeError):
+        _decode_json_document(raw)
+    with pytest.raises(json.JSONDecodeError):
+        _decode_json_document('other prose\n```json\n{"checks":[],"issues":[]}\n```', diffusion_thought=True)
+    with pytest.raises(json.JSONDecodeError):
+        _decode_json_document('thought\n```json\n{"checks":[]}\n```\nsecond block', diffusion_thought=True)
+
+
 def test_successive_llamacpp_attempts_vary_seed_and_temperature():
     provider = type("Provider", (), {"provider": "llamacpp"})()
     base = {"seed": 42, "temperature": 0.05, "messages": []}
@@ -279,13 +290,17 @@ def test_p1_conservative_repair_adds_exact_term_evidence_from_same_unit():
     validate_result(1, repaired, inputs)
 
 
-def test_runner_recovers_failed_attempt_from_current_fingerprint_without_model_call(project):
+@pytest.mark.parametrize("diffusion", [False, True])
+def test_runner_recovers_failed_attempt_from_current_fingerprint_without_model_call(project, diffusion):
     root, args, state = project
     settings = read_json(root / "settings.json")
     book = read_json(root / "book.json")
     with Display(True) as ui:
         client = Client(settings, ui)
         client.discover()
+        if diffusion:
+            client.provider = "vllm"
+            client.diffusion = True
         store = Store(root)
         try:
             plan = analysis_plan(store, book, client, settings)
@@ -308,7 +323,10 @@ def test_runner_recovers_failed_attempt_from_current_fingerprint_without_model_c
                            "evidence": [inputs["SOURCE_BLOCKS"][0]["id"]]}],
                 "observations": [],
             }
-            atomic_text(attempt / "answer.txt", json.dumps(answer) + "\n")
+            raw_answer = json.dumps(answer)
+            if diffusion:
+                raw_answer = f"thought\n```json\n{raw_answer}\n```"
+            atomic_text(attempt / "answer.txt", raw_answer + "\n")
             atomic_json(attempt / "response_meta.json", {"model": "test-model", "finish_reason": "stop", "elapsed_seconds": 1.0})
             runner = Runner(store, client, settings, ui)
             value, _, _ = runner.run(1, "pass1/" + unit["id"], inputs)
