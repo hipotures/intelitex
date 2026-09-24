@@ -35,6 +35,7 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | POST | `/api/workspaces/{id}/reprepare` | `{revision,request_key?}` → supervised import job that rebuilds an untouched prepared plan in the same workspace |
 | GET | `/api/workspaces/{id}/analysis-reset` | `{revision,has_data,can_reset,reason,history_available}` for a guarded P1 reset |
 | POST | `/api/workspaces/{id}/analysis-reset` | `{revision}` → new reset status after archiving and clearing current P1 state |
+| GET | `/api/workspaces/{id}/analysis/units/{unit_id}/preview?page=0` | Five source blocks plus the saved P1 terms and observations that cite them |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
 | GET | `/api/jobs` | `{jobs:[job],cursor}` |
@@ -88,11 +89,21 @@ as a heuristic and requires the user to verify the language before Save.
 
 ## Jobs and current state
 
-Job input is `{operation:"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,pass_no?,rerun?,target_language?}`.
+Job input is `{operation:"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,unit_id?,pass_no?,rerun?,target_language?}`.
 `profile` selects an existing profile for analyze/translate. `chunk_limit` is a
 nonnegative integer, only for translation; omitted/zero processes all unfinished
 units. `target_language` is only for publication, defaults to `pl`, and must be a
 BCP-47-style language identifier. Publication does not accept `profile`.
+For one P1 analysis unit, send `operation:"analyze"` with `unit_id` from the saved
+analysis plan. All earlier P1 units must have verified receipts; only the requested
+unit may call a model. Saved P1 units cannot be rerun individually because their
+merged memory feeds later units. Clear P1 through its guarded reset before a new
+whole-book analysis. The final unit completes P1 and creates the Review draft.
+The P1 preview has `page`, `next_page`, `available`, `source`, `terms`,
+`observations`, and `truncated`. It reads the selected verified P1 receipt, not
+the merged book memory. Pages are zero-based, bounded to 0–10,000, and contain
+at most five source blocks; terms or observations citing multiple blocks may
+appear beside each cited block.
 For one translation pass, send `chunk_id` with `pass_no` (2–5), optional boolean
 `rerun`, and no nonzero `chunk_limit`. The chunk must belong to the current eligible
 plan. Earlier passes for that chunk must have current saved results. Only the

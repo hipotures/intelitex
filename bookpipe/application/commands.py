@@ -44,6 +44,7 @@ class ImportBookCommand(ModelOptions):
 @dataclass(frozen=True, slots=True)
 class AnalyzeCommand(ModelOptions):
     project: Path
+    unit_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

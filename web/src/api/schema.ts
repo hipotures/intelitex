@@ -70,6 +70,13 @@ export const translationPassPreviewSchema = z.object({ chunk_id: text, pass_no: 
   sentences: z.array(z.object({ id: text, block_id: text, text })),
   checks: z.array(z.record(text, z.unknown())), findings: z.array(z.record(text, z.unknown())) })
 export type TranslationPassPreview = z.infer<typeof translationPassPreviewSchema>
+export const analysisUnitPreviewSchema = z.object({ unit_id: text, page: count, next_page: count.nullable(),
+  available: z.boolean(), truncated: z.boolean(), source: z.array(z.object({ id: text, text })),
+  terms: z.array(z.object({ source: text, aliases: z.array(text), category: text, meaning: text,
+    confidence: text, candidates: z.array(z.object({ text, reason: text })), evidence: z.array(text) })),
+  observations: z.array(z.object({ about: z.array(text), kind: text, statement: text,
+    confidence: text, evidence: z.array(text) })) })
+export type AnalysisUnitPreview = z.infer<typeof analysisUnitPreviewSchema>
 const aggregate = z.object({ value: z.number().nullable(), known_attempts: count, unknown_attempts: count })
 const costEstimate = z.object({ status: text, amount: count.nullable(), currency: nullableText,
   estimate_type: nullableText, note: nullableText })

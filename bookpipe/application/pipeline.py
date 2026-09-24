@@ -46,11 +46,23 @@ def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) 
 
 
 def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
-                    progress: ProgressSink, files=None) -> PipelineResult:
+                    progress: ProgressSink, files=None, unit_id: str | None = None) -> PipelineResult:
     plan = analysis_plan(store, book, client, settings)
+    if unit_id is not None:
+        target_index = next((i for i, unit in enumerate(plan) if unit['id'] == unit_id), None)
+        if target_index is None:
+            raise PipelineError('Analysis unit is not in the current plan.')
+        if store.get('analysis_done') or store.get('analysis:' + unit_id):
+            raise PipelineError('This P1 unit is already saved. Clear P1 before reanalyzing it.')
+        for prior in plan[:target_index]:
+            receipt = store.get('analysis:' + prior['id'])
+            if not receipt or not store.job(receipt['key'], receipt['fingerprint']):
+                raise PipelineError('Run earlier P1 units first; analysis memory depends on their results.')
     runner = Runner(store, client, settings, progress)
     done = sum(bool(store.get("analysis:" + unit["id"])) for unit in plan)
     for unit_index, unit in enumerate(plan, 1):
+        if unit_id is not None and unit['id'] != unit_id:
+            continue
         if hasattr(client, 'select_section'):
             client.select_section(unit['chapter_id'])
         progress.emit(ProgressEvent(
@@ -105,6 +117,8 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
                 "unit_id": unit["id"], "part": unit["part"], "parts": unit["parts"],
             },
         ))
+    if unit_id is not None and done < len(plan):
+        return PipelineResult(store.root, completed_units=done)
     store.finish_analysis()
     path = store.write_review(book["source_fingerprint"])
     progress.emit(ProgressEvent(kind="analysis_completed", values={
@@ -329,6 +343,7 @@ class PipelineService:
             check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
             return execute_analyze(
                 scope.store, book, client, settings, self.progress, self.dependencies.files,
+                command.unit_id,
             )
 
     def translate(self, command: TranslateCommand) -> PipelineResult:

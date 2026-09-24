@@ -799,6 +799,63 @@ def test_preview_and_progress_are_application_facts(api):
     assert saved['translations'] and saved['source']
 
 
+def test_analysis_unit_preview_returns_saved_terms_and_source(api):
+    from bookpipe.store import Store
+    app, root, _, server = api
+    chapter = app.web.book(root)['chapters'][0]
+    unit = {'id': chapter['id'] + '_a001', 'chapter_id': chapter['id'],
+            'chapter_number': chapter['number'], 'part': 1, 'parts': 1,
+            'blocks': chapter['blocks']}
+    atomic_json(root / 'analysis_plan.json', [unit])
+    path = f'/api/workspaces/book/analysis/units/{unit["id"]}/preview'
+    code, pending = request(server, 'GET', path)
+    assert code == 200 and not pending['available'] and pending['source']
+    assert pending['terms'] == [] and pending['observations'] == []
+    block_id = chapter['blocks'][-1]['id']
+    value = {'terms': [{'source': 'Ada', 'aliases': [], 'category': 'people',
+                        'meaning': 'A visitor', 'confidence': 'high',
+                        'candidates': [{'text': 'Ada', 'reason': 'A name'}],
+                        'evidence': [block_id]}],
+             'observations': [{'about': ['Ada'], 'kind': 'reference',
+                               'statement': 'Ada is the visitor.', 'confidence': 'high',
+                               'evidence': [block_id]}]}
+    result_path = root / 'artifacts' / 'pass1' / unit['id'] / 'result.json'
+    atomic_json(result_path, value)
+    store = Store(root)
+    try:
+        key = 'pass1/' + unit['id']
+        store.save_job(key, 'preview-test', result_path, {})
+        store.save_analysis_receipt(unit['id'], {'key': key, 'fingerprint': 'preview-test'})
+    finally:
+        store.close()
+    code, saved = request(server, 'GET', path)
+    assert code == 200 and saved['available']
+    assert saved['terms'] == value['terms'] and saved['observations'] == value['observations']
+    assert saved['source'][-1]['id'] == block_id
+    assert request(server, 'GET', path + '?page=-1')[0] == 400
+    assert request(server, 'GET', path + '?unknown=1')[0] == 400
+    assert request(server, 'GET', path.replace(unit['id'], 'unknown'))[0] == 404
+
+
+def test_targeted_analysis_job_accepts_only_valid_unit_identifiers(api):
+    app, root, service, server = api
+    chapter = app.web.book(root)['chapters'][0]
+    unit_id = chapter['id'] + '_a001'
+    atomic_json(root / 'analysis_plan.json', [{'id': unit_id, 'chapter_id': chapter['id'],
+                                               'chapter_number': chapter['number'], 'part': 1,
+                                               'parts': 1, 'blocks': chapter['blocks']}])
+    assert request(server, 'POST', '/api/workspaces/book/jobs',
+                   {'operation': 'translate', 'unit_id': unit_id})[0] == 400
+    assert request(server, 'POST', '/api/workspaces/book/jobs',
+                   {'operation': 'analyze', 'unit_id': '../unsafe'})[0] == 400
+    code, job = request(server, 'POST', '/api/workspaces/book/jobs',
+                        {'operation': 'analyze', 'unit_id': unit_id,
+                         'request_key': 'p1-unit-request-0123456789'})
+    assert code == 202 and job['operation'] == 'analyze'
+    assert request(server, 'GET', '/api/jobs/' + job['job_id'])[1]['job_id'] == job['job_id']
+    service.supervisor.stop(job['job_id'])
+
+
 def test_translation_preview_pages_keep_source_sentences_and_results_together(api):
     from bookpipe.store import Store
     app, root, service, server = api

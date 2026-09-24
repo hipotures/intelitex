@@ -99,7 +99,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | Work, active list, Library | GET workspaces/library/pipeline; POST workspaces | Real source metadata, independent workspace rows, idempotent persisted drafts; visible Library loads bounded pages on scroll, while explicit Refresh restarts discovery and retains its last successful result on error |
 | Workspace | GET pipeline/settings/activity; jobs/stop | Five-phase rail, seven-column sections table, counts, actual provenance, supervised Run/Stop |
 | Prepare | GET workspaces/draft profiles; PATCH draft settings; POST workspace prepare/reprepare; GET preparation after import | Real provider-free web import with marked 4-character token estimates; saved pass profiles can change before Prepare; an untouched prepared plan can be rebuilt in place with its old version retained; failed draft import remains visible, empty-lock retry works |
-| Analyse | GET pipeline/usage | Whole-book P1 units, live recorded usage, per-unit and running total cost estimates, and artifact availability; historical P1 attempts without a saved rate use current catalog rates at read time |
+| Analyse | GET pipeline/usage/activity and analysis/units/id/preview; POST jobs with unit_id | Whole-book P1 units, a one-unit run action for the next pending unit, saved source/term/observation preview, per-unit and running total cost estimates, and artifact availability; historical P1 attempts without a saved rate use current catalog rates at read time |
 | Review | GET review/evidence; PATCH term; POST confirm-and-approve | Intersecting filters, candidates/custom/source, reviewed state, committed approval |
 | Translate | GET pipeline/usage/activity and translation/chunks/id/passes/n; POST jobs with chunk_id/pass_no/rerun | One supervised pass per eligible chunk with confirmation, saved source/result previews, retained attempt diagnostics and full Run still available from Workspace |
 | Publish | GET pipeline/activity; POST publish job; GET publication/download | Real validation/size, disabled automatic Publishing, explicit retry without retranslating |
@@ -238,6 +238,11 @@ after each click. The backend remains authoritative for final counts and readine
 Resource invalidation checks the full workspace ID boundary, so a similarly
 prefixed workspace is never swept into this refresh.
 The Analyse detail page has a dedicated no-plan state instead of empty usage cards.
+After planning, its compact P1 unit list and cost column sit beside a paged source
+and saved-result preview. A single-unit action is available only for the next
+pending unit because P1 memory is cumulative; completed units are previewable and
+their rerun requires the guarded whole-P1 reset. Recorded model and token columns
+are available on expansion, while the five metrics remain visible above.
 GET `/api/workspaces/{id}/analysis-reset` supplies an independent revision and
 eligibility; POST with that revision moves current P1 files and a SQLite backup into
 `history/p1_resets/<version>` and clears active P1 database rows under the project

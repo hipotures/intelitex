@@ -82,7 +82,9 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PSM | Prepare source metadata card | `web/src/features/pipeline/PrepareContent.tsx` |
 | PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
-| PAN | Analyse units card | `web/src/features/pipeline/Phase.tsx` |
+| PAN | Analyse units card | `web/src/features/pipeline/AnalyseContent.tsx` |
+| PAV | Analyse P1 source and result preview | `web/src/features/pipeline/AnalyseContent.tsx` |
+| AUM | Analyse unit run confirmation | `web/src/features/pipeline/AnalyseContent.tsx` |
 | PAE | Analyse empty-state card | `web/src/features/pipeline/Phase.tsx` |
 | PAC | Analyse P1 data action card | `web/src/features/pipeline/Phase.tsx` |
 | PRM | P1 reset confirmation modal | `web/src/features/pipeline/Phase.tsx` |

@@ -487,6 +487,36 @@ def test_stop_review_and_resume_analysis(project):
     assert len(review["terms"][0]["evidence"]) >= 2
 
 
+def test_targeted_p1_runs_only_next_unit_and_keeps_cumulative_memory(project):
+    root, _, state = project
+    book = read_json(root / 'book.json')
+    plan = [{'id': f"{chapter['id']}_a001", 'chapter_id': chapter['id'],
+             'chapter_number': chapter['number'], 'part': 1, 'parts': 1,
+             'blocks': chapter['blocks']} for chapter in book['chapters']]
+    atomic_json(root / 'analysis_plan.json', plan)
+    app = create_application()
+    with pytest.raises(PipelineError, match='earlier P1 units'):
+        app.pipeline.analyze(AnalyzeCommand(root, unit_id=plan[1]['id']))
+    assert state.calls[1] == 0
+    app.pipeline.analyze(AnalyzeCommand(root, unit_id=plan[0]['id']))
+    assert state.calls[1] == 1
+    store = Store(root)
+    try:
+        assert not store.get('analysis_done')
+    finally:
+        store.close()
+    preview = app.web.analysis_unit_preview(root, plan[0]['id'])
+    assert preview['available'] and preview['source']
+    assert preview['terms'][0]['source'] == 'Relay'
+    with pytest.raises(PipelineError, match='already saved'):
+        app.pipeline.analyze(AnalyzeCommand(root, unit_id=plan[0]['id']))
+    assert state.calls[1] == 1
+    app.pipeline.analyze(AnalyzeCommand(root, unit_id=plan[1]['id']))
+    assert state.calls[1] == 2
+    assert any(term['source'] == 'Relay' for term in state.requests[-1][1]['EXISTING_MEMORY']['matched'])
+    assert (root / 'terms.review.json').is_file()
+
+
 def test_user_selection_and_incremental_continue(project):
     root, args, state = project
     assert main(["analyze", *args]) == 0

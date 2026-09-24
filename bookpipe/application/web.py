@@ -125,6 +125,42 @@ class WebWorkspaceService:
         return {'id': section_id, 'blocks': blocks[start:start + 20],
                 'next_page': page + 1 if start + 20 < len(blocks) else None}
 
+    def analysis_unit_preview(self, root, unit_id, page=0):
+        """Read a saved P1 delta with its source evidence, without holding a writer lock."""
+        from .sessions import ProjectReadScope
+        if type(page) is not int or not 0 <= page <= 10000:
+            raise ValueError('Invalid preview page.')
+        self.book(root)  # Check the frozen source before displaying its saved plan.
+        path = root / 'analysis_plan.json'
+        if path.is_symlink():
+            raise PipelineError('Unsafe analysis plan.')
+        if not self.dependencies.files.is_file(path):
+            raise KeyError(unit_id)
+        plan = self.dependencies.files.read_json(path)
+        unit = next((item for item in plan if item['id'] == unit_id), None)
+        if unit is None:
+            raise KeyError(unit_id)
+        blocks = unit['blocks']
+        start = page * 5
+        selected = blocks[start:start + 5]
+        ids = {block['id'] for block in selected}
+        with ProjectReadScope(self.dependencies, root) as scope:
+            receipt = scope.store.get('analysis:' + unit_id)
+            if receipt and (not isinstance(receipt, dict) or receipt.get('key') != 'pass1/' + unit_id
+                            or not isinstance(receipt.get('fingerprint'), str)):
+                raise PipelineError('Invalid P1 receipt.')
+            saved = scope.store.job(receipt['key'], receipt['fingerprint']) if receipt else None
+            value = saved['value'] if saved else {}
+        limit = 20000
+        source = [{'id': block['id'], 'text': block['text'][:limit]} for block in selected]
+        terms = [item for item in value.get('terms', []) if ids.intersection(item['evidence'])]
+        observations = [item for item in value.get('observations', []) if ids.intersection(item['evidence'])]
+        return {'unit_id': unit_id, 'page': page,
+                'next_page': page + 1 if start + 5 < len(blocks) else None,
+                'available': saved is not None, 'source': source,
+                'terms': terms, 'observations': observations,
+                'truncated': any(len(block['text']) > limit for block in selected)}
+
     def translation_pass_preview(self, root, chunk_id, pass_no, page=0, status=None):
         """Bounded, validated saved pass output for one eligible translation chunk."""
         from ..processing import effective_book

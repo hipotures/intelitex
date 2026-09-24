@@ -23,6 +23,7 @@ class JobSpec:
     profile: str | None = None
     chunk_limit: int = 0
     chunk_id: str | None = None
+    unit_id: str | None = None
     pass_no: int | None = None
     rerun: bool = False
     target_language: str = "pl"
@@ -41,6 +42,9 @@ class JobSpec:
                 raise ValueError('Targeted translation requires a chunk ID and pass 2–5.')
         elif self.pass_no is not None:
             raise ValueError('A targeted pass requires a chunk ID.')
+        if self.unit_id is not None and (self.operation != 'analyze' or not isinstance(self.unit_id, str)
+                                         or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', self.unit_id)):
+            raise ValueError('Targeted analysis requires a valid analysis unit ID.')
         if type(self.rerun) is not bool or (self.rerun and self.chunk_id is None):
             raise ValueError('Rerun applies only to a targeted translation pass.')
         if not isinstance(self.target_language, str) or not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", self.target_language):

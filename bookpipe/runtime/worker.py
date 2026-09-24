@@ -53,7 +53,7 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             else:
                 app.projects.import_book(command)
         elif spec.operation == "analyze":
-            app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile))
+            app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile, unit_id=spec.unit_id))
         elif spec.operation == "translate":
             app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit,
                                                     chunk_id=spec.chunk_id, pass_no=spec.pass_no, rerun=spec.rerun))

@@ -42,6 +42,13 @@ def dispatch(service, method, parts, body=None, query=None):
             if len(tail) == 2 and tail[0] == 'sections':
                 return response(200, service.configure(ident, body, tail[1]))
         if method == 'GET':
+            if len(tail) == 4 and tail[:2] == ['analysis', 'units'] and tail[3] == 'preview':
+                page = query.get('page', '0') if query is not None else '0'
+                if query is not None and (set(query) - {'page'} or not page.isascii()
+                                          or not page.isdecimal() or len(page) > 5):
+                    raise ValueError('Invalid preview page.')
+                return response(200, service.application.web.analysis_unit_preview(
+                    service.workspaces.resolve(ident), tail[2], int(page)))
             if len(tail) == 5 and tail[:2] == ['translation', 'chunks'] and tail[3] == 'passes':
                 page = query.get('page', '0') if query is not None else '0'
                 if query is not None and (set(query) - {'page', 'status'} or not page.isascii()
