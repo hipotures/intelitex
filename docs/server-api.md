@@ -109,7 +109,8 @@ returns five source blocks and their matching saved P2–P5 data. `page` is an o
 zero-based integer from 0 through 10,000; `next_page` is null after the last block. The
 optional `status` filter accepts `low`, `medium`, `high` for P2 and `ok` or
 `needs_correction` for P4. It selects matching sentences across the entire chunk
-before paging, with their source blocks and findings; P3/P5 reject this filter.
+before paging, with their source blocks and findings. P2 also accepts `attention`
+for medium and high together; P3/P5 reject this filter.
 The response contains `page`, `next_page`, `available`, `current` (verified final P5
 only), `source`, `sentences` (`id`, `block_id`, `text`), `translations`, `checks`,
 `findings`, and `truncated`. P3/P5 translations are selected by source block ID;

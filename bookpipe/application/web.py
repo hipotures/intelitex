@@ -133,7 +133,7 @@ class WebWorkspaceService:
             raise ValueError('Invalid translation pass.')
         if type(page) is not int or page < 0 or page > 10000:
             raise ValueError('Invalid preview page.')
-        allowed_statuses = {2: {'low', 'medium', 'high'}, 4: {'ok', 'needs_correction'}}
+        allowed_statuses = {2: {'low', 'medium', 'high', 'attention'}, 4: {'ok', 'needs_correction'}}
         if status is not None and status not in allowed_statuses.get(pass_no, set()):
             raise ValueError('Invalid preview status.')
         book = effective_book(self.book(root), root)
@@ -153,7 +153,8 @@ class WebWorkspaceService:
             current = pass_no == 5 and store.chunk(chunk_id)['status'] == 'done' and saved is not None and store.chunk(chunk_id)['final_path'] == saved['path']
             value = saved['value'] if saved else {}
             matching_ids = ({item['sid'] for item in value.get('checks', [])
-                             if item['risk' if pass_no == 2 else 'status'] == status}
+                             if (item['risk'] in {'medium', 'high'} if status == 'attention'
+                                 else item['risk' if pass_no == 2 else 'status'] == status)}
                             if status is not None else None)
             all_sentences = ([item for item in chunk['sentences'] if item['id'] in matching_ids]
                              if matching_ids is not None else chunk['sentences'])

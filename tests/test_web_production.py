@@ -813,9 +813,12 @@ def test_translation_preview_pages_keep_source_sentences_and_results_together(ap
     assert len(chunk['blocks']) >= 7
     sixth_sid = next(item['id'] for item in chunk['sentences']
                      if item['block_id'] == chunk['blocks'][5]['id'])
+    seventh_sid = next(item['id'] for item in chunk['sentences']
+                       if item['block_id'] == chunk['blocks'][6]['id'])
     store = Store(root)
     try:
-        for number, value in [(2, {'checks': [{'sid': item['id'], 'risk': 'high' if item['id'] == sixth_sid else 'low'}
+        for number, value in [(2, {'checks': [{'sid': item['id'], 'risk': 'high' if item['id'] == sixth_sid else
+                                                'medium' if item['id'] == seventh_sid else 'low'}
                                                for item in chunk['sentences']],
                                    'issues': [{'sid': sixth_sid, 'source_span': 'Source sentence',
                                                'type': 'style', 'meaning': 'Sixth block issue',
@@ -849,6 +852,9 @@ def test_translation_preview_pages_keep_source_sentences_and_results_together(ap
     assert code == 200 and p2_high['next_page'] is None
     assert [item['id'] for item in p2_high['sentences']] == [sixth_sid]
     assert [item['id'] for item in p2_high['source']] == [chunk['blocks'][5]['id']]
+    code, p2_attention = request(server, 'GET', f'{path}/2?page=0&status=attention')
+    assert code == 200 and p2_attention['next_page'] is None
+    assert [item['id'] for item in p2_attention['sentences']] == [sixth_sid, seventh_sid]
     code, p2_low = request(server, 'GET', f'{path}/2?page=0&status=low')
     assert code == 200 and len(p2_low['source']) == 5 and p2_low['next_page'] == 1
     code, p4_needs = request(server, 'GET', f'{path}/4?page=0&status=needs_correction')

@@ -117,8 +117,10 @@ Translate's P2–P4 previews identify saved output without claiming current inpu
 compatibility. The TPV reads five source blocks and their matching P2–P5 data per
 page, then loads more on click. P2/P4 findings are grouped with the source sentence
 identified by `sid`; a server-side risk/status selector filters all chunk sentences
-before paging. Block IDs appear once on the stronger divider, sentence IDs once on
-the lighter divider. P3/P5 source and translation blocks share a row. P5 alone can
+before paging. The selector uses three buttons (P2: All/M+H/High; P4: All/Needs
+correction/OK). TPV uses one compact sticky header per source block and short sentence
+IDs in a narrow rail, without a divider for every sentence. Source-only previews
+omit the language-header rule. P3/P5 source and translation blocks share a row. P5 alone can
 show a verified current final. A targeted pass reuses
 saved prior-pass inputs or stops before a model call; `rerun` stores a new attempt,
 and a changed P2–P4 marks a finished chunk stale until P5 completes again.
