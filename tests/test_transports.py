@@ -16,8 +16,10 @@ from bookpipe.contracts import preflight_display, preflight_measurement, preflig
 from bookpipe.evidence import AttemptRecorder, EvidenceError
 from bookpipe.engine import response_schema
 from bookpipe.openai_transport import OpenAIResponsesClient
-from bookpipe.profiles import (builtin_codex_profiles, migrate_settings_file, resolve_profile,
+from bookpipe.vllm_transport import VLLMClient
+from bookpipe.profiles import (builtin_codex_profiles, builtin_vllm_profiles, migrate_settings_file, resolve_profile,
                                validate_profiles, with_builtin_profiles, with_profiles)
+from bookpipe.provider_registry import ProviderPool
 from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
 from bookpipe.ui import Display
@@ -28,6 +30,152 @@ from bookpipe.util import PipelineError, atomic_json, read_json
 def quiet_ui():
     with Display(True) as ui:
         yield ui
+
+
+@pytest.fixture
+def vllm_server():
+    received: list[tuple[str, dict]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *_args):
+            pass
+
+        def send_json(self, value, status=200):
+            raw = json.dumps(value).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def do_GET(self):
+            if self.path == "/v1/models":
+                self.send_json({"data": [{"id": "diffusiongemma", "max_model_len": 131072}]})
+            else:
+                self.send_json({"error": "not found"}, 404)
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            received.append((self.path, body))
+            if self.path == "/tokenize":
+                if body.get("model") != "diffusiongemma":
+                    self.send_json({"error": "unknown model"}, 404)
+                else:
+                    self.send_json({"count": 20 if "messages" in body else 3,
+                                    "max_model_len": 131072, "tokens": []})
+                return
+            if self.path != "/v1/chat/completions":
+                self.send_json({"error": "not found"}, 404)
+                return
+            finish = "length" if body["messages"][0]["content"] == "INCOMPLETE" else "stop"
+            events = [
+                {"model": "diffusiongemma", "choices": [{"index": 0, "delta": {"content": '{"ok":true}'}, "finish_reason": None}]},
+                {"choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
+                 "usage": {"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}},
+            ]
+            raw = ("".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n").encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield received, server.server_port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def test_vllm_chat_transport_and_evidence(tmp_path, vllm_server, quiet_ui):
+    received, port = vllm_server
+    profile = {"provider": "vllm", "profile_name": "gpu", "resolved_profile": {},
+               "model": "diffusiongemma", "endpoint": f"http://127.0.0.1:{port}/v1",
+               "context_size": 140000, "planning_output_reserve": 100,
+               "request_timeout": 5, "options": {}}
+    settings = {"passes": {str(i): {"max_tokens": 100, "temperature": 0.1} for i in range(1, 6)}}
+    client = VLLMClient(profile, quiet_ui, settings)
+    attempt = tmp_path / "vllm"
+    recorder = AttemptRecorder(attempt, {"provider": "vllm", "requested_model": "diffusiongemma"})
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+    try:
+        assert client.discover()["id"] == "diffusiongemma"
+        assert client.context == 131072
+        assert client.count("hello") == 3
+        body = client.body("Answer in JSON", {"x": 1}, schema, 1)
+        assert client.preflight(body, recorder) == 20
+        answer, meta = client.generate(body, attempt, recorder)
+    finally:
+        client.close()
+    assert json.loads(answer) == {"ok": True}
+    assert meta["reported_model"] == "diffusiongemma"
+    assert body["response_format"]["json_schema"]["schema"] == schema
+    assert read_json(attempt / "schema.transport.json") == schema
+    assert read_json(attempt / "usage.json")["total_tokens"] == 28
+    assert read_json(attempt / "context.json")["capacity_tokens"] == 131072
+    assert [path for path, _ in received] == ["/tokenize", "/tokenize", "/v1/chat/completions"]
+
+
+def test_vllm_profile_resolves_through_provider_pool(tmp_path, vllm_server, quiet_ui):
+    _, port = vllm_server
+    settings = read_json(Path(__file__).resolve().parent.parent / "settings.default.json")
+    settings["profiles"]["gpu"] = {
+        "provider": "vllm", "enabled": True, "model": "diffusiongemma",
+        "endpoint": f"http://127.0.0.1:{port}/v1", "context_size": 131072,
+        "planning_output_reserve": 16000, "options": {},
+    }
+    settings["pass_profiles"]["1"] = "gpu"
+    validate_profiles(settings, tmp_path)
+    pool = ProviderPool(settings, quiet_ui, tmp_path)
+    try:
+        client = pool.for_pass(1)
+        assert isinstance(client, VLLMClient)
+        assert client.profile_name == "gpu"
+        assert client.resolved_profile["max_output_tokens"] == settings["passes"]["1"]["max_tokens"]
+        assert pool.discover(1)["id"] == "diffusiongemma"
+    finally:
+        pool.close()
+
+
+def test_builtin_vllm_profile_is_available_without_project_copy(tmp_path):
+    settings = read_json(Path(__file__).resolve().parent.parent / "settings.default.json")
+    assert "vllm-diffusiongemma" not in settings["profiles"]
+    name, profile, _ = resolve_profile(settings, 1, command_profile="vllm-diffusiongemma", project=tmp_path)
+    assert name == "vllm-diffusiongemma"
+    assert profile["provider"] == "vllm"
+    assert profile["model"] == "diffusiongemma"
+    assert profile["context_size"] == 131072
+    assert profile["endpoint"] == builtin_vllm_profiles()[name]["endpoint"]
+    assert profile["max_output_tokens"] == settings["passes"]["1"]["max_tokens"]
+
+
+def test_vllm_incomplete_and_context_limit(tmp_path, vllm_server, quiet_ui):
+    _, port = vllm_server
+    profile = {"provider": "vllm", "profile_name": "gpu", "resolved_profile": {},
+               "model": "diffusiongemma", "endpoint": f"http://127.0.0.1:{port}/v1",
+               "context_size": 1100, "request_timeout": 5, "options": {}}
+    settings = {"passes": {str(i): {"max_tokens": 100, "temperature": 0.1} for i in range(1, 6)}}
+    client = VLLMClient(profile, quiet_ui, settings)
+    try:
+        body = client.body("INCOMPLETE", {}, {"type": "object"}, 1)
+        with pytest.raises(PipelineError, match="needs 1,144 tokens"):
+            client.preflight(body)
+        client.context = 131072
+        attempt = tmp_path / "incomplete"
+        recorder = AttemptRecorder(attempt, {"provider": "vllm"})
+        client.preflight(body, recorder)
+        with pytest.raises(PipelineError, match="Incomplete completion"):
+            client.generate(body, attempt, recorder)
+        assert read_json(attempt / "usage.json")["total_tokens"] == 28
+        assert not (attempt / "answer.txt").exists()
+    finally:
+        client.close()
 
 
 @pytest.fixture
@@ -339,7 +487,7 @@ def test_legacy_profile_migration_creates_sqlite_backup(tmp_path):
     reopened.close()
 
 
-def test_all_real_pass_schemas_compile_for_cloud_transports(tmp_path, quiet_ui, monkeypatch):
+def test_all_real_pass_schemas_compile_for_native_transports(tmp_path, quiet_ui, monkeypatch):
     monkeypatch.setenv("TEST_OPENAI_KEY", "not-a-real-key")
     openai = OpenAIResponsesClient({
         "profile_name": "o", "resolved_profile": {}, "provider": "openai", "model": "opaque/model:id",
@@ -353,13 +501,20 @@ def test_all_real_pass_schemas_compile_for_cloud_transports(tmp_path, quiet_ui, 
         "reasoning_effort": "low", "executable": "codex", "options": {"p1_wire_format": "canonical"},
         "project_root": str(tmp_path),
     }, quiet_ui)
+    vllm = VLLMClient({
+        "profile_name": "v", "resolved_profile": {}, "provider": "vllm", "model": "opaque/model:id",
+        "endpoint": "http://127.0.0.1:9/v1", "context_size": 100000,
+        "request_timeout": 1, "options": {},
+    }, quiet_ui, {"passes": {str(i): {"max_tokens": 1000, "temperature": 0.1} for i in range(1, 6)}})
     try:
         for pass_no in range(1, 6):
             schema = response_schema(pass_no, {"SOURCE_BLOCKS": [{"id": "B1", "text": "x"}]})
             assert openai.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["text"]["format"]["schema"] == schema
             assert codex.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["output_schema"] == schema
+            assert vllm.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["response_format"]["json_schema"]["schema"] == schema
     finally:
         openai.close()
+        vllm.close()
 
 
 def test_profile_precedence_and_codex_capability_validation(tmp_path):

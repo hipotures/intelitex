@@ -6,6 +6,7 @@ from typing import Any
 from .client import Client
 from .codex_transport import CodexAppServerClient
 from .openai_transport import OpenAIResponsesClient
+from .vllm_transport import VLLMClient
 from .profiles import resolve_profile
 from .util import PipelineError, digest
 from .processing import configuration
@@ -76,6 +77,8 @@ class ProviderPool:
                 client = Client(self._llama_settings(profile, name), self.ui)
             elif provider == "openai":
                 client = OpenAIResponsesClient(profile, self.ui)
+            elif provider == "vllm":
+                client = VLLMClient(profile, self.ui, self.settings)
             elif provider == "codex":
                 client = CodexAppServerClient(profile, self.ui)
             else:

@@ -8,13 +8,15 @@ you start another session.
 
 ## Native LLM transports and communication evidence / v1.11
 
-Intelitex now supports three independent transports behind the same five-pass
+Intelitex supports four independent transports behind the same five-pass
 pipeline contract:
 
 - `llamacpp`: the existing llama.cpp HTTP/SSE client, native tokenizer and
   complete-request preflight;
 - `openai`: the native foreground Responses API with strict structured output,
   `store: false`, `truncation: disabled`, and `/v1/responses/input_tokens`;
+- `vllm`: the vLLM OpenAI-compatible Chat Completions API, structured JSON schema,
+  streamed usage and native `/tokenize` chat-template preflight;
 - `codex`: a fresh persisted `codex app-server` thread per attempt, over JSONL
   stdio, configured as isolated thin inference rather than a coding agent.
 
@@ -24,6 +26,33 @@ they deliberately do not claim that any cloud model is available to the user.
 Enable cloud profiles only after setting an explicit opaque model ID, verified
 context capacity, and credential reference (OpenAI), or an explicitly authorized
 Codex authentication source.
+
+The local vLLM server at `192.168.100.207:8080` is available to every workspace
+as the built-in `vllm-diffusiongemma` profile; select it for a pass in the web
+workspace or with `--profile vllm-diffusiongemma`. A project-local profile with
+the same name overrides it. To use another server, add a profile like this to
+the project's `settings.json` under `profiles`. The endpoint may end in `/v1`;
+the transport uses `/v1/models`,
+`/tokenize` and `/v1/chat/completions`. An optional `credential_env` names an
+environment variable containing the server's bearer token.
+
+```json
+"vllm-diffusiongemma": {
+  "provider": "vllm",
+  "enabled": true,
+  "model": "diffusiongemma",
+  "endpoint": "http://192.168.100.207:8080/v1",
+  "context_size": 131072,
+  "planning_output_reserve": 16000,
+  "request_timeout": 1200,
+  "options": {}
+}
+```
+
+The transport checks the selected ID and server capacity through `/v1/models`.
+`/tokenize` measures the actual chat messages before generation; the output cap
+and a 1,024-token margin must also fit. A missing tokenizer response stops the
+attempt before generation.
 
 Selection precedence for a new call is: `--pass-profile P=NAME`, `--profile
 NAME`, saved `pass_profiles`, then `default_profile`. Command overrides never

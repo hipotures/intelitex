@@ -333,7 +333,7 @@ class PipelineService:
             )
             client.planning_pass = 1
             selected = client.for_pass(1)
-            if getattr(selected, "provider", "llamacpp") == "llamacpp":
+            if getattr(selected, "provider", "llamacpp") in {"llamacpp", "vllm"}:
                 client.discover(1)
             else:
                 client.identity = {
@@ -370,7 +370,7 @@ class PipelineService:
             planning_pass = command.pass_no if command.chunk_id is not None else 2
             client.planning_pass = planning_pass
             selected = client.for_pass(planning_pass)
-            if getattr(selected, "provider", "llamacpp") == "llamacpp":
+            if getattr(selected, "provider", "llamacpp") in {"llamacpp", "vllm"}:
                 client.discover(planning_pass)
             else:
                 client.identity = {

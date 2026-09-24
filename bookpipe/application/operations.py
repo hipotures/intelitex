@@ -92,8 +92,8 @@ class OperationsService:
             catalog, catalog_path = load_catalog(root)
             recorder.pricing(pricing_snapshot(catalog, catalog_path, provider.provider, provider.model))
             try:
-                if provider.provider == "llamacpp" and not provider.identity.get("id"):
-                    recorder.event("outbound", "provider_discovery", {"provider": "llamacpp"})
+                if provider.provider in {"llamacpp", "vllm"} and not provider.identity.get("id"):
+                    recorder.event("outbound", "provider_discovery", {"provider": provider.provider})
                     recorder.event("inbound", "provider_discovery", provider.discover())
                 body = provider.body(prompt, inputs, schema, command.pass_no)
                 count = provider.preflight(body, recorder)

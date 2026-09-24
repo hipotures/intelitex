@@ -12,7 +12,7 @@ from .catalog import load_catalog, model_entry
 from .util import PipelineError, atomic_json, digest
 
 
-PROVIDERS = {"llamacpp", "openai", "codex"}
+PROVIDERS = {"llamacpp", "openai", "codex", "vllm"}
 COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
     "max_output_tokens", "request_timeout", "reasoning_effort", "credential_env",
@@ -52,13 +52,23 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
     return result
 
 
+def builtin_vllm_profiles() -> dict[str, dict[str, Any]]:
+    """The explicitly configured local GPU server, selectable in any workspace."""
+    return {"vllm-diffusiongemma": {
+        "provider": "vllm", "enabled": True, "model": "diffusiongemma",
+        "endpoint": "http://192.168.100.207:8080/v1", "context_size": 131072,
+        "planning_output_reserve": 16000, "max_output_tokens": None,
+        "request_timeout": 1200, "options": {},
+    }}
+
+
 def with_builtin_profiles(settings: dict[str, Any]) -> dict[str, Any]:
     """Return effective settings with central profiles merged non-destructively."""
     value = copy.deepcopy(settings)
     profiles = value.get("profiles")
     if not isinstance(profiles, dict):
         return value
-    value["profiles"] = {**builtin_codex_profiles(), **profiles}
+    value["profiles"] = {**builtin_codex_profiles(), **builtin_vllm_profiles(), **profiles}
     return value
 
 
@@ -92,6 +102,12 @@ def with_profiles(settings: dict[str, Any]) -> tuple[dict[str, Any], bool]:
             "context_size": None, "planning_output_reserve": 16000,
             "max_output_tokens": None, "request_timeout": value.get("request_timeout", 1200),
             "reasoning_effort": None, "options": {},
+        },
+        "vllm-template": {
+            "provider": "vllm", "enabled": False, "model": None,
+            "endpoint": "http://127.0.0.1:8080/v1", "context_size": None,
+            "planning_output_reserve": 16000, "max_output_tokens": None,
+            "request_timeout": value.get("request_timeout", 1200), "options": {},
         },
         "codex-template": {
             "provider": "codex", "enabled": False, "model": None,
@@ -172,6 +188,20 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
             raise PipelineError(f"Profile {name!r} contains a literal credential-like option; use a credential reference.")
         if profile.get("enabled", True) and provider != "llamacpp" and not profile.get("model"):
             raise PipelineError(f"Enabled {provider} profile {name!r} requires an explicit model ID.")
+        if profile.get("enabled", True) and provider == "vllm" and not profile.get("endpoint"):
+            raise PipelineError(f"Enabled vLLM profile {name!r} requires an endpoint.")
+        if provider == "vllm":
+            if profile.get("reasoning_effort") is not None:
+                raise PipelineError(f"Profile {name!r}: reasoning_effort is not configured for the vLLM transport.")
+            temperature = profile.get("temperature")
+            if temperature is not None and (not isinstance(temperature, (int, float)) or
+                                            isinstance(temperature, bool) or not 0 <= temperature <= 2):
+                raise PipelineError(f"Profile {name!r}: vLLM temperature must be between 0 and 2.")
+            seed = profile.get("seed")
+            if seed is not None and (not isinstance(seed, int) or isinstance(seed, bool)):
+                raise PipelineError(f"Profile {name!r}: vLLM seed must be an integer.")
+            if not isinstance(profile.get("options", {}).get("request_extra", {}), dict):
+                raise PipelineError(f"Profile {name!r}: vLLM options.request_extra must be an object.")
         for field in ("context_size", "planning_output_reserve", "max_output_tokens"):
             number = profile.get(field)
             if number is not None and (not isinstance(number, int) or number <= 0):
@@ -217,6 +247,9 @@ def resolve_profile(
     if profile["provider"] == "llamacpp":
         profile["temperature"] = settings["passes"][str(pass_no)]["temperature"]
         profile["max_output_tokens"] = settings["passes"][str(pass_no)]["max_tokens"]
+        profile["planning_output_reserve"] = profile["max_output_tokens"]
+    elif profile["provider"] == "vllm":
+        profile["max_output_tokens"] = profile.get("max_output_tokens") or settings["passes"][str(pass_no)]["max_tokens"]
         profile["planning_output_reserve"] = profile["max_output_tokens"]
     catalog, _ = load_catalog(project)
     entry = model_entry(catalog, profile["provider"], profile.get("model"))

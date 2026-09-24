@@ -64,6 +64,17 @@
       "reasoning_effort": null,
       "options": {}
     },
+    "vllm-template": {
+      "provider": "vllm",
+      "enabled": false,
+      "model": null,
+      "endpoint": "http://127.0.0.1:8080/v1",
+      "context_size": null,
+      "planning_output_reserve": 16000,
+      "max_output_tokens": null,
+      "request_timeout": 1200,
+      "options": {}
+    },
     "codex-template": {
       "provider": "codex",
       "enabled": false,

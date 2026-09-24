@@ -588,8 +588,8 @@ class Runner:
                 body = provider.body(prompt, payload, schema, pass_no)
                 # llama.cpp discovery is required for a null model/context and
                 # is recorded inside the already-created attempt boundary.
-                if getattr(provider, "provider", "llamacpp") == "llamacpp" and not getattr(provider, "identity", {}).get("id"):
-                    recorder.event("outbound", "provider_discovery", {"provider": "llamacpp", "base": getattr(provider, "base", None)})
+                if getattr(provider, "provider", "llamacpp") in {"llamacpp", "vllm"} and not getattr(provider, "identity", {}).get("id"):
+                    recorder.event("outbound", "provider_discovery", {"provider": provider.provider, "base": getattr(provider, "base", None)})
                     identity = provider.discover()
                     recorder.event("inbound", "provider_discovery", identity)
                     body = provider.body(prompt, payload, schema, pass_no)

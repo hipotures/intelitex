@@ -17,6 +17,18 @@ See the skill's decision register, [differences](differences.md), and
 
 ## Ownership and delivery
 
+The profile resolver and `ProviderPool` also accept `provider: "vllm"` for a
+configured workspace. `VLLMClient` checks the selected model and capacity with
+`GET /v1/models`, measures rendered chat input through `POST /tokenize`, and
+streams schema-constrained output from `POST /v1/chat/completions`. Generation
+and recorded usage still pass through the existing five-pass attempt boundary;
+the web profiles query exposes this configured profile through its existing
+fields. No new browser route or settings editor was added. Local fixture tests in
+`tests/test_transports.py` cover response shape, evidence, capacity rejection and
+incomplete streaming. `vllm-diffusiongemma` is a centrally available profile
+for the explicitly supplied local GPU endpoint; the generic bundled template is
+disabled until configured.
+
 `uv run intelitex serve --workspace-root …` creates one `ASGIServer`, one supervisor,
 one runtime registry and detached workers. FastAPI/Starlette/Uvicorn serve `web/dist`,
 explicit API routes, vetted EPUB downloads and SSE on the same origin. The compatibility

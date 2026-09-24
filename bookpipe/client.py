@@ -67,7 +67,7 @@ class Client:
 
     @property
     def tokenizer_identity(self) -> dict[str, Any]:
-        return {"provider": "llamacpp", "model": self.model, "model_identity": self.identity}
+        return {"provider": self.provider, "model": self.model, "model_identity": self.identity}
 
     def post(self, path: str, body: dict) -> dict:
         try:
@@ -223,7 +223,9 @@ class Client:
         directory.mkdir(parents=True, exist_ok=True)
         atomic_json(directory / "request.json", body)
         if recorder:
-            recorder.transport_request(body, body.get("response_format", {}).get("schema", {}))
+            response_format = body.get("response_format", {})
+            schema = response_format.get("schema") or response_format.get("json_schema", {}).get("schema", {})
+            recorder.transport_request(body, schema)
         answer, thought = [], []
         finish = None
         info: dict[str, Any] = {"model": self.model, "events": 0}
@@ -283,6 +285,8 @@ class Client:
                         for field in ("usage", "timings", "id"):
                             if event.get(field) is not None:
                                 info[field] = event[field]
+                        if isinstance(event.get("model"), str):
+                            info["reported_model"] = event["model"]
                         event_usage = event.get("usage")
                         if isinstance(event_usage, dict) and event_usage:
                             details = event_usage.get("prompt_tokens_details") or {}
@@ -302,7 +306,7 @@ class Client:
                                     "output_tokens": event_usage.get("completion_tokens"),
                                     "reasoning_output_tokens": output_details.get("reasoning_tokens"),
                                     "total_tokens": event_usage.get("total_tokens"),
-                                    "source": "llamacpp_sse_usage", "status": "reported",
+                                    "source": f"{self.provider}_sse_usage", "status": "reported",
                                     "cumulative": True,
                                 }))
                         for choice in event.get("choices", []):
@@ -337,7 +341,7 @@ class Client:
                     output_tokens=usage.get("completion_tokens"),
                     reasoning_output_tokens=(usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
                     total_tokens=usage.get("total_tokens"),
-                    source="llamacpp_sse_usage", scope="attempt",
+                    source=f"{self.provider}_sse_usage", scope="attempt",
                     status="reported" if usage else "unavailable",
                 )
                 recorder.usage([usage] if usage else [], normalized)

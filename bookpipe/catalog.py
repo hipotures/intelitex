@@ -29,7 +29,7 @@ def validate_catalog(value: Any) -> dict[str, Any]:
         if unknown:
             raise PipelineError(f"Unknown catalog model fields: {sorted(unknown)}")
         provider, model_id = model.get("provider"), model.get("id")
-        if provider not in {"llamacpp", "openai", "codex"} or not isinstance(model_id, str) or not model_id:
+        if provider not in {"llamacpp", "openai", "codex", "vllm"} or not isinstance(model_id, str) or not model_id:
             raise PipelineError(f"Catalog model {index} has invalid provider/id.")
         if (provider, model_id) in seen:
             raise PipelineError(f"Duplicate catalog model: {provider}/{model_id}")
@@ -155,7 +155,11 @@ def apply_estimate(snapshot: dict[str, Any], usage: dict[str, Any]) -> dict[str,
         total += amount
     value["estimate"] = {
         "status": "complete" if not unknown else "partial",
-        "type": rate.get("estimate_type") or ("codex_api_equivalent" if value.get("provider") == "codex" else "openai_api_estimate"),
+        "type": rate.get("estimate_type") or (
+            "codex_api_equivalent" if value.get("provider") == "codex" else
+            "vllm_configured_rate_estimate" if value.get("provider") == "vllm" else
+            "openai_api_estimate"
+        ),
         "currency": rate.get("currency"), "amount": total, "components": components,
         "unknown_components": unknown, "provider_reported_charge": None,
     }
