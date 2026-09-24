@@ -59,12 +59,17 @@ export function PreviewPage({ page, passNo }: { page: TranslationPassPreview; pa
     {analysis ? page.sentences.filter(sentence => sentence.block_id === block.id).map(sentence => {
         const check = page.checks.find(item => item.sid === sentence.id)
         const findings = page.findings.filter(item => item.sid === sentence.id)
-        const flagged = passNo === 2 ? check?.risk !== 'low' : check?.status === 'needs_correction'
-        return <div className={`translate-preview-segment${flagged ? ' attention' : ''}`} key={sentence.id}>
+        const risk = passNo === 2 && check ? String(check.risk) : null
+        const riskTone = risk === 'medium' || risk === 'high' ? risk : null
+        const flagged = passNo === 4 && check?.status === 'needs_correction'
+        return <div className={`translate-preview-segment${riskTone ? ` risk-${riskTone}` : flagged ? ' attention' : ''}`} key={sentence.id}>
           <div className="translate-preview-segment-id" title={sentence.id} aria-label={sentence.id}>{sentence.id.split(':').at(-1)}</div>
           <div className="translate-preview-text">{sentence.text}</div>
           <div className="translate-preview-analysis">
-            {check && <strong className={`translate-preview-check${flagged ? ' attention' : ''}`}>{passNo === 2 ? `Risk: ${String(check.risk)}` : `Status: ${String(check.status).replaceAll('_', ' ')}`}</strong>}
+            {check && <strong className={`translate-preview-check${flagged ? ' attention' : ''}`}>
+              {passNo === 2 ? <>Risk: <span className={riskTone ? `risk-${riskTone}` : undefined}>{risk}</span></>
+                : `Status: ${String(check.status).replaceAll('_', ' ')}`}
+            </strong>}
             {findings.map((finding, index) => <p key={index}>{describeFinding(finding)}</p>)}
             {!check && !findings.length && <span className="subtitle">No saved check.</span>}
           </div>

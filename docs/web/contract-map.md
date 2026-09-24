@@ -119,7 +119,9 @@ page, then loads more on click. P2/P4 findings are grouped with the source sente
 identified by `sid`; a server-side risk/status selector filters all chunk sentences
 before paging. The selector uses three buttons (P2: All/M+H/High; P4: All/Needs
 correction/OK). TPV uses one compact sticky header per source block and short sentence
-IDs in a narrow rail, without a divider for every sentence. Source-only previews
+IDs in a narrow rail, without a divider for every sentence. P2 colors only the
+medium/high risk value and its narrow rail: muted amber for medium, muted red for high.
+Source-only previews
 omit the language-header rule. P3/P5 source and translation blocks share a row. P5 alone can
 show a verified current final. A targeted pass reuses
 saved prior-pass inputs or stops before a model call; `rerun` stores a new attempt,

@@ -80,6 +80,34 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await page.getByText('No sentences with this risk in this chunk.').waitFor()
   await page.getByRole('button', { name: 'All', exact: true }).click()
   await page.locator('.translate-preview-segment').first().waitFor()
+  await page.route(`**/api/workspaces/prepared/translation/chunks/${chunkId}/passes/2?*`, async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.checks[0].risk = 'medium'
+    body.checks[1].risk = 'high'
+    await route.fulfill({ response, json: body })
+  })
+  await page.reload()
+  const medium = page.locator('.translate-preview-segment.risk-medium')
+  const high = page.locator('.translate-preview-segment.risk-high')
+  await medium.waitFor()
+  await high.waitFor()
+  const riskColors = await page.locator('.translate-preview-scroll').evaluate(element => {
+    const medium = element.querySelector('.risk-medium .translate-preview-check')
+    const high = element.querySelector('.risk-high .translate-preview-check')
+    return {
+      label: getComputedStyle(medium).color,
+      medium: getComputedStyle(medium.querySelector('.risk-medium')).color,
+      high: getComputedStyle(high.querySelector('.risk-high')).color,
+      mediumBar: getComputedStyle(medium.closest('.translate-preview-segment')).boxShadow,
+      highBar: getComputedStyle(high.closest('.translate-preview-segment')).boxShadow,
+    }
+  })
+  assert.notEqual(riskColors.medium, riskColors.label)
+  assert.notEqual(riskColors.high, riskColors.label)
+  assert.notEqual(riskColors.medium, riskColors.high)
+  assert.notEqual(riskColors.mediumBar, riskColors.highBar)
+  await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-risk-dark-1440.png', animations: 'disabled' })
   const untouchedChunk = pipeline.units[1].id
   await page.locator('.translate-chunk-choice').filter({ hasText: untouchedChunk }).click()
   await page.getByText('Source text · no saved passes yet.').waitFor()
@@ -94,6 +122,8 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Toggle theme' }).click()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  await page.locator('.translate-preview-segment.risk-medium').waitFor()
+  await page.locator('.translate-preview-segment.risk-high').waitFor()
   await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-light-390.png', fullPage: true, animations: 'disabled' })
   assert.deepEqual(errors, [])
   assert.deepEqual(failures, [])

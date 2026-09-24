@@ -30,7 +30,7 @@ it('keeps source and translation for each block in one row even if saved output 
 
 it('keeps one block header and places short sentence IDs beside their checks', () => {
   const analysis = { ...page, pass_no: 2, translations: [],
-    checks: [{ sid: 'B1:S001', risk: 'low' }, { sid: 'B2:S001', risk: 'high' }],
+    checks: [{ sid: 'B1:S001', risk: 'medium' }, { sid: 'B2:S001', risk: 'high' }],
     findings: [{ sid: 'B2:S001', type: 'style', meaning: 'Second sentence issue' }] }
   const { container } = render(<PreviewPage page={analysis} passNo={2} />)
   const segments = container.querySelectorAll('.translate-preview-segment')
@@ -39,13 +39,17 @@ it('keeps one block header and places short sentence IDs beside their checks', (
   expect([...container.querySelectorAll('.translate-preview-segment-id')].map(item => item.textContent)).toEqual(['S001', 'S001'])
   expect(segments[0]!.querySelector('.translate-preview-segment-id')?.getAttribute('title')).toBe('B1:S001')
   expect(segments[0]!.textContent).toContain('First English sentence.')
-  expect(segments[0]!.textContent).toContain('Risk: low')
+  expect(segments[0]!.textContent).toContain('Risk: medium')
   expect(segments[0]!.textContent).not.toContain('Second sentence issue')
   expect(segments[1]!.textContent).toContain('Second English sentence.')
   expect(segments[1]!.textContent).toContain('Risk: high')
   expect(segments[1]!.textContent).toContain('Second sentence issue')
-  expect(segments[0]!.querySelector('.translate-preview-check.attention')).toBeNull()
-  expect(segments[1]!.querySelector('.translate-preview-check.attention')).not.toBeNull()
+  expect(segments[0]!.classList.contains('risk-medium')).toBe(true)
+  expect(segments[1]!.classList.contains('risk-high')).toBe(true)
+  expect(segments[0]!.querySelector('.translate-preview-check.risk-medium')).toBeNull()
+  expect(segments[1]!.querySelector('.translate-preview-check.risk-high')).toBeNull()
+  expect(segments[0]!.querySelector('.translate-preview-check .risk-medium')?.textContent).toBe('medium')
+  expect(segments[1]!.querySelector('.translate-preview-check .risk-high')?.textContent).toBe('high')
 })
 
 it('marks only P4 corrections for attention', () => {
