@@ -15,8 +15,9 @@ pipeline contract:
   complete-request preflight;
 - `openai`: the native foreground Responses API with strict structured output,
   `store: false`, `truncation: disabled`, and `/v1/responses/input_tokens`;
-- `vllm`: the vLLM OpenAI-compatible Chat Completions API, structured JSON schema,
-  streamed usage and native `/tokenize` chat-template preflight;
+- `vllm`: the vLLM OpenAI-compatible Chat Completions API, streamed usage and
+  native `/tokenize` chat-template preflight. Causal models use structured JSON
+  schema; diffusion models use a schema instruction and post-response validation;
 - `codex`: a fresh persisted `codex app-server` thread per attempt, over JSONL
   stdio, configured as isolated thin inference rather than a coding agent.
 
@@ -45,7 +46,7 @@ environment variable containing the server's bearer token.
   "context_size": 131072,
   "planning_output_reserve": 16000,
   "request_timeout": 1200,
-  "options": {}
+  "options": {"diffusion": true}
 }
 ```
 
@@ -53,6 +54,11 @@ The transport checks the selected ID and server capacity through `/v1/models`.
 `/tokenize` measures the actual chat messages before generation; the output cap
 and a 1,024-token margin must also fit. A missing tokenizer response stops the
 attempt before generation.
+vLLM currently rejects per-request temperature, seed and structured-output
+constraints for diffusion models. The `diffusion` option omits those fields;
+the known `diffusiongemma` model ID also selects this behavior by default.
+The pipeline still checks returned JSON against its canonical schema and retries
+invalid output according to the project settings.
 
 Selection precedence for a new call is: `--pass-profile P=NAME`, `--profile
 NAME`, saved `pass_profiles`, then `default_profile`. Command overrides never

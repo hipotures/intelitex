@@ -20,7 +20,10 @@ See the skill's decision register, [differences](differences.md), and
 The profile resolver and `ProviderPool` also accept `provider: "vllm"` for a
 configured workspace. `VLLMClient` checks the selected model and capacity with
 `GET /v1/models`, measures rendered chat input through `POST /tokenize`, and
-streams schema-constrained output from `POST /v1/chat/completions`. Generation
+streams output from `POST /v1/chat/completions`. Causal models use vLLM's JSON
+schema constraint. The configured diffusion model omits unsupported sampling and
+structured-output fields, receives the schema as an instruction, and remains
+subject to the application's response validation. Generation
 and recorded usage still pass through the existing five-pass attempt boundary;
 the web profiles query exposes this configured profile through its existing
 fields. No new browser route or settings editor was added. Local fixture tests in

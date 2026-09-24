@@ -69,7 +69,15 @@ def vllm_server():
             if self.path != "/v1/chat/completions":
                 self.send_json({"error": "not found"}, 404)
                 return
-            finish = "length" if body["messages"][0]["content"] == "INCOMPLETE" else "stop"
+            if "temperature" in body or "response_format" in body or "seed" in body:
+                raw = b'data: {"error":{"message":"unsupported diffusion parameter"}}\n\ndata: [DONE]\n\n'
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            finish = "length" if body["messages"][0]["content"].startswith("INCOMPLETE") else "stop"
             events = [
                 {"model": "diffusiongemma", "choices": [{"index": 0, "delta": {"content": '{"ok":true}'}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
@@ -98,7 +106,7 @@ def test_vllm_chat_transport_and_evidence(tmp_path, vllm_server, quiet_ui):
     profile = {"provider": "vllm", "profile_name": "gpu", "resolved_profile": {},
                "model": "diffusiongemma", "endpoint": f"http://127.0.0.1:{port}/v1",
                "context_size": 140000, "planning_output_reserve": 100,
-               "request_timeout": 5, "options": {}}
+               "request_timeout": 5, "options": {"diffusion": True}}
     settings = {"passes": {str(i): {"max_tokens": 100, "temperature": 0.1} for i in range(1, 6)}}
     client = VLLMClient(profile, quiet_ui, settings)
     attempt = tmp_path / "vllm"
@@ -115,8 +123,9 @@ def test_vllm_chat_transport_and_evidence(tmp_path, vllm_server, quiet_ui):
         client.close()
     assert json.loads(answer) == {"ok": True}
     assert meta["reported_model"] == "diffusiongemma"
-    assert body["response_format"]["json_schema"]["schema"] == schema
-    assert read_json(attempt / "schema.transport.json") == schema
+    assert "temperature" not in body and "seed" not in body and "response_format" not in body
+    assert json.loads(body["messages"][0]["content"].split("schema:\n", 1)[1]) == schema
+    assert read_json(attempt / "schema.transport.json") == {}
     assert read_json(attempt / "usage.json")["total_tokens"] == 28
     assert read_json(attempt / "context.json")["capacity_tokens"] == 131072
     assert [path for path, _ in received] == ["/tokenize", "/tokenize", "/v1/chat/completions"]
@@ -128,7 +137,7 @@ def test_vllm_profile_resolves_through_provider_pool(tmp_path, vllm_server, quie
     settings["profiles"]["gpu"] = {
         "provider": "vllm", "enabled": True, "model": "diffusiongemma",
         "endpoint": f"http://127.0.0.1:{port}/v1", "context_size": 131072,
-        "planning_output_reserve": 16000, "options": {},
+        "planning_output_reserve": 16000, "options": {"diffusion": True},
     }
     settings["pass_profiles"]["1"] = "gpu"
     validate_profiles(settings, tmp_path)
@@ -152,14 +161,41 @@ def test_builtin_vllm_profile_is_available_without_project_copy(tmp_path):
     assert profile["model"] == "diffusiongemma"
     assert profile["context_size"] == 131072
     assert profile["endpoint"] == builtin_vllm_profiles()[name]["endpoint"]
+    assert profile["options"]["diffusion"] is True
     assert profile["max_output_tokens"] == settings["passes"]["1"]["max_tokens"]
+
+
+def test_vllm_diffusion_rejects_unsupported_sampling_options(tmp_path, quiet_ui):
+    settings = read_json(Path(__file__).resolve().parent.parent / "settings.default.json")
+    settings["profiles"]["gpu"] = {
+        **builtin_vllm_profiles()["vllm-diffusiongemma"], "temperature": 0.1,
+    }
+    with pytest.raises(PipelineError, match="do not support temperature"):
+        validate_profiles(settings, tmp_path)
+    settings["profiles"]["gpu"] = {**builtin_vllm_profiles()["vllm-diffusiongemma"], "options": {}}
+    validate_profiles(settings, tmp_path)
+    alias = VLLMClient({**settings["profiles"]["gpu"], "profile_name": "gpu", "resolved_profile": {}},
+                       quiet_ui, settings)
+    try:
+        alias_body = alias.body("Prompt", {}, {"type": "object"}, 1)
+        assert "temperature" not in alias_body and "response_format" not in alias_body
+    finally:
+        alias.close()
+    profile = {**settings["profiles"]["gpu"], "profile_name": "gpu", "resolved_profile": {},
+               "temperature": None, "options": {"diffusion": True, "request_extra": {"min_p": 0.2}}}
+    client = VLLMClient(profile, quiet_ui, settings)
+    try:
+        with pytest.raises(PipelineError, match="reserved key 'min_p'"):
+            client.body("Prompt", {}, {"type": "object"}, 1)
+    finally:
+        client.close()
 
 
 def test_vllm_incomplete_and_context_limit(tmp_path, vllm_server, quiet_ui):
     _, port = vllm_server
     profile = {"provider": "vllm", "profile_name": "gpu", "resolved_profile": {},
                "model": "diffusiongemma", "endpoint": f"http://127.0.0.1:{port}/v1",
-               "context_size": 1100, "request_timeout": 5, "options": {}}
+               "context_size": 1100, "request_timeout": 5, "options": {"diffusion": True}}
     settings = {"passes": {str(i): {"max_tokens": 100, "temperature": 0.1} for i in range(1, 6)}}
     client = VLLMClient(profile, quiet_ui, settings)
     try:
@@ -512,6 +548,7 @@ def test_all_real_pass_schemas_compile_for_native_transports(tmp_path, quiet_ui,
             assert openai.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["text"]["format"]["schema"] == schema
             assert codex.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["output_schema"] == schema
             assert vllm.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["response_format"]["json_schema"]["schema"] == schema
+            assert vllm.body("pass", {"SOURCE_BLOCKS": []}, schema, pass_no)["temperature"] == 0.1
     finally:
         openai.close()
         vllm.close()

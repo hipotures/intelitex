@@ -23,6 +23,7 @@ class VLLMClient(Client):
             raise PipelineError("vLLM profile requires an HTTP(S) endpoint.")
         self.profile = profile
         self.passes = settings["passes"]
+        self.diffusion = profile.get("options", {}).get("diffusion", profile.get("model") == "diffusiongemma")
         super().__init__({
             "host": endpoint,
             "model": profile["model"],
@@ -73,19 +74,23 @@ class VLLMClient(Client):
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
         cfg = self.passes[str(pass_no)]
         cap = self.profile.get("max_output_tokens") or cfg["max_tokens"]
+        # vLLM's diffusion sampler cannot use guided decoding. Keep the
+        # canonical schema in the prompt; Runner still validates the answer.
+        instructions = prompt + ("\n\nReturn only JSON matching this schema:\n" + dumps(schema) if self.diffusion else "")
         body: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": "system", "content": prompt},
+            "messages": [{"role": "system", "content": instructions},
                          {"role": "user", "content": dumps(inputs)}],
-            "temperature": (self.profile.get("temperature") if self.profile.get("temperature") is not None
-                            else cfg["temperature"]),
             "max_tokens": int(cap),
             "stream": True,
             "stream_options": {"include_usage": True},
-            "response_format": {"type": "json_schema", "json_schema": {
-                "name": f"intelitex_pass_{pass_no}", "strict": True, "schema": schema,
-            }},
         }
+        if not self.diffusion:
+            body["temperature"] = (self.profile.get("temperature") if self.profile.get("temperature") is not None
+                                   else cfg["temperature"])
+            body["response_format"] = {"type": "json_schema", "json_schema": {
+                "name": f"intelitex_pass_{pass_no}", "strict": True, "schema": schema,
+            }}
         if self.profile.get("seed") is not None:
             body["seed"] = int(self.profile["seed"])
         extra = self.profile.get("options", {}).get("request_extra", {})
@@ -94,7 +99,10 @@ class VLLMClient(Client):
         for key, value in extra.items():
             if key in body or key in {"tools", "tool_choice", "n", "best_of", "max_completion_tokens",
                                       "truncate_prompt_tokens", "chat_template_kwargs", "structured_outputs",
-                                      "guided_json", "guided_regex", "guided_choice", "guided_grammar"}:
+                                      "guided_json", "guided_regex", "guided_choice", "guided_grammar"} or (
+                self.diffusion and key in {"temperature", "seed", "min_p", "min_tokens", "logit_bias",
+                                           "bad_words", "allowed_token_ids", "response_format"}
+            ):
                 raise PipelineError(f"vLLM request_extra cannot override reserved key {key!r}.")
             body[key] = value
         return body

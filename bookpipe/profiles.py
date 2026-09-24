@@ -58,7 +58,7 @@ def builtin_vllm_profiles() -> dict[str, dict[str, Any]]:
         "provider": "vllm", "enabled": True, "model": "diffusiongemma",
         "endpoint": "http://192.168.100.207:8080/v1", "context_size": 131072,
         "planning_output_reserve": 16000, "max_output_tokens": None,
-        "request_timeout": 1200, "options": {},
+        "request_timeout": 1200, "options": {"diffusion": True},
     }}
 
 
@@ -191,13 +191,20 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
         if profile.get("enabled", True) and provider == "vllm" and not profile.get("endpoint"):
             raise PipelineError(f"Enabled vLLM profile {name!r} requires an endpoint.")
         if provider == "vllm":
+            diffusion = profile.get("options", {}).get("diffusion", profile.get("model") == "diffusiongemma")
+            if not isinstance(diffusion, bool):
+                raise PipelineError(f"Profile {name!r}: vLLM options.diffusion must be a boolean.")
             if profile.get("reasoning_effort") is not None:
                 raise PipelineError(f"Profile {name!r}: reasoning_effort is not configured for the vLLM transport.")
             temperature = profile.get("temperature")
+            if diffusion and temperature is not None:
+                raise PipelineError(f"Profile {name!r}: diffusion models do not support temperature.")
             if temperature is not None and (not isinstance(temperature, (int, float)) or
                                             isinstance(temperature, bool) or not 0 <= temperature <= 2):
                 raise PipelineError(f"Profile {name!r}: vLLM temperature must be between 0 and 2.")
             seed = profile.get("seed")
+            if diffusion and seed is not None:
+                raise PipelineError(f"Profile {name!r}: diffusion models do not support seed.")
             if seed is not None and (not isinstance(seed, int) or isinstance(seed, bool)):
                 raise PipelineError(f"Profile {name!r}: vLLM seed must be an integer.")
             if not isinstance(profile.get("options", {}).get("request_extra", {}), dict):
