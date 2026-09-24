@@ -70,6 +70,7 @@ class PublicationRequest:
     title: str
     source_files: tuple[PublicationSourceFile, ...]
     blocks: tuple[PublicationBlock, ...]
+    excluded_source_files: tuple[str, ...] = ()
     format_version: int = 1
 
 

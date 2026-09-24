@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 from defusedxml import ElementTree as ET
 
 from bookpipe.application import (
@@ -293,6 +294,57 @@ def test_supported_emphasis_is_reconstructed_as_xhtml_not_literal_markers(tmp_pa
     assert "*Very*" not in xhtml
 
 
+def test_source_emphasis_class_is_preserved_on_translated_emphasis(tmp_path):
+    source = _unpack_public_domain_epub(tmp_path)
+    chapter = source / 'EPUB' / 'text' / 'the-buckwheat.xhtml'
+    chapter.write_text(chapter.read_text().replace('Very often', '<i class="char-i">Very</i> often', 1))
+    project = tmp_path / 'project'
+    app = create_application(provider_factory=CountingOfflinePool)
+    app.projects.import_book(ImportBookCommand(project=project, source=source))
+    _complete_translations(project)
+    result = app.publishing.publish(PublishCommand(project))
+    with zipfile.ZipFile(result.status.output_path) as epub:
+        xhtml = epub.read('EPUB/text/the-buckwheat.xhtml').decode()
+    assert '<em class="char-i">Very</em>' in xhtml
+
+
+def test_publication_renders_saved_translation_line_breaks_and_emphasis():
+    soup = BeautifulSoup('<p>He said <i class="char-i">hello</i>.</p>', 'html.parser')
+    EpubPublicationBuilder._replace_block(
+        soup.p, 'B0001', 'He said *hello*.', 'Powiedział cześć.\n*Znowu.*',
+    )
+    assert str(soup.p) == '<p>Powiedział cześć.<br/><em class="char-i">Znowu.</em></p>'
+
+
+def test_table_row_translation_preserves_separately_bound_cell():
+    soup = BeautifulSoup(
+        '<table><tr><td><span class="person">YURI ALSTER</span></td>'
+        '<td><p>Connexion Corporation security chief</p></td></tr></table>',
+        'html.parser',
+    )
+    EpubPublicationBuilder._replace_block(soup.tr, 'B0006001', 'YURI ALSTER', 'JURI ALSTER')
+    EpubPublicationBuilder._replace_block(
+        soup.p, 'B0006002', 'Connexion Corporation security chief',
+        'Szef bezpieczeństwa Connexion Corp',
+    )
+    assert soup.select_one('tr td:first-child span').get_text() == 'JURI ALSTER'
+    assert soup.select_one('tr td:last-child p').get_text() == 'Szef bezpieczeństwa Connexion Corp'
+
+
+def test_timeline_date_style_survives_translation():
+    soup = BeautifulSoup(
+        '<p><span class="char-gt sans cso_9">1901</span>…Marconi transmits a message.</p>',
+        'html.parser',
+    )
+    EpubPublicationBuilder._replace_block(
+        soup.p, 'B0006091', '1901…Marconi transmits a message.',
+        '1901…Marconi przesyła wiadomość.',
+    )
+    assert str(soup.p) == (
+        '<p><span class="char-gt sans cso_9">1901</span>…Marconi przesyła wiadomość.</p>'
+    )
+
+
 def test_meaningful_inline_link_fails_instead_of_being_silently_discarded(tmp_path):
     source = _unpack_public_domain_epub(tmp_path)
     chapter = source / "EPUB" / "text" / "the-buckwheat.xhtml"
@@ -309,3 +361,32 @@ def test_meaningful_inline_link_fails_instead_of_being_silently_discarded(tmp_pa
     with pytest.raises(PipelineError, match="unsupported inline <a>"):
         app.publishing.publish(PublishCommand(project))
     assert not list((project / "published").glob("*.epub"))
+
+
+def test_publish_selection_omits_source_document_without_deleting_passes(tmp_path):
+    app, project, _ = _import_project(tmp_path)
+    _complete_translations(project)
+    book = read_json(project / 'book.json')
+    section = book['chapters'][0]
+    removed_file = section['blocks'][0]['file']
+    checkpoints = list((project / 'artifacts' / 'publication-fixture').glob('*.json'))
+    atomic_json(project / 'publication.json', {'format_version': 1, 'last_attempt': {
+        'status': 'failed', 'target_language': 'pl',
+        'error': f"Block {section['blocks'][0]['id']} contains unsupported inline <a> markup; publishing stopped rather than discarding it.",
+    }})
+    before = app.publishing.selection(project)
+    assert before['diagnostic']['section_ids'] == [section['id']]
+    selected = app.publishing.configure_selection(project, before['revision'], [section['id']])
+    assert selected['excluded_section_ids'] == [section['id']]
+    assert selected['diagnostic'] is None
+    with pytest.raises(Exception, match='Publication selection changed'):
+        app.publishing.configure_selection(project, before['revision'], [])
+    result = app.publishing.publish(PublishCommand(project))
+    with zipfile.ZipFile(result.status.output_path) as epub:
+        assert removed_file not in epub.namelist()
+        package = ET.fromstring(epub.read('EPUB/package.opf'))
+        assert all(removed_file.rsplit('/', 1)[-1] not in item.get('href', '')
+                   for item in package.findall('.//{*}manifest/{*}item'))
+        assert removed_file.rsplit('/', 1)[-1] not in epub.read('EPUB/nav.xhtml').decode()
+    assert all(path.is_file() for path in checkpoints)
+    assert app.publishing.selection(project)['excluded_section_ids'] == [section['id']]

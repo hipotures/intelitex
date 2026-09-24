@@ -21,6 +21,7 @@ from .results import PublicationStatus, PublishResult
 from .sessions import OperationScope, ProjectReadScope
 from .review import approval_current
 from ..processing import effective_book
+from ..processing import ConfigConflict
 
 
 PUBLICATION_RECORD_VERSION = 1
@@ -54,6 +55,35 @@ def _record_output(root: Path, value) -> Path | None:
     return candidate
 
 
+def _section_groups(book: dict) -> list[dict]:
+    """Sections sharing one XHTML document must be omitted together."""
+    sections = [*book.get('chapters', []), *book.get('non_narrative_sections', [])]
+    parent = {section['id']: section['id'] for section in sections}
+
+    def find(ident):
+        while parent[ident] != ident:
+            ident = parent[ident]
+        return ident
+
+    files: dict[str, str] = {}
+    for section in sections:
+        ident = section['id']
+        for block in section.get('blocks', []):
+            relative = block['file']
+            if relative in files:
+                parent[find(ident)] = find(files[relative])
+            else:
+                files[relative] = ident
+    groups: dict[str, list[dict]] = {}
+    for section in sections:
+        groups.setdefault(find(section['id']), []).append(section)
+    return [{'id': items[0]['id'],
+             'section_ids': [item['id'] for item in items],
+             'titles': [item.get('title') or item['id'] for item in items],
+             'files': sorted({block['file'] for item in items for block in item.get('blocks', [])})}
+            for items in groups.values()]
+
+
 class PublishingService:
     def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink):
         self.dependencies, self.progress = dependencies, progress
@@ -76,6 +106,64 @@ class PublishingService:
     def _write_record(self, root: Path, record: dict) -> None:
         self.dependencies.files.write_json(_record_path(root), record)
 
+    @staticmethod
+    def _selected_sections(book: dict, record: dict) -> tuple[set[str], set[str], list[dict]]:
+        groups = _section_groups(book)
+        raw = record.get('excluded_section_ids', [])
+        if not isinstance(raw, list) or any(not isinstance(value, str) for value in raw) or len(raw) != len(set(raw)):
+            raise PipelineError('Invalid publication section selection.')
+        selected = set(raw)
+        available = {ident for group in groups for ident in group['section_ids']}
+        if not selected <= available:
+            raise PipelineError('Publication selection references an unknown section.')
+        for group in groups:
+            members = set(group['section_ids'])
+            if selected & members and not members <= selected:
+                raise PipelineError('Sections sharing a source document must be omitted together.')
+        excluded_files = {relative for group in groups if selected & set(group['section_ids'])
+                          for relative in group['files']}
+        return selected, excluded_files, groups
+
+    def selection(self, root: Path) -> dict:
+        with ProjectReadScope(self.dependencies, root):
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            record = self._read_record(root)
+            selected, _, groups = self._selected_sections(book, record)
+            diagnostic = self._selection_diagnostic(book, record, selected)
+        return {'revision': digest({'source': book['source_fingerprint'], 'excluded': sorted(selected)}),
+                'excluded_section_ids': sorted(selected),
+                'groups': [{key: group[key] for key in ('id', 'section_ids', 'titles')} for group in groups],
+                'diagnostic': diagnostic}
+
+    @staticmethod
+    def _selection_diagnostic(book: dict, record: dict, selected: set[str]) -> dict | None:
+        error = (record.get('last_attempt') or {}).get('error')
+        match = re.match(r'^Block (B[0-9]+) ', error) if isinstance(error, str) else None
+        if not match:
+            return None
+        ident = match.group(1)
+        affected = [section['id'] for section in [*book.get('chapters', []), *book.get('non_narrative_sections', [])]
+                    if section['id'] not in selected and any(block['id'] == ident for block in section.get('blocks', []))]
+        return {'section_ids': affected,
+                'message': 'The last publication failed while converting source markup in this section.'} if affected else None
+
+    def configure_selection(self, root: Path, revision: str, excluded_section_ids: list[str]) -> dict:
+        with OperationScope(self.dependencies, root):
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            record = self._read_record(root)
+            current, _, groups = self._selected_sections(book, record)
+            if revision != digest({'source': book['source_fingerprint'], 'excluded': sorted(current)}):
+                raise ConfigConflict('Publication selection changed.')
+            candidate = {**record, 'excluded_section_ids': excluded_section_ids}
+            selected, _, _ = self._selected_sections(book, candidate)
+            if selected != current:
+                record['excluded_section_ids'] = sorted(selected)
+                self._write_record(root, record)
+        return {'revision': digest({'source': book['source_fingerprint'], 'excluded': sorted(selected)}),
+                'excluded_section_ids': sorted(selected),
+                'groups': [{key: group[key] for key in ('id', 'section_ids', 'titles')} for group in groups],
+                'diagnostic': self._selection_diagnostic(book, record, selected)}
+
     def download(self, root: Path) -> bytes:
         status = self.status(PublicationStatusCommand(root))
         if not status.current or status.output_path is None:
@@ -90,6 +178,7 @@ class PublishingService:
         return data
 
     def _prepare(self, root: Path, book: dict, store, target_language: str):
+        excluded_sections, excluded_files, _ = self._selected_sections(book, self._read_record(root))
         if not store.get("analysis_done"):
             raise PipelineError("Publishing requires completed P1 analysis.")
         if not approval_current(store, self.dependencies.files):
@@ -128,6 +217,8 @@ class PublishingService:
         translated_parts: dict[str, list[tuple[int, int, str]]] = {}
         artifact_inputs = []
         for chunk, state in states:
+            if chunk['chapter_id'] in excluded_sections:
+                continue
             relative = state.get("final_path")
             if not isinstance(relative, str) or not relative:
                 raise PipelineError(f"Done chunk {chunk['id']} has no final P5 artifact reference.")
@@ -196,6 +287,7 @@ class PublishingService:
             "source_package_fingerprint": source_info.package_fingerprint,
             "target_language": target_language,
             "artifacts": artifact_inputs,
+            "excluded_sections": sorted(excluded_sections),
             **({'processing_revision': book['processing_revision']} if 'processing_revision' in book else {}),
         })
         output = root / "published" / f"{_safe_title(title)} [{target_language.upper()}].epub"
@@ -205,6 +297,7 @@ class PublishingService:
             package_fingerprint=source_info.package_fingerprint,
             target_language=target_language, title=title,
             source_files=source_files, blocks=tuple(bindings),
+            excluded_source_files=tuple(sorted(excluded_files)),
         )
         return publication_fingerprint, request
 
@@ -248,6 +341,7 @@ class PublishingService:
                 }
                 record = {
                     "format_version": PUBLICATION_RECORD_VERSION,
+                    "excluded_section_ids": sorted(self._selected_sections(book, record)[0]),
                     "last_success": success,
                     "last_attempt": {
                         "status": "published", "publication_fingerprint": fingerprint,

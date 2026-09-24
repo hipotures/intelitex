@@ -145,6 +145,17 @@ class ServerService:
         with self.mutable(ident) as root:
             return self.application.web.configure(root, payload, section_id)
 
+    def publication_selection(self, ident):
+        return self.application.publishing.selection(self.workspaces.resolve(ident))
+
+    def configure_publication_selection(self, ident, payload):
+        fields(payload, {'revision', 'excluded_section_ids'}, {'revision', 'excluded_section_ids'})
+        if not isinstance(payload['revision'], str) or not isinstance(payload['excluded_section_ids'], list):
+            raise ValueError('Invalid publication selection.')
+        with self.mutable(ident) as root:
+            return self.application.publishing.configure_selection(
+                root, payload['revision'], payload['excluded_section_ids'])
+
     def analysis_reset_status(self, ident):
         root = self.workspaces.resolve(ident)
         result = self.application.analysis_reset.status(root)

@@ -92,6 +92,52 @@ def _source_members(source_root: Path) -> list[tuple[str, Path]]:
     return members
 
 
+def _linked_member(document: str, href: str) -> str | None:
+    parsed = urlsplit(href)
+    if parsed.scheme or parsed.netloc:
+        return None
+    if not parsed.path:
+        return document
+    return _safe_member(posixpath.normpath(posixpath.join(posixpath.dirname(document),
+                                                    unquote(parsed.path))), 'navigation link')
+
+
+def _prune_navigation(raw: bytes, member: str, excluded_files: set[str]) -> bytes:
+    try:
+        root = ET.fromstring(raw)
+    except Exception as exc:
+        raise PipelineError(f'EPUB navigation document is not valid XML: {exc}') from exc
+    parent = {child: node for node in root.iter() for child in node}
+    is_ncx = root.tag.rsplit('}', 1)[-1] == 'ncx'
+    if is_ncx:
+        for content in list(root.iter()):
+            if content.tag.rsplit('}', 1)[-1] != 'content':
+                continue
+            if _linked_member(member, content.get('src', '')) not in excluded_files:
+                continue
+            point = parent.get(content)
+            if point is None or point.tag.rsplit('}', 1)[-1] not in {'navPoint', 'pageTarget', 'navTarget'}:
+                raise PipelineError('Cannot remove an unknown EPUB navigation target.')
+            if point.tag.rsplit('}', 1)[-1] == 'navPoint' and any(
+                    child.tag.rsplit('}', 1)[-1] == 'navPoint' for child in point):
+                raise PipelineError('Cannot omit a navigation parent that contains retained chapters.')
+            parent[point].remove(point)
+    else:
+        for link in list(root.iter()):
+            if link.tag.rsplit('}', 1)[-1] != 'a' or _linked_member(member, link.get('href', '')) not in excluded_files:
+                continue
+            item = parent.get(link)
+            while item is not None and item.tag.rsplit('}', 1)[-1] != 'li':
+                item = parent.get(item)
+            if item is None:
+                raise PipelineError('Cannot remove an EPUB navigation link without a list item.')
+            if any(child.tag.rsplit('}', 1)[-1] == 'a' and child is not link for child in item.iter()):
+                parent[link].remove(link)
+            else:
+                parent[item].remove(item)
+    return XmlTree.tostring(root, encoding='utf-8', xml_declaration=True)
+
+
 class EpubPublicationBuilder:
     """Build and validate a translated EPUB without knowing project persistence."""
 
@@ -147,6 +193,9 @@ class EpubPublicationBuilder:
         for block in request.blocks:
             replacements.setdefault(block.source_file, []).append(block)
         rendered: dict[str, bytes] = {}
+        excluded_files = set(request.excluded_source_files)
+        if excluded_files & set(replacements):
+            raise PipelineError('Publication selection conflicts with translated source bindings.')
         for relative, bindings in replacements.items():
             source_path = request.source_root / PurePosixPath(_safe_member(relative, "XHTML source"))
             encoding = next((item.encoding for item in request.source_files if item.path == relative), None)
@@ -185,7 +234,17 @@ class EpubPublicationBuilder:
         rendered[package_relative] = self._rewrite_package(
             package_path.read_bytes(), request.target_language,
             request.source_fingerprint, source_info.source_language, generated_at,
+            excluded_files=excluded_files, package_relative=package_relative,
         )
+        if excluded_files:
+            package_root = ET.fromstring(package_path.read_bytes())
+            for item in package_root.findall('.//{*}manifest/{*}item'):
+                if 'nav' not in (item.get('properties') or '').split() and item.get('media-type') != 'application/x-dtbncx+xml':
+                    continue
+                member = _linked_member(package_relative, item.get('href', ''))
+                if member and member not in excluded_files:
+                    rendered[member] = _prune_navigation((request.source_root / member).read_bytes(),
+                                                          member, excluded_files)
 
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
@@ -195,9 +254,10 @@ class EpubPublicationBuilder:
         os.close(descriptor)
         temporary = Path(temporary_name)
         try:
-            self._write_zip(temporary, request.source_root, rendered)
+            self._write_zip(temporary, request.source_root, rendered, excluded_files)
             validation = validate_epub(
                 temporary, request.target_language, required_xhtml=tuple(replacements),
+                excluded_files=excluded_files,
             )
             os.replace(temporary, request.output_path)
             if hasattr(os, "O_DIRECTORY"):
@@ -224,22 +284,62 @@ class EpubPublicationBuilder:
             raise PipelineError(
                 f"Block {block_id} maps to <{node.name}>, not a safe leaf prose element."
             )
+        if node.name == 'tr':
+            # Import can bind the first table cell to its row while a second
+            # cell is bound separately to a nested <p>. Replacing the whole
+            # row would silently destroy that second translation.
+            matches = [part for part in node.descendants
+                       if isinstance(part, NavigableString) and str(part).strip() == source_text]
+            if len(matches) != 1:
+                raise PipelineError(f"Block {block_id} cannot be mapped to one table-cell text node.")
+            parts, _, _ = _parse_inline(translated_text.strip(), block_id)
+            original = matches[0]
+            parent = original.parent
+            position = parent.contents.index(original)
+            original.extract()
+            holder = parent_soup_new_tag('span', parent)
+            _append_inline(holder, parts)
+            for offset, child in enumerate(list(holder.contents)):
+                parent.insert(position + offset, child.extract())
+            return
+        prefix_span = next((child for child in node.contents if isinstance(child, Tag)), None)
+        if (prefix_span is not None and node.contents[0] is prefix_span
+                and prefix_span.name == 'span' and set(prefix_span.attrs) == {'class'}
+                and not prefix_span.find(True) and prefix_span.get_text()
+                and source_text.startswith(prefix_span.get_text())
+                and translated_text.startswith(prefix_span.get_text())):
+            # Timeline dates are styled as an initial span. Keep the source
+            # styling when the same date starts the saved translation.
+            prefix_text = prefix_span.get_text()
+            retained_prefix = copy.deepcopy(prefix_span)
+            source_text = source_text[len(prefix_text):]
+            translated_text = translated_text[len(prefix_text):]
+        else:
+            retained_prefix = None
         anchors: list[Tag] = []
         semantics: list[str] = []
+        emphasized: list[Tag] = []
         breaks = 0
         for child in node.find_all(True):
+            if child is prefix_span and retained_prefix is not None:
+                continue
             name = child.name.lower()
             if name == "a" and not child.get("href") and not child.get_text(strip=True) and (
                 child.get("id") or child.get("name")
             ):
                 anchors.append(copy.deepcopy(child))
                 continue
+            if name == 'span' and child.attrs == {'class': ['char-dcrit']} and not child.find(True):
+                # The imported plain text already contains this diacritic. The
+                # source wrapper only selects a font for that one character.
+                continue
             if name not in SUPPORTED_INLINE:
                 raise PipelineError(
                     f"Block {block_id} contains unsupported inline <{name}> markup; "
                     "publishing stopped rather than discarding it."
                 )
-            if child.attrs:
+            if child.attrs and not (name in {'em', 'i', 'strong', 'b'}
+                                    and set(child.attrs) == {'class'}):
                 raise PipelineError(
                     f"Block {block_id} contains attributed inline <{name}> markup that cannot be "
                     "round-tripped safely."
@@ -248,6 +348,7 @@ class EpubPublicationBuilder:
                 breaks += 1
             else:
                 semantics.append("em" if name in {"em", "i"} else "strong")
+                emphasized.append(child)
 
         source_parts, source_semantics, source_breaks = _parse_inline(source_text, block_id)
         translated_parts, translated_semantics, translated_breaks = _parse_inline(
@@ -257,20 +358,23 @@ class EpubPublicationBuilder:
             raise PipelineError(
                 f"Block {block_id} source inline markup cannot be reconstructed deterministically."
             )
-        if translated_semantics != source_semantics or translated_breaks != source_breaks:
-            raise PipelineError(
-                f"Block {block_id} translation did not preserve the source emphasis/line-break structure."
-            )
-
         for child in list(node.contents):
             child.extract()
+        if retained_prefix is not None:
+            node.append(retained_prefix)
         for anchor in anchors:
             node.append(anchor)
         _append_inline(node, translated_parts)
+        if translated_semantics == source_semantics:
+            translated_emphasis = node.find_all(['em', 'strong'])
+            for source, translated in zip(emphasized, translated_emphasis, strict=True):
+                if source.get('class'):
+                    translated['class'] = list(source['class'])
 
     @staticmethod
     def _rewrite_package(raw: bytes, target_language: str, source_fingerprint: str,
-                         source_language: str | None, generated_at: str) -> bytes:
+                         source_language: str | None, generated_at: str, *,
+                         excluded_files: set[str] | None = None, package_relative: str = '') -> bytes:
         try:
             root = ET.fromstring(raw)
         except Exception as exc:
@@ -278,6 +382,29 @@ class EpubPublicationBuilder:
         namespace = root.tag.partition("}")[0].removeprefix("{") if root.tag.startswith("{") else ""
         if namespace:
             XmlTree.register_namespace("", namespace)
+        excluded_files = excluded_files or set()
+        if excluded_files:
+            manifest = root.find('.//{*}manifest')
+            spine = root.find('.//{*}spine')
+            if manifest is None or spine is None:
+                raise PipelineError('EPUB package has no manifest or spine.')
+            removed_ids = set()
+            matched_files = set()
+            for item in list(manifest):
+                member = _linked_member(package_relative, item.get('href', ''))
+                if member in excluded_files:
+                    if 'nav' in (item.get('properties') or '').split():
+                        raise PipelineError('EPUB navigation document cannot be omitted.')
+                    matched_files.add(member)
+                    removed_ids.add(item.get('id'))
+                    manifest.remove(item)
+            if matched_files != excluded_files:
+                raise PipelineError('Selected publication section does not map to one EPUB manifest document.')
+            for itemref in list(spine):
+                if itemref.get('idref') in removed_ids:
+                    spine.remove(itemref)
+            if not list(spine):
+                raise PipelineError('Publication must retain at least one EPUB spine document.')
         XmlTree.register_namespace("dc", DC_NAMESPACE)
         root.set(f"{{{XML_NAMESPACE}}}lang", target_language)
         metadata = root.find(".//{*}metadata")
@@ -331,15 +458,17 @@ class EpubPublicationBuilder:
         return XmlTree.tostring(root, encoding="utf-8", xml_declaration=True)
 
     @staticmethod
-    def _write_zip(target: Path, source_root: Path, rendered: dict[str, bytes]) -> None:
+    def _write_zip(target: Path, source_root: Path, rendered: dict[str, bytes],
+                   excluded_files: set[str] | None = None) -> None:
         members = _source_members(source_root)
+        excluded_files = excluded_files or set()
         names = {relative for relative, _ in members}
         if "mimetype" not in names:
             raise PipelineError("EPUB source has no mimetype member.")
         with zipfile.ZipFile(target, "w") as archive:
             _write_member(archive, "mimetype", EPUB_MIMETYPE, zipfile.ZIP_STORED)
             for relative, path in members:
-                if relative == "mimetype":
+                if relative == "mimetype" or relative in excluded_files:
                     continue
                 _write_member(
                     archive, relative, rendered.get(relative, path.read_bytes()),
@@ -420,7 +549,8 @@ def _write_member(archive: zipfile.ZipFile, name: str, raw: bytes, compression: 
 
 
 def validate_epub(path: Path, target_language: str,
-                  *, required_xhtml: tuple[str, ...] = ()) -> tuple[str, ...]:
+                  *, required_xhtml: tuple[str, ...] = (),
+                  excluded_files: set[str] | None = None) -> tuple[str, ...]:
     checks: list[str] = []
     if not zipfile.is_zipfile(path):
         raise PipelineError("Generated publication is not a ZIP archive.")
@@ -487,4 +617,18 @@ def validate_epub(path: Path, target_language: str,
             except Exception as exc:
                 raise PipelineError(f"Generated XHTML {relative} is not parseable: {exc}") from exc
         checks.append("modified-xhtml")
+        if excluded_files:
+            for relative in names:
+                if not relative.endswith(('.xhtml', '.html', '.ncx')):
+                    continue
+                try:
+                    document = ET.fromstring(archive.read(relative))
+                except Exception as exc:
+                    raise PipelineError(f'Generated EPUB document {relative} is not parseable: {exc}') from exc
+                for element in document.iter():
+                    for attribute in ('href', 'src'):
+                        href = element.get(attribute)
+                        if href and _linked_member(relative, href) in excluded_files:
+                            raise PipelineError('Generated EPUB still links to an omitted source document.')
+            checks.append('omitted-links')
     return tuple(checks)

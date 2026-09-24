@@ -24,6 +24,8 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces/{id}/usage` | Retained usage by unit/pass/physical attempt |
 | GET | `/api/workspaces/{id}/profiles` | Sanitized effective settings (same as `/settings`) |
 | GET | `/api/workspaces/{id}/settings` | Settings schema below |
+| GET | `/api/workspaces/{id}/publication/selection` | Revisioned groups of source sections that share XHTML files, omitted section IDs, and a safe section-level diagnostic for the last markup failure |
+| PATCH | `/api/workspaces/{id}/publication/selection` | `{revision,excluded_section_ids}`; saves which whole source-document groups to omit from the final EPUB without deleting P1–P5 results |
 | GET | `/api/profiles` | Sanitized installed defaults/profiles, including before the first import |
 | GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders and packed EPUB files |
 | GET | `/api/library` | Legacy complete `{configured,sources}` response |

@@ -42,11 +42,15 @@ def dispatch(service, method, parts, body=None, query=None):
             if tail == ['review', 'confirm-and-approve']:
                 return response(200, service.approve(ident, body, confirm_review=True))
         if method == 'PATCH':
+            if tail == ['publication', 'selection']:
+                return response(200, service.configure_publication_selection(ident, body))
             if tail == ['settings']:
                 return response(200, service.configure(ident, body))
             if len(tail) == 2 and tail[0] == 'sections':
                 return response(200, service.configure(ident, body, tail[1]))
         if method == 'GET':
+            if tail == ['publication', 'selection']:
+                return response(200, service.publication_selection(ident))
             if len(tail) == 4 and tail[:2] == ['analysis', 'units'] and tail[3] == 'preview':
                 page = query.get('page', '0') if query is not None else '0'
                 if query is not None and (set(query) - {'page'} or not page.isascii()
