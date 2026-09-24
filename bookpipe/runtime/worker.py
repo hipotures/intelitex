@@ -80,6 +80,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'local_model_unavailable'
         elif 'source_span is not an exact quote' in message:
             code = 'source_span_mismatch'
+        elif 'draft_span is not found in the specified draft block' in message:
+            code = 'draft_span_mismatch'
         elif 'has no current saved result for this chunk' in message:
             code = 'missing_prerequisite'
         elif 'already has a saved result' in message:

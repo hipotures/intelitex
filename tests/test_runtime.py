@@ -498,6 +498,21 @@ def test_public_job_state_and_safe_worker_failure_code(tmp_path):
     assert frames[0]['error']['code'] == 'local_model_unavailable'
     assert 'private host' not in json.dumps(frames)
 
+    frames.clear()
+
+    def invalid_draft(_sink):
+        raise PipelineError('P4 failed validation. Artifacts: /private/path\n'
+                            'draft_span is not found in the specified draft block.')
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), invalid_draft) == 1
+    safe_frame = decode(json.dumps(frames[0]) + '\n')
+    assert safe_frame['error']['code'] == 'draft_span_mismatch'
+    assert '/private/path' not in json.dumps(safe_frame)
+    public = Job('j', str(tmp_path), 'w', str(project), 'translate', state='failed',
+                 error=safe_frame['error']).public()
+    assert 'P4 failed validation' in public['error']['message']
+
 
 def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, server):
     from test_pipeline import make_epub_source

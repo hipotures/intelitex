@@ -83,12 +83,12 @@ export function PreviewPage({ page, passNo }: { page: TranslationPassPreview; pa
 
 type ChunkPass = Pipeline['units'][number]['passes'][string]
 
-export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string) {
+export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string, retrying = false) {
   const state = pass?.checkpoint_state ?? 'pending'
   if (state === 'completed') return { tone: 'completed', symbol: '✓', label: 'verified final result' }
   if (state === 'stale' || chunkStatus === 'stale' && !!pass?.retained_count)
     return { tone: 'stale', symbol: '↻', label: 'saved result needs revalidation' }
-  if (state === 'error' || !pass?.retained_count && (pass?.failed_attempt_count || pass?.attempt_result === 'not_checkpointed'))
+  if (state === 'error' || !retrying && !pass?.retained_count && (pass?.failed_attempt_count || pass?.attempt_result === 'not_checkpointed'))
     return { tone: 'error', symbol: '×', label: 'failed attempt' }
   if (pass?.retained_count) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
   return { tone: 'pending', symbol: '○', label: 'pending' }
@@ -244,7 +244,10 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
         const finished = item.passes['5']?.checkpoint_state === 'completed' && passNumbers.every(number => !!item.passes[String(number)]?.retained_count)
         return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(null) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
           const pass = item.passes[String(number)]
-          const display = passDisplay(pass, item.status)
+          // A failed physical attempt is not a failed pass while this job can still
+          // retry it. Keep this cell pending until its checkpoint is visible.
+          const retrying = activeTarget?.chunkId === item.id && number <= activeTarget.passNo
+          const display = passDisplay(pass, item.status, retrying)
           const hasSaved = !!pass?.retained_count
           const previous = number === 2 || !!item.passes[String(number - 1)]?.retained_count
           const isWorking = working?.chunkId === item.id && working.passNo === number

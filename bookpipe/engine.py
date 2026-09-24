@@ -566,6 +566,18 @@ class Runner:
                         "markup and punctuation. Do not paraphrase, omit words, or join separate fragments. "
                         "Return one complete valid JSON object."
                     )
+                    if pass_no == 4:
+                        payload["RETRY_INSTRUCTION"] += (
+                            " Each nonempty draft_span must also be a contiguous quote from the POLISH_DRAFT "
+                            "translation with the same block_id."
+                        )
+                elif pass_no == 4 and "draft_span is not found in the specified draft block" in last_error:
+                    payload["RETRY_INSTRUCTION"] = (
+                        "The cited draft_span failed validation. Copy a contiguous substring verbatim from the "
+                        "POLISH_DRAFT translation with the same block_id, or use an empty draft_span if no draft "
+                        "quote applies. Keep source_span an exact quote from SOURCE_SENTENCES with the same sid. "
+                        "Return one complete valid JSON object."
+                    )
                 else:
                     payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."
                 if pass_no == 1:
