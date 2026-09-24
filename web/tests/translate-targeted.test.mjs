@@ -53,6 +53,20 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto(`${config.url}/work/workspaces/prepared/translate`)
   await page.getByRole('heading', { name: 'Translate', exact: true }).waitFor()
+  const layout = await page.evaluate(() => {
+    const grid = document.querySelector('.translate-detail-grid').getBoundingClientRect()
+    const chunks = document.querySelector('[data-ui-debug-id="PSC"]').getBoundingClientRect()
+    const preview = document.querySelector('[data-ui-debug-id="TPV"]').getBoundingClientRect()
+    const usage = document.querySelector('[data-ui-debug-id="PTS"]').getBoundingClientRect()
+    return { gridWidth: grid.width, chunksTop: chunks.top, chunksBottom: chunks.bottom,
+      chunksHeight: chunks.height, previewTop: preview.top, previewHeight: preview.height,
+      usageTop: usage.top, usageWidth: usage.width }
+  })
+  assert.ok(Math.abs(layout.chunksTop - layout.previewTop) < 1, 'chunk progress and preview share a row')
+  assert.ok(Math.abs(layout.chunksHeight - layout.previewHeight) < 1, 'chunk progress and preview share viewport height')
+  assert.ok(layout.usageTop > layout.chunksBottom, 'models and usage sit below the main panels')
+  assert.ok(Math.abs(layout.usageWidth - layout.gridWidth) < 1, 'models and usage fill the available width')
+  assert.equal(await page.locator('[data-ui-debug-id="PSC"] .diagnostic-scroll').evaluate(node => getComputedStyle(node).overflowY), 'auto')
   await page.getByRole('button', { name: `Run ${chunkId} P2` }).click()
   const dialog = page.getByRole('dialog', { name: 'Run this pass?' })
   await dialog.getByText('spends tokens', { exact: false }).waitFor()

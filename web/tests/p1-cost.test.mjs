@@ -91,28 +91,41 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
       const metrics = page.locator('[data-ui-debug-id="PHM"]')
       const cost = metrics.locator('[data-entity-id="Cost"] .phase-metric-value')
       await metrics.getByText('$0.1235').waitFor()
-      assert.equal(await page.locator('[data-ui-debug-id="PAN"] th').last().textContent(), 'Cost')
-      assert.equal(await page.locator('[data-ui-debug-id="PAN"] tbody td').last().textContent(), '$0.1235')
-      assert.equal(await page.locator('[data-ui-debug-id="PAN"] tbody td').last().evaluate(node => node.scrollWidth <= node.clientWidth), true,
+      const costDetails = page.locator('[data-ui-debug-id="PUC"] details')
+      assert.equal(await costDetails.evaluate(node => node.open), false, 'P1 costs and tokens start collapsed')
+      await costDetails.locator('summary').click()
+      await page.locator('[data-ui-debug-id="PUC"]').getByRole('heading', { name: 'Current model assignments' }).waitFor()
+      await page.locator('[data-ui-debug-id="PUC"]').getByRole('heading', { name: 'Recorded provider usage' }).waitFor()
+      assert.equal(await page.locator('[data-ui-debug-id="PUC"] .analyse-model-grid tbody tr').count(), 1)
+      assert.equal(await page.locator('[data-ui-debug-id="PUC"] .pass-summary tbody td').first().textContent(), 'P1')
+      assert.equal(await page.locator('[data-ui-debug-id="PUC"] th').last().textContent(), 'Cost')
+      assert.equal(await page.locator('[data-ui-debug-id="PUC"] tbody td').last().textContent(), '$0.1235')
+      assert.equal(await page.locator('[data-ui-debug-id="PUC"] tbody td').last().evaluate(node => node.scrollWidth <= node.clientWidth), true,
         'the Cost value is not ellipsized on desktop')
-      assert.equal(await page.locator('[data-ui-debug-id="PAN"] .diagnostic-scroll').first().evaluate(node => node.scrollWidth <= node.clientWidth), true,
-        'the Cost column is visible without horizontal scrolling on desktop')
-      assert.equal(await page.locator('[data-ui-debug-id="PAN"] .analyse-unit-table th').count(), 3)
+      await costDetails.locator('summary').click()
+      assert.equal(await page.locator('[data-ui-debug-id="PAN"] .analyse-unit-table th').count(), 2)
       await page.locator('[data-ui-debug-id="PAV"]').getByText('Ada visits the town.').waitFor()
       const layout = await page.evaluate(() => {
-        const generated = document.querySelector('[data-ui-debug-id="PGD"]').getBoundingClientRect()
+        const heading = document.querySelector('[data-ui-debug-id="PHH"]').getBoundingClientRect()
         const analysis = document.querySelector('[data-ui-debug-id="PAN"]').getBoundingClientRect()
         const preview = document.querySelector('[data-ui-debug-id="PAV"]').getBoundingClientRect()
-        const artifacts = document.querySelector('[data-ui-debug-id="PAR"]').getBoundingClientRect()
+        const costs = document.querySelector('[data-ui-debug-id="PUC"]').getBoundingClientRect()
+        const grid = document.querySelector('.analyse-work-grid').getBoundingClientRect()
+        const recent = document.querySelector('[data-ui-debug-id="RAL"]').getBoundingClientRect()
         const main = document.querySelector('.analyse-detail-page').getBoundingClientRect()
         const mainStyle = getComputedStyle(document.querySelector('.analyse-detail-page'))
-        return { generatedBottom: generated.bottom, analysisTop: analysis.top, analysisBottom: analysis.bottom,
-          previewTop: preview.top, previewRight: preview.right, artifactsTop: artifacts.top, analysisWidth: analysis.width,
+        return { headingBottom: heading.bottom, analysisTop: analysis.top, analysisBottom: analysis.bottom,
+          previewTop: preview.top, previewRight: preview.right, previewHeight: preview.height,
+          costsTop: costs.top, costsBottom: costs.bottom, costsWidth: costs.width, gridWidth: grid.width, recentTop: recent.top,
+          analysisWidth: analysis.width, analysisHeight: analysis.height,
           mainWidth: main.width - parseFloat(mainStyle.paddingLeft) - parseFloat(mainStyle.paddingRight) }
       })
-      assert.ok(layout.generatedBottom < layout.analysisTop, 'compact generated data precedes the table')
-      assert.ok(layout.artifactsTop > layout.analysisBottom, 'artifacts follow the table')
+      assert.ok(layout.headingBottom < layout.analysisTop, 'whole-book heading precedes the table')
+      assert.ok(layout.recentTop > layout.costsBottom, 'recent execution follows the costs panel')
       assert.ok(Math.abs(layout.analysisTop - layout.previewTop) < 1, 'unit list and P1 preview share a row')
+      assert.ok(Math.abs(layout.analysisHeight - layout.previewHeight) < 1, 'unit list and preview share viewport height')
+      assert.ok(layout.costsTop > layout.analysisBottom, 'costs and tokens form a separate row below the unit list')
+      assert.ok(Math.abs(layout.costsWidth - layout.gridWidth) < 1, 'costs and tokens fill the available width')
       assert.ok(layout.analysisWidth < layout.mainWidth, 'unit list shares width with the preview')
       const gap = await page.evaluate(() => document.querySelector('[data-ui-debug-id="PAC"]').getBoundingClientRect().top -
         document.querySelector('.analyse-work-grid').getBoundingClientRect().bottom)
@@ -135,12 +148,14 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
       pipeline.analysis.units[0].state = 'completed'
       pipeline.analysis.complete = true
       pipeline.progress.analysis.completed = 1
+      pipeline.review.summary = { total: 2, reviewed: 0, unreviewed: 2, uncertain: 0, confirmed: false, categories: {} }
       preview.available = true
       preview.terms = [{ source: 'Ada', aliases: [], category: 'people', meaning: 'A visitor', confidence: 'high',
         candidates: [{ text: 'Ada', reason: 'A name' }], evidence: ['B0000001'] }]
       await page.evaluate(() => window.testStream.emitProgress({ id: 2, job_id: 'j-1', workspace_id: 'w-1',
         sequence: 2, timestamp: '2026-09-23T00:00:02Z', event: { kind: 'job_state', values: { state: 'succeeded' } } }))
       await page.locator('.phase-status-badge').getByText('Complete').waitFor()
+      await page.getByText(/Whole-book analysis.*2 entities/).waitFor()
       await page.locator('[data-ui-debug-id="PAV"]').getByText('A visitor').waitFor()
       assert.equal(await page.getByRole('button', { name: 'Run ch0001_a001 P1' }).isDisabled(), true)
       assert.equal(await cost.evaluate(node => getComputedStyle(node).animationName), 'none')

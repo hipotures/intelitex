@@ -83,19 +83,20 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PAN | Analyse units card | `web/src/features/pipeline/AnalyseContent.tsx` |
+| PUC | Analyse P1 costs and token usage card | `web/src/features/pipeline/AnalyseContent.tsx` |
 | PAV | Analyse P1 source and result preview | `web/src/features/pipeline/AnalyseContent.tsx` |
 | AUM | Analyse unit run confirmation | `web/src/features/pipeline/AnalyseContent.tsx` |
 | PAE | Analyse empty-state card | `web/src/features/pipeline/Phase.tsx` |
 | PAC | Analyse P1 data action card | `web/src/features/pipeline/Phase.tsx` |
 | PRM | P1 reset confirmation modal | `web/src/features/pipeline/Phase.tsx` |
-| PGD | Analyse generated data card | `web/src/features/pipeline/Phase.tsx` |
-| PAR | Analyse artifacts card | `web/src/features/pipeline/Phase.tsx` |
 | PTS | Translate pass summary card | `web/src/features/pipeline/TranslateContent.tsx` |
 | PSC | Translate chunk progress card | `web/src/features/pipeline/TranslateContent.tsx` |
 | TPV | Translate pass source and result preview | `web/src/features/pipeline/TranslateContent.tsx` |
 | TCM | Translate targeted pass confirmation | `web/src/features/pipeline/TranslateContent.tsx` |
 | PDG | Translate diagnostics card | `web/src/features/pipeline/TranslateContent.tsx` |
 | PPO | Publish output card | `web/src/features/pipeline/Phase.tsx` |
+| PSE | Publish section selection card | `web/src/features/pipeline/PublishSelection.tsx` |
+| PSP | Publish section source preview | `web/src/features/pipeline/PublishSelection.tsx` |
 | PPV | Publish validation card | `web/src/features/pipeline/Phase.tsx` |
 | PMD | Publish metadata card | `web/src/features/pipeline/Phase.tsx` |
 | SET | Settings modal | `web/src/app/Shell.tsx` |

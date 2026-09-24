@@ -5,10 +5,10 @@ import { endpoint, queryClient, reconcile, request, Scope } from '../../api/clie
 import { analysisUnitPreviewSchema, jobSchema, pipelineSchema, type AnalysisUnitPreview, type Pipeline, type Profiles, type Usage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
-import { Button, Empty, ErrorNote, Overlay, Panel } from '../../components/ui/common'
+import { Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
 import { useConnection, useLive } from '../../realtime/coordinator'
 import { Activity } from './Workspace'
-import { displayCost } from './p1Cost'
+import { displayCost, p1Cost } from './p1Cost'
 import { sectionTitles } from './sectionTitles'
 
 const tokenFields = ['input_tokens', 'cached_input_tokens', 'reasoning_output_tokens', 'output_tokens'] as const
@@ -79,11 +79,23 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
   const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived || connection !== 'Live'
   const sourceLanguage = (() => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(pipeline.metadata.source_language ?? pipeline.metadata.language ?? '') ?? 'Source' } catch { return 'Source' } })()
   const selectedProfile = profiles?.resolved_passes['1']
+  const overriddenSections = pipeline.sections.filter(section => section.processing === 'full' && !!section.profiles['1'])
+  const recordedP1 = usage?.units.flatMap(item => item.passes.filter(pass => pass.pass_no === 1)) ?? []
+  const usedProfiles = [...new Set(recordedP1.filter(pass => pass.provider_call_count > 0)
+    .map(pass => pass.profile ?? 'Unknown profile'))]
+  const tokenTotals = tokenFields.map(field => {
+    const known = recordedP1.map(pass => pass[field].value).filter((value): value is number => value !== null)
+    return known.length ? known.reduce((sum, value) => sum + value, 0).toLocaleString() : '—'
+  })
+  const totalCost = p1Cost(usage)
+  const completedUnits = pipeline.analysis.units.filter(item => item.state === 'completed').length
 
   useLayoutEffect(() => {
     const stack = previewStack.current
     if (!stack) return
-    const updateTop = () => stack.style.setProperty('--translate-preview-top', `${stack.getBoundingClientRect().top + window.scrollY}px`)
+    const grid = stack.parentElement
+    if (!grid) return
+    const updateTop = () => grid.style.setProperty('--translate-preview-top', `${stack.getBoundingClientRect().top + window.scrollY}px`)
     const observer = new ResizeObserver(updateTop)
     const main = stack.closest('main')
     if (main) observer.observe(main)
@@ -139,8 +151,7 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <div className="phase-detail-grid translate-detail-grid analyse-work-grid"><div className="phase-detail-stack">
       <Panel debugId="PAN" title="Analysis units"><span className="translate-working-announce" role="status">{workingId ? `Running ${workingId} · P1` : ''}</span>
-        <div className="diagnostic-scroll"><table className="phase-detail-table analyse-unit-table"><thead><tr><th>Section / unit</th><th>P1</th><th className="num">Cost</th></tr></thead><tbody>{pipeline.analysis.units.map(item => {
-          const actual = usage?.units.find(row => row.unit_id === item.id)?.passes.find(pass => pass.pass_no === 1)
+        <div className="diagnostic-scroll"><table className="phase-detail-table analyse-unit-table"><thead><tr><th>Section / unit</th><th>P1</th></tr></thead><tbody>{pipeline.analysis.units.map(item => {
           const isWorking = workingId === item.id
           const state = item.state === 'completed' ? 'completed' : item.state === 'error' || item.failed_attempt_count > 0 ? 'error' : 'pending'
           const symbol = state === 'completed' ? '✓' : state === 'error' ? '×' : '○'
@@ -152,15 +163,8 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
               title={`P1: ${state}. Open saved output.`} onClick={() => setSelectedId(item.id)}>{isWorking ? '◌' : symbol}</button>
               <button className="translate-pass-run" aria-label={`Run ${item.id} P1`} title={canRun ? 'Run this P1 unit; uses model tokens.' : item.state === 'completed' ? 'P1 is already saved. Clear the full P1 state before rerunning it.' : item.state === 'error' ? 'Saved P1 evidence is invalid. Inspect or restore the checkpoint locally.' : 'Earlier P1 units must finish first.'}
                 disabled={disabled || !canRun} onClick={() => { setSelectedId(item.id); setLocalError(null); setUnknownOutcome(false); setPendingRun(item.id) }}><Play size={13} /></button></div></td>
-            <td className="num" title={actual?.cost?.note ?? 'Price or usage unavailable for this unit.'}>{displayCost(actual?.cost)}</td>
           </tr>
         })}</tbody></table></div>
-        <details className="analyse-usage-details"><summary>Model and token details</summary><ErrorNote error={usageError} />
-          <div className="diagnostic-scroll"><table className="phase-detail-table usage-table"><thead><tr><th>Unit</th><th>Recorded model</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead><tbody>{pipeline.analysis.units.map(item => {
-            const actual = usage?.units.find(row => row.unit_id === item.id)?.passes.find(pass => pass.pass_no === 1)
-            return <tr key={item.id}><td>{item.id}</td><td>{actual?.reported_model ?? actual?.requested_model ?? '—'}</td>{tokenFields.map(field => <td className="num" key={field}>{actual?.[field].value?.toLocaleString() ?? '—'}</td>)}<td className="num">{displayCost(actual?.cost)}</td></tr>
-          })}</tbody></table></div>
-        </details>
       </Panel>
     </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>
       <Panel debugId="PAV" title={unit ? `P1 preview · ${unit.id}` : 'P1 preview'}><div className="translate-pass-preview">{!unit ? <Empty>No persisted P1 plan yet.</Empty> : <>
@@ -173,8 +177,30 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
         </div>}
         {previewPages.some(page => page.truncated) && <p className="subtitle">Some very long source blocks were shortened.</p>}
       </>}</div></Panel>
-    </div></div>
-    <Activity id={id} expanded title="Recent execution" />
+    </div>
+      <Panel debugId="PUC" title="P1 costs and tokens"><details className="analyse-usage-details"><summary>Show details</summary><ErrorNote error={usageError} />
+        <h3 className="translate-summary-heading">Current model assignments</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table translate-model-grid analyse-model-grid"><thead><tr><th>Section</th><th>P1</th></tr></thead><tbody>
+          <tr><td><strong>Default</strong></td><td><span className="phase-model"><ProfileSwatch index={selectedProfile?.stable_palette_index} name={selectedProfile?.name ?? 'Unavailable'} />{selectedProfile?.name ?? '—'}</span></td></tr>
+          {overriddenSections.map(section => {
+            const name = section.profiles['1']!
+            const profile = profiles?.profiles.find(item => item.name === name)
+            return <tr key={section.id}><td title={section.id}><strong>{titles.get(section.id) ?? section.title ?? section.id}</strong><small>{section.id}</small></td><td className="overridden" title={`Section model: ${name}`}><span className="phase-model"><ProfileSwatch index={profile?.stable_palette_index} name={name} />{name}</span></td></tr>
+          })}
+        </tbody></table></div>
+        <h3 className="translate-summary-heading">Recorded provider usage</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Units</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead><tbody><tr>
+          <td>P1</td><td title={usedProfiles.join(', ')}>{usedProfiles.length ? usedProfiles.join(', ') : '—'}</td><td>{completedUnits}/{pipeline.analysis.units.length} completed</td>
+          {tokenTotals.map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}<td className="num" title={totalCost.note}>{totalCost.text}</td>
+        </tr></tbody></table></div>
+        <h3 className="translate-summary-heading">Usage by unit</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table usage-table"><thead><tr><th>Unit</th><th>Recorded model</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead><tbody>{pipeline.analysis.units.map(item => {
+            const actual = usage?.units.find(row => row.unit_id === item.id)?.passes.find(pass => pass.pass_no === 1)
+            return <tr key={item.id}><td>{item.id}</td><td>{actual?.reported_model ?? actual?.requested_model ?? '—'}</td>{tokenFields.map(field => <td className="num" key={field}>{actual?.[field].value?.toLocaleString() ?? '—'}</td>)}<td className="num">{displayCost(actual?.cost)}</td></tr>
+          })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
+      </details></Panel>
+    </div>
+    <Activity id={id} title="Recent execution" />
     {pendingRun && <Overlay title="Run this P1 unit?" debugId="AUM" compact close={() => { if (!command.pending) setPendingRun(null) }}><div className="modal-body"><p><strong>{pendingRun} · P1</strong></p><p>This starts one analysis unit and spends model tokens. Later units use its terms and observations as memory.</p><p>Selected profile: <strong>{selectedProfile?.name ?? 'Unavailable'}</strong>.</p>{selectedProfile?.provider === 'llamacpp' && <p className="subtitle">The configured local llama.cpp server must be running.</p>}<ErrorNote error={localError ?? command.error} />{unknownOutcome && <p className="subtitle">The request outcome is unknown. Check the current job before trying again.</p>}</div><div className="modal-foot"><Button onClick={() => setPendingRun(null)}>Cancel</Button><Button variant="primary" disabled={disabled || unknownOutcome} onClick={() => void startUnit()}>{command.pending ? 'Starting…' : 'Run P1 unit'}</Button></div></Overlay>}
   </div>
 }

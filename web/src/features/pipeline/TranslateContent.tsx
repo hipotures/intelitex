@@ -167,9 +167,11 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   useLayoutEffect(() => {
     const stack = previewStack.current
     if (!stack) return
+    const grid = stack.parentElement
+    if (!grid) return
     const updateTop = () => {
       const top = stack.getBoundingClientRect().top + window.scrollY
-      stack.style.setProperty('--translate-preview-top', `${top}px`)
+      grid.style.setProperty('--translate-preview-top', `${top}px`)
     }
     const observer = new ResizeObserver(updateTop)
     const main = stack.closest('main')
@@ -251,6 +253,26 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && previewPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
         })}</tr>
       })}</tbody></table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}</Panel>
+    </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>
+      <Panel debugId="TPV" title={unit ? `${previewPass ? `P${previewPass}` : 'Source'} preview · ${unit.id}` : 'Pass preview'}>
+        <div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <>
+          <div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div>
+          <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
+          <div className="translate-preview-tools"><p className="subtitle" role={preview.isPending ? 'status' : undefined}>{preview.isPending ? 'Loading saved result…' : !firstPreview ? 'Preview unavailable.' : !previewPass ? 'Source text · no saved passes yet.' : firstPreview.available ? previewPass === 5 && firstPreview.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
+              {canFilterPreview && (previewPass === 2 || previewPass === 4) && <PreviewFilter passNo={previewPass} value={selectedCheckStatus}
+                onChange={status => setCheckFilter({ chunkId: unit.id, passNo: previewPass, status })} />}</div>
+          {firstPreview && <>
+            <div className="translate-preview-scroll">
+              <div className={`translate-preview-head${previewPass && firstPreview.available ? '' : ' source-only'}`}><h3>{sourceLanguage}</h3>{previewPass && firstPreview.available && <h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : targetLanguage}</h3>}</div>
+              {previewPages.map(page => <PreviewPage key={page.page} page={page} passNo={previewPass && page.available ? previewPass : null} />)}
+              {selectedCheckStatus && firstPreview.available && !firstPreview.source.length && <Empty>No sentences with this {previewPass === 2 ? 'risk' : 'status'} in this chunk.</Empty>}
+              {preview.hasNextPage && <div className="translate-preview-more"><span>{previewPages.reduce((sum, page) => sum + page.source.length, 0)} blocks shown</span><Button disabled={preview.isFetchingNextPage} onClick={() => void preview.fetchNextPage()}>{preview.isFetchingNextPage ? 'Loading…' : 'Load next 5 blocks'}</Button></div>}
+            </div>
+            {previewPages.some(page => page.truncated) && <p className="subtitle">Some very long entries were shortened.</p>}
+          </>}
+        </>}</div>
+      </Panel>
+    </div>
       <Panel debugId="PTS" title="Models and usage"><details className="translate-summary-details"><summary>Show details</summary>
         <h3 className="translate-summary-heading">Current model assignments</h3>
         <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary translate-model-grid"><thead><tr><th>Section</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>
@@ -272,27 +294,8 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}</tr>
         })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
       </details></Panel>
-    </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>
-      <Panel debugId="TPV" title={unit ? `${previewPass ? `P${previewPass}` : 'Source'} preview · ${unit.id}` : 'Pass preview'}>
-        <div className="translate-pass-preview">{!unit ? <Empty>Select a translation chunk.</Empty> : <>
-          <div className="prepare-preview-kicker">{titles.get(unit.chapter_id) ?? selectedSection?.fallback_excerpt ?? unit.chapter_id}</div>
-          <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
-          <div className="translate-preview-tools"><p className="subtitle" role={preview.isPending ? 'status' : undefined}>{preview.isPending ? 'Loading saved result…' : !firstPreview ? 'Preview unavailable.' : !previewPass ? 'Source text · no saved passes yet.' : firstPreview.available ? previewPass === 5 && firstPreview.current ? 'Verified final translation' : 'Saved pass result · current inputs may differ' : 'No saved result for this pass yet.'}</p>
-              {canFilterPreview && (previewPass === 2 || previewPass === 4) && <PreviewFilter passNo={previewPass} value={selectedCheckStatus}
-                onChange={status => setCheckFilter({ chunkId: unit.id, passNo: previewPass, status })} />}</div>
-          {firstPreview && <>
-            <div className="translate-preview-scroll">
-              <div className={`translate-preview-head${previewPass && firstPreview.available ? '' : ' source-only'}`}><h3>{sourceLanguage}</h3>{previewPass && firstPreview.available && <h3>{previewPass === 2 ? 'Semantic checks' : previewPass === 4 ? 'Correction checks' : targetLanguage}</h3>}</div>
-              {previewPages.map(page => <PreviewPage key={page.page} page={page} passNo={previewPass && page.available ? previewPass : null} />)}
-              {selectedCheckStatus && firstPreview.available && !firstPreview.source.length && <Empty>No sentences with this {previewPass === 2 ? 'risk' : 'status'} in this chunk.</Empty>}
-              {preview.hasNextPage && <div className="translate-preview-more"><span>{previewPages.reduce((sum, page) => sum + page.source.length, 0)} blocks shown</span><Button disabled={preview.isFetchingNextPage} onClick={() => void preview.fetchNextPage()}>{preview.isFetchingNextPage ? 'Loading…' : 'Load next 5 blocks'}</Button></div>}
-            </div>
-            {previewPages.some(page => page.truncated) && <p className="subtitle">Some very long entries were shortened.</p>}
-          </>}
-        </>}</div>
-      </Panel>
-    </div></div>
-    <Activity id={id} expanded title="Recent execution" />
+    </div>
+    <Activity id={id} title="Recent execution" />
     <Panel debugId="PDG" title="Attempt diagnostics"><details className="translate-diagnostics"><summary>Show recorded attempts and measurement notes</summary><ErrorNote error={usageError} />{usage?.warning && <p className="subtitle">{usage.warning}</p>}<div className="execution-diagnostics">{usage?.units.flatMap(item => item.passes.filter(pass => pass.pass_no > 1).map(pass => <details key={`${item.unit_id}-${pass.pass_no}`}><summary>{item.unit_id} · P{pass.pass_no} · {pass.physical_attempt_count} attempts</summary><p>{pass.provider ?? '—'} · {pass.reported_model ?? pass.requested_model ?? '—'} · {pass.result_status} · {pass.failed_attempt_count} failed</p>{pass.attempts.map(attempt => <p key={attempt.attempt_id}>{attempt.attempt_id} · {attempt.acceptance_status} · {attempt.generation_status}</p>)}</details>))}</div></details></Panel>
     {pendingRun && <Overlay title={pendingRun.rerun ? 'Run this pass again?' : 'Run this pass?'} debugId="TCM" compact close={() => { if (!command.pending) setPendingRun(null) }}><div className="modal-body"><p><strong>{pendingRun.chunkId} · P{pendingRun.passNo}</strong></p><p>This starts one model pass and spends tokens. The exact cost depends on the selected profile and response.</p><p>Selected profile: <strong>{pendingProfile?.name ?? 'Unavailable'}</strong>.</p>{pendingProfile?.provider === 'llamacpp' && <p className="subtitle">This pass needs the configured local llama.cpp server to be running.</p>}{pendingRun.rerun && <p>The new result replaces the selected result for this pass. Earlier artifacts remain saved. Later passes and the final translation may need to be run again.</p>}<p className="subtitle">If earlier chunks in this section or thread are unfinished, a P5 result remains stale until rerun with complete context.</p><ErrorNote error={localError ?? command.error} />{unknownOutcome && <p className="subtitle">The request outcome is unknown. Check the current job before trying again.</p>}</div><div className="modal-foot"><Button onClick={() => setPendingRun(null)}>Cancel</Button><Button variant="primary" disabled={disabled || unknownOutcome} onClick={() => void startTarget()}>{command.pending ? 'Starting…' : pendingRun.rerun ? 'Run again' : 'Run pass'}</Button></div></Overlay>}
   </div>

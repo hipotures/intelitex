@@ -30,6 +30,9 @@ export const configSchema = z.object({ revision: text, sections: z.record(text, 
 export const publicationSchema = z.object({ state: text, current: z.boolean(), translation_complete: z.boolean(), target_language: text,
   title: nullableText, creators: z.array(text), source_language: nullableText, generated_at: nullableText, generated_by: nullableText,
   last_error: nullableText, last_failure: nullableText, filename: nullableText, size_bytes: count.nullable(), checks: z.array(text) })
+export const publicationSelectionSchema = z.object({ revision: text, excluded_section_ids: z.array(text),
+  groups: z.array(z.object({ id: text, section_ids: z.array(text), titles: z.array(text) })),
+  diagnostic: z.object({ section_ids: z.array(text), message: text }).nullable().optional() })
 const summary = z.object({ total: count, reviewed: count, unreviewed: count, uncertain: count, confirmed: z.boolean(), categories: z.record(text, count) })
 export const pipelineSchema = z.object({ workspace_id: text, stage: text, active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), publishing: z.boolean(), busy: z.boolean(), metadata,
   artifacts: z.object({ terminology: z.boolean(), book_memory: z.boolean() }), preparation: z.object({ source_id: text, checks: z.array(text) }),

@@ -33,7 +33,8 @@ export function PassMark({ section, number }: { section: Section; number: number
 }
 export function Activity({ id, expanded = false, publicationOnly = false, title }: { id: string; expanded?: boolean; publicationOnly?: boolean; title?: string }) {
   const scope = useContext(Scope)
-  const [open, setOpen] = useState(expanded || preference(scope, `${id}.activity`) === 'true')
+  const preferenceKey = `${id}.${title === 'Recent execution' ? 'recent-execution' : 'activity'}`
+  const [open, setOpen] = useState(expanded || preference(scope, preferenceKey) === 'true')
   const query = useApi(endpoint(id, 'activity'), activitySchema, open)
   const live = useLive()
   const entries = [...new Map([...(query.data?.events ?? []), ...(live.state.activity[id] ?? [])].map(e => [e.id, e])).values()].sort((a, b) => a.id - b.id).filter(e => !publicationOnly || e.event.kind.startsWith('publication')).slice(-120)
@@ -45,7 +46,7 @@ export function Activity({ id, expanded = false, publicationOnly = false, title 
     if (open && ref.current && following.current) ref.current.scrollTop = ref.current.scrollHeight
     if (open && !following.current) setNewActivity(true)
   }, [open, last])
-  return <section className={title ? 'phase-detail-card' : 'accordion'} {...debugTag(publicationOnly ? 'PUL' : title ? 'RAL' : 'LVA')}><button className={title ? 'phase-detail-card-head activity-card-head' : 'accordion-head'} onClick={() => { setOpen(!open); following.current = true; savePreference(scope, `${id}.activity`, String(!open)) }} aria-expanded={open}>
+  return <section className={title ? 'phase-detail-card' : 'accordion'} {...debugTag(publicationOnly ? 'PUL' : title ? 'RAL' : 'LVA')}><button className={title ? 'phase-detail-card-head activity-card-head' : 'accordion-head'} onClick={() => { setOpen(!open); following.current = true; savePreference(scope, preferenceKey, String(!open)) }} aria-expanded={open}>
     <span><span className="accordion-title">{title ?? (publicationOnly ? 'Publication log' : 'Live activity')}</span><span className="activity-count">{entries.length}</span>{!title && <span className="accordion-sub">Pipeline events and model waits</span>}</span><ChevronDown size={16} /></button>
     {open && <div className="accordion-body activity-body"><ErrorNote error={query.error} /><div ref={ref} className="activity-stream" onScroll={() => { const e = ref.current!; following.current = e.scrollHeight - e.scrollTop - e.clientHeight < 24; if (following.current) setNewActivity(false) }}>
       {entries.slice(-80).map(e => <div className="activity-line" key={e.id}><time>{new Date(e.timestamp).toLocaleTimeString()}</time><span>{e.event.kind.replaceAll('_', ' ')} {typeof e.event.values.state === 'string' ? e.event.values.state : ''}{typeof e.event.values.pass_no === 'number' ? ` · P${e.event.values.pass_no}` : ''}{typeof e.event.values.attempt_number === 'number' ? ` · attempt ${e.event.values.attempt_number}` : ''}{e.event.current != null && e.event.total != null ? ` · ${e.event.current}/${e.event.total}` : ''}{typeof e.event.values.unit_id === 'string' ? ` · ${e.event.values.unit_id}` : typeof e.event.values.chunk_id === 'string' ? ` · ${e.event.values.chunk_id}` : ''}</span></div>)}{!entries.length && <Empty>No recorded activity yet.</Empty>}</div>
