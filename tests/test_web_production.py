@@ -811,6 +811,7 @@ def test_analysis_unit_preview_returns_saved_terms_and_source(api):
     code, pending = request(server, 'GET', path)
     assert code == 200 and not pending['available'] and pending['source']
     assert pending['terms'] == [] and pending['observations'] == []
+    assert request(server, 'GET', path + '?page=0')[0] == 200
     block_id = chapter['blocks'][-1]['id']
     value = {'terms': [{'source': 'Ada', 'aliases': [], 'category': 'people',
                         'meaning': 'A visitor', 'confidence': 'high',
@@ -832,6 +833,8 @@ def test_analysis_unit_preview_returns_saved_terms_and_source(api):
     assert code == 200 and saved['available']
     assert saved['terms'] == value['terms'] and saved['observations'] == value['observations']
     assert saved['source'][-1]['id'] == block_id
+    assert request(server, 'GET', path + '?page=0')[1]['terms'] == value['terms']
+    assert request(server, 'GET', path + '?page=1')[0] == 200
     assert request(server, 'GET', path + '?page=-1')[0] == 400
     assert request(server, 'GET', path + '?unknown=1')[0] == 400
     assert request(server, 'GET', path.replace(unit['id'], 'unknown'))[0] == 404

@@ -106,10 +106,10 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             parts = [unquote(part) for part in parsed.path.split('/')[1:]]
             service = self.server.service
-            from .routes import is_translation_preview_path
+            from .routes import is_analysis_preview_path, is_translation_preview_path
             if parsed.query and not (self.command == 'GET' and (parts == ['api', 'events']
                                      or parts in (['api', 'library'], ['api', 'workspaces'])
-                                     or is_translation_preview_path(parts))):
+                                     or is_translation_preview_path(parts) or is_analysis_preview_path(parts))):
                 raise ValueError('Unexpected query parameters.')
             if not mutation and parts == ['api', 'events']:
                 return self._events(parse_qs(parsed.query))

@@ -9,6 +9,11 @@ def is_translation_preview_path(parts):
             and parts[3:5] == ['translation', 'chunks'] and parts[6] == 'passes')
 
 
+def is_analysis_preview_path(parts):
+    return (len(parts) == 7 and parts[:2] == ['api', 'workspaces']
+            and parts[3:5] == ['analysis', 'units'] and parts[6] == 'preview')
+
+
 def dispatch(service, method, parts, body=None, query=None):
     supervisor = service.supervisor
     mutation = method != 'GET'
