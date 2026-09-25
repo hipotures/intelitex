@@ -382,3 +382,5 @@ html[data-ui-debug="on"] [data-ui-debug-id]::after {
 }
 /* The list and its first row share a top edge; keep both badges readable. */
 html[data-ui-debug="on"] [data-ui-debug-id="WRC"]::after { right:40px; }
+/* The Review heading's right edge contains approval controls; place its badge in the gap above. */
+html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }

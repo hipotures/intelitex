@@ -765,6 +765,13 @@
       gap:18px;
       margin-bottom:16px;
     }
+    .review-heading-actions {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+      gap:10px;
+    }
     .review-page-title {
       display:flex;
       align-items:center;
@@ -1085,6 +1092,7 @@
 
     @media (max-width: 820px) {
       .review-page-head { flex-direction:column; }
+      .review-heading-actions { width:100%;justify-content:flex-start; }
       .review-layout {
         --review-panel-height:68vh;
         grid-template-columns:1fr;
