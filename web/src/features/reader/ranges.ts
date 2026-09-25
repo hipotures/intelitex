@@ -1,6 +1,25 @@
 // Typed port of the legacy Reader's tested Unicode/inline run mapping.
 export const utf16ToCodePoint = (text: string, offset: number) => Array.from(text.slice(0, Math.max(0, offset))).length
 export const codePointToUtf16 = (text: string, offset: number) => Array.from(text).slice(0, Math.max(0, offset)).join('').length
+export function blockRange(block: HTMLElement, start: number, end: number): Range | null {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > Array.from(block.textContent ?? '').length) return null
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let position = 0, startNode: Node | null = null, endNode: Node | null = null, startOffset = 0, endOffset = 0
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    const value = node.textContent ?? ''
+    const length = Array.from(value).length
+    if (!startNode && start >= position && start <= position + length) { startNode = node; startOffset = codePointToUtf16(value, start - position) }
+    if (!endNode && end >= position && end <= position + length) { endNode = node; endOffset = codePointToUtf16(value, end - position) }
+    position += length
+    if (startNode && endNode) break
+  }
+  if (!startNode || !endNode) return null
+  const range = document.createRange()
+  range.setStart(startNode, startOffset)
+  range.setEnd(endNode, endOffset)
+  return range
+}
 export function snapWordRange(text: string, first: number, second = first) {
   const spans = Array.from(text.matchAll(/[\p{L}\p{N}\p{M}_]+(?:[’'-][\p{L}\p{N}\p{M}_]+)*/gu), match => ({
     start: utf16ToCodePoint(text, match.index), end: utf16ToCodePoint(text, match.index + match[0].length),

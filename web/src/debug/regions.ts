@@ -62,6 +62,7 @@ export const debugRegions = [
   { id: 'RPG', description: 'Reader translated chapter', source: 'features/reader/Reader.tsx' },
   { id: 'RSL', description: 'Reader text selection actions', source: 'features/reader/Reader.tsx' },
   { id: 'RMK', description: 'Reader markers accordion', source: 'features/reader/Reader.tsx' },
+  { id: 'RMP', description: 'Reader marker details panel', source: 'features/reader/Reader.tsx' },
   { id: 'RCM', description: 'Reader context modal', source: 'features/reader/Reader.tsx' },
   { id: 'PHD', description: 'Phase detail page', source: 'features/pipeline/Phase.tsx' },
   { id: 'PLD', description: 'Phase loading card', source: 'features/pipeline/Phase.tsx' },

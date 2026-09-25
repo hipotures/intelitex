@@ -191,6 +191,15 @@ the reader offers an explicit load action so prose, selection and scroll stay in
 The Reader controls include contents, available-text progress, typography, fullscreen,
 auto-hide, marker gestures and Context Helper. Global appearance has dark, sepia and
 light themes; the Reader shares that setting.
+Reader gestures now paint the selected Unicode range while it is being made and
+briefly after release, like the legacy range flash. Persisted markers keep only their
+gutter indicator; deletion hides the indicator while the revision-checked request is
+pending and restores it on failure. Marker writes update the scoped snapshot from the returned
+revision without waiting for unrelated query reconciliation. Reader auto-hide covers
+the application header, book picker and Reader controls without shifting the prose.
+Reader popovers close on outside pointer input or Escape.
+The marker details panel identifies the marker and uses a restrained, theme-aware
+surface; its delete action has a muted warning color.
 
 The Work Library loads its first bounded page only when the section enters the
 viewport. The request asks for at least 12 books, rounded up to complete rows at

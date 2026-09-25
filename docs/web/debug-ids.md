@@ -74,6 +74,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RPG | Reader translated chapter | `web/src/features/reader/Reader.tsx` |
 | RSL | Reader text selection actions | `web/src/features/reader/Reader.tsx` |
 | RMK | Reader markers accordion | `web/src/features/reader/Reader.tsx` |
+| RMP | Reader marker details panel | `web/src/features/reader/Reader.tsx` |
 | RCM | Reader context modal | `web/src/features/reader/Reader.tsx` |
 | PHD | Phase detail page | `web/src/features/pipeline/Phase.tsx` |
 | PLD | Phase loading card | `web/src/features/pipeline/Phase.tsx` |
