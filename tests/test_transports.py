@@ -69,6 +69,16 @@ def vllm_server():
             if self.path != "/v1/chat/completions":
                 self.send_json({"error": "not found"}, 404)
                 return
+            if body["messages"][0]["content"].startswith("LOOP"):
+                event = {"choices": [{"index": 0, "delta": {"content": "<tool_call|>}" * 40},
+                                      "finish_reason": None}]}
+                raw = (f"data: {json.dumps(event)}\n\n" + "data: [DONE]\n\n").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             if "temperature" in body or "response_format" in body or "seed" in body:
                 raw = b'data: {"error":{"message":"unsupported diffusion parameter"}}\n\ndata: [DONE]\n\n'
                 self.send_response(200)
@@ -129,6 +139,24 @@ def test_vllm_chat_transport_and_evidence(tmp_path, vllm_server, quiet_ui):
     assert read_json(attempt / "usage.json")["total_tokens"] == 28
     assert read_json(attempt / "context.json")["capacity_tokens"] == 131072
     assert [path for path, _ in received] == ["/tokenize", "/tokenize", "/v1/chat/completions"]
+
+
+def test_vllm_repeated_tool_call_markers_abort_before_output_limit(tmp_path, vllm_server, quiet_ui):
+    _, port = vllm_server
+    profile = {"provider": "vllm", "profile_name": "gpu", "resolved_profile": {},
+               "model": "diffusiongemma", "endpoint": f"http://127.0.0.1:{port}/v1",
+               "context_size": 131072, "request_timeout": 5, "options": {"diffusion": True}}
+    settings = {"passes": {str(i): {"max_tokens": 100, "temperature": 0.1} for i in range(1, 6)}}
+    client = VLLMClient(profile, quiet_ui, settings)
+    attempt = tmp_path / "loop"
+    try:
+        body = client.body("LOOP", {}, {"type": "object"}, 3)
+        with pytest.raises(PipelineError, match="repeated tool-call markers"):
+            client.generate(body, attempt)
+        assert (attempt / "answer.partial.txt").is_file()
+        assert (attempt / "answer.partial.txt").stat().st_size < 1000
+    finally:
+        client.close()
 
 
 def test_vllm_profile_resolves_through_provider_pool(tmp_path, vllm_server, quiet_ui):

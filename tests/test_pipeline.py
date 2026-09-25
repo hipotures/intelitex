@@ -19,7 +19,7 @@ from bookpipe.application import (
 )
 from bookpipe.bootstrap import create_application
 from bookpipe.client import Client
-from bookpipe.engine import (Runner, _decode_json_document, _vary_llamacpp_sampling, analysis_plan, conservative_repair,
+from bookpipe.engine import (Runner, _decode_json_document, _vary_local_sampling, analysis_plan, conservative_repair,
                              response_schema, source_blocks, validate_result)
 from bookpipe.importer import extract_blocks, import_folder, pack_blocks, reading_order, split_long
 from bookpipe.infrastructure.epub_publisher import EpubPublicationBuilder
@@ -229,19 +229,28 @@ def test_successive_llamacpp_attempts_vary_seed_and_temperature():
     provider = type("Provider", (), {"provider": "llamacpp"})()
     base = {"seed": 42, "temperature": 0.05, "messages": []}
 
-    assert _vary_llamacpp_sampling(provider, base, 1) == base
-    assert _vary_llamacpp_sampling(provider, base, 2)["seed"] == 43
-    assert _vary_llamacpp_sampling(provider, base, 2)["temperature"] == 0.1
-    assert _vary_llamacpp_sampling(provider, base, 4)["seed"] == 45
-    assert _vary_llamacpp_sampling(provider, base, 4)["temperature"] == 0.2
-    assert _vary_llamacpp_sampling(provider, {**base, "temperature": 1.99}, 4)["temperature"] == 2.0
+    assert _vary_local_sampling(provider, base, 1) == base
+    assert _vary_local_sampling(provider, base, 2)["seed"] == 43
+    assert _vary_local_sampling(provider, base, 2)["temperature"] == 0.1
+    assert _vary_local_sampling(provider, base, 4)["seed"] == 45
+    assert _vary_local_sampling(provider, base, 4)["temperature"] == 0.2
+    assert _vary_local_sampling(provider, {**base, "temperature": 1.99}, 4)["temperature"] == 2.0
     assert base == {"seed": 42, "temperature": 0.05, "messages": []}
 
 
 def test_attempt_sampling_does_not_change_unverified_cloud_transports():
     provider = type("Provider", (), {"provider": "openai"})()
     base = {"seed": 42, "temperature": 0.05}
-    assert _vary_llamacpp_sampling(provider, base, 3) is base
+    assert _vary_local_sampling(provider, base, 3) is base
+
+
+def test_causal_vllm_retries_change_sampling_but_diffusion_does_not():
+    causal = type("Provider", (), {"provider": "vllm", "diffusion": False})()
+    diffusion = type("Provider", (), {"provider": "vllm", "diffusion": True})()
+    base = {"temperature": 0.2, "messages": []}
+    assert _vary_local_sampling(causal, base, 1) is base
+    assert _vary_local_sampling(causal, base, 4) == {"temperature": 0.35, "seed": 45, "messages": []}
+    assert _vary_local_sampling(diffusion, base, 4) is base
 
 
 def test_p1_conservative_repair_drops_only_bad_observations():

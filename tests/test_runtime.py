@@ -528,6 +528,32 @@ def test_public_job_state_and_safe_worker_failure_code(tmp_path):
                  error=safe_frame['error']).public()
     assert 'did not translate every source block' in public['error']['message']
 
+    frames.clear()
+
+    def looping_model(_sink):
+        raise PipelineError('Model repeated tool-call markers; partial output saved, stage remains incomplete.')
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), looping_model) == 1
+    safe_frame = decode(json.dumps(frames[0]) + '\n')
+    assert safe_frame['error']['code'] == 'model_control_token_loop'
+    public = Job('j', str(tmp_path), 'w', str(project), 'translate', state='failed',
+                 error=safe_frame['error']).public()
+    assert 'repeated tool-call markers' in public['error']['message']
+
+    frames.clear()
+
+    def length_limited_model(_sink):
+        raise PipelineError("Incomplete completion (finish_reason='length'). Saved partial files; not a checkpoint.")
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), length_limited_model) == 1
+    safe_frame = decode(json.dumps(frames[0]) + '\n')
+    assert safe_frame['error']['code'] == 'output_length_limit'
+    public = Job('j', str(tmp_path), 'w', str(project), 'translate', state='failed',
+                 error=safe_frame['error']).public()
+    assert 'output-token limit' in public['error']['message']
+
 
 def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, server):
     from test_pipeline import make_epub_source

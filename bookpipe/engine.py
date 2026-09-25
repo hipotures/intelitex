@@ -392,15 +392,17 @@ def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_c
     raise PipelineError(f"Unknown response wire format: {wire_format!r}")
 
 
-def _vary_llamacpp_sampling(provider: Any, body: dict, attempt_no: int) -> dict:
-    """Deterministically diversify successive physical llama.cpp attempts.
+def _vary_local_sampling(provider: Any, body: dict, attempt_no: int) -> dict:
+    """Deterministically diversify successive physical local-model attempts.
 
     The physical attempt number is persisted in the artifact directory, so the
     variation also advances when a later command resumes the same failed task.
-    Cloud transports are deliberately left alone because seed/temperature are
-    not verified capabilities there.
+    vLLM diffusion models and cloud transports are left alone because these
+    sampling parameters are not supported or verified for them.
     """
-    if getattr(provider, "provider", None) != "llamacpp" or attempt_no <= 1:
+    kind = getattr(provider, "provider", None)
+    if (kind not in {"llamacpp", "vllm"} or attempt_no <= 1 or
+            kind == "vllm" and getattr(provider, "diffusion", False)):
         return body
 
     varied = copy.deepcopy(body)
@@ -409,6 +411,8 @@ def _vary_llamacpp_sampling(provider: Any, body: dict, attempt_no: int) -> dict:
     temperature = varied.get("temperature")
     if isinstance(seed, int) and not isinstance(seed, bool):
         varied["seed"] = seed + offset
+    elif kind == "vllm":
+        varied["seed"] = 42 + offset
     if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
         varied["temperature"] = min(2.0, round(float(temperature) + 0.05 * offset, 10))
     return varied
@@ -631,7 +635,7 @@ class Runner:
                     identity = provider.discover()
                     recorder.event("inbound", "provider_discovery", identity)
                     body = provider.body(prompt, payload, schema, pass_no)
-                body = _vary_llamacpp_sampling(provider, body, number)
+                body = _vary_local_sampling(provider, body, number)
                 input_count = provider.preflight(body, recorder)
             except BaseException as exc:
                 recorder.finish(generation="not_submitted", validation="not_run",

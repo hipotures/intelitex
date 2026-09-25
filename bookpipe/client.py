@@ -243,6 +243,7 @@ class Client:
         timer.daemon = True
         timer.start()
         n_answer = n_thought = 0
+        answer_tail = ""
         last_emitted_usage: tuple[Any, ...] | None = None
         try:
             with (directory / "stream.jsonl").open("w", encoding="utf-8") as events, \
@@ -327,6 +328,13 @@ class Client:
                                     file.flush()
                                     if key == "content":
                                         n_answer += len(text)
+                                        if self.provider == "vllm":
+                                            answer_tail = (answer_tail + text)[-1024:]
+                                            if answer_tail.count("<tool_call") >= 16:
+                                                raise PipelineError(
+                                                    "Model repeated tool-call markers; partial output saved, "
+                                                    "stage remains incomplete."
+                                                )
                                     else:
                                         n_thought += len(text)
                             self.ui.emit(ProgressEvent(kind="generation_progress", values={

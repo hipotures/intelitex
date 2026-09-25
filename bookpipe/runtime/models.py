@@ -90,6 +90,8 @@ class Job:
             'draft_span_mismatch': 'P4 failed validation after its retry: the model cited draft text absent from the specified block. See Attempt diagnostics for the recorded attempts.',
             'p3_id_coverage': 'P3 failed validation after its retry: the model did not translate every source block. Saved earlier passes remain available.',
             'p5_id_coverage': 'P5 failed validation after its retry: the model did not return every source block. Saved earlier passes remain available.',
+            'model_control_token_loop': 'The local model repeated tool-call markers instead of finishing its answer. The attempt was stopped; saved passes remain available.',
+            'output_length_limit': 'The model reached its output-token limit without finishing the answer. The partial response was not accepted; saved passes remain available.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
         }
