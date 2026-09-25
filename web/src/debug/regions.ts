@@ -54,7 +54,7 @@ export const debugRegions = [
   { id: 'RAM', description: 'Review glossary approval modal', source: 'features/review/Review.tsx' },
   { id: 'RDR', description: 'Reader page', source: 'features/reader/Reader.tsx' },
   { id: 'RSH', description: 'Reader shell', source: 'features/reader/Reader.tsx' },
-  { id: 'RBL', description: 'Reader book list', source: 'features/reader/Reader.tsx' },
+  { id: 'RBL', description: 'Reader navigation sidebar', source: 'features/reader/Reader.tsx' },
   { id: 'RBB', description: 'Reader book card', source: 'features/reader/Reader.tsx' },
   { id: 'RBC', description: 'Reader content region', source: 'features/reader/Reader.tsx' },
   { id: 'RCO', description: 'Reader chapter controls', source: 'features/reader/Reader.tsx' },

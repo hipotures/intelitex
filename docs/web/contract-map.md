@@ -182,8 +182,10 @@ workspace, book fingerprint, chapter, block ID and Unicode code-point offset. Lo
 contains UI preferences/location only; sessionStorage contains pending request keys only.
 Entering Reader without an explicit book reuses the last valid Reader route or checks
 backend Reader progress for the first workspace with verified translated text.
-Reader now exposes the prepared workspace library through a compact mobile button and
-a desktop list, excluding archived workspaces. Archived workspaces remain in the Work
+Reader uses one sidebar for the table of contents and Library. Selecting a workspace
+or original EPUB opens its chapters; the Chapters/Library switch keeps both views
+available. On mobile, the sidebar stays behind a compact book button until opened.
+The Library excludes archived workspaces. Archived workspaces remain in the Work
 Archive drawer for restoration and are not opened through old Reader links. The current Work workspace is a direct
 choice when prepared. Book choices display their workspace label and ID so several
 workspaces for the same source book remain distinguishable. It reads verified P5 chapter prefixes, shows a clear empty state,

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -7,7 +7,8 @@ import { Scope, queryClient } from '../../api/client'
 import { ReaderPage, ReadingBook } from './Reader'
 
 const routeParams = vi.hoisted(() => ({ workspaceId: undefined as string | undefined, sourceId: undefined as string | undefined }))
-vi.mock('@tanstack/react-router', async original => ({ ...await original<typeof import('@tanstack/react-router')>(), Link: ({ children }: { children: ReactNode }) => <a>{children}</a>, useParams: () => routeParams, useSearch: () => ({}), useNavigate: () => vi.fn() }))
+const navigateMock = vi.hoisted(() => vi.fn())
+vi.mock('@tanstack/react-router', async original => ({ ...await original<typeof import('@tanstack/react-router')>(), Link: ({ children, onClick, to, params, className }: { children: ReactNode; onClick?: () => void; to?: string; params?: { workspaceId?: string; sourceId?: string }; className?: string }) => <a className={className} onClick={() => { if (to === '/reader/$workspaceId') { routeParams.workspaceId = params?.workspaceId; routeParams.sourceId = undefined } else if (to === '/reader/source/$sourceId') { routeParams.sourceId = params?.sourceId; routeParams.workspaceId = undefined } onClick?.() }}>{children}</a>, useParams: () => routeParams, useSearch: () => ({}), useNavigate: () => navigateMock }))
 vi.mock('../../realtime/coordinator', () => ({ useConnection: () => 'Live' }))
 
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -26,6 +27,7 @@ beforeEach(() => {
   localStorage.clear()
   routeParams.workspaceId = undefined
   routeParams.sourceId = undefined
+  navigateMock.mockReset()
   listedWorkspaces = []
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
   Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() })
@@ -80,8 +82,40 @@ it('offers an original Library EPUB in Reader without a workspace', async () => 
   routeParams.sourceId = 'original.epub'
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
   await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
+  expect(within(screen.getByRole('navigation', { name: 'Table of contents' })).getByRole('button', { name: 'Section 1' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
   expect(screen.getByText('Original EPUB · no workspace markers')).toBeTruthy()
   expect(screen.getByText('Original EPUB text · read-only')).toBeTruthy()
+})
+
+it('switches the Reader sidebar to chapters after selecting a workspace or Library EPUB', async () => {
+  routeParams.workspaceId = 'active'
+  listedWorkspaces = [workspace('active', 'Active book', false)]
+  render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
+  await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
+  const chapters = () => screen.getByRole('navigation', { name: 'Table of contents' })
+  expect(within(chapters()).getByRole('button', { name: 'One' })).toBeTruthy()
+  expect(screen.queryByRole('navigation', { name: 'Reading books' })).toBeNull()
+  expect(screen.getByRole('button', { name: /Chapters · Active book/ }).getAttribute('aria-expanded')).toBe('false')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Reading books' })).getByText('Original book'))
+  await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
+  expect(within(chapters()).getByRole('button', { name: 'Section 1' })).toBeTruthy()
+  expect(screen.queryByRole('navigation', { name: 'Reading books' })).toBeNull()
+
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
+  fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }))
+  expect(screen.getByRole('button', { name: /Chapters · Original book/ }).getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(within(chapters()).getByRole('button', { name: 'Section 1' }))
+  expect(screen.getByRole('button', { name: /Chapters · Original book/ }).getAttribute('aria-expanded')).toBe('false')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Reading books' })).getByText('Active book'))
+  await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
+  fireEvent.click(within(chapters()).getByRole('button', { name: 'One' }))
+  expect(localStorage.getItem('intelitex.ui.v1.reader-test.active.reader.chapter')).toBe('c1')
+  expect(screen.queryByRole('navigation', { name: 'Reading books' })).toBeNull()
 })
 
 it('hides archived workspaces from Reader choices and the current-workspace shortcut', async () => {
@@ -90,8 +124,9 @@ it('hides archived workspaces from Reader choices and the current-workspace shor
   localStorage.setItem('intelitex.ui.v1.reader-test.work.route', '/work/workspaces/old')
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
   await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
-  expect(screen.getByText('Active book')).toBeTruthy()
+  expect(screen.getAllByText('Active book').length).toBeGreaterThan(0)
   expect(screen.queryByText('Archived book')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
   expect(screen.queryByText('Current workspace')).toBeNull()
 })
 

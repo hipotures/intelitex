@@ -66,7 +66,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RAM | Review glossary approval modal | `web/src/features/review/Review.tsx` |
 | RDR | Reader page | `web/src/features/reader/Reader.tsx` |
 | RSH | Reader shell | `web/src/features/reader/Reader.tsx` |
-| RBL | Reader book list | `web/src/features/reader/Reader.tsx` |
+| RBL | Reader navigation sidebar | `web/src/features/reader/Reader.tsx` |
 | RBB | Reader book card | `web/src/features/reader/Reader.tsx` |
 | RBC | Reader content region | `web/src/features/reader/Reader.tsx` |
 | RCO | Reader chapter controls | `web/src/features/reader/Reader.tsx` |

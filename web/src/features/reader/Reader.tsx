@@ -30,6 +30,9 @@ export function ReaderPage() {
   const all = useApi('/api/workspaces', workspacesSchema)
   const library = useApi('/api/library', librarySchema)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState<'chapters' | 'library'>('chapters')
+  const chapterChooser = useRef<((chapterId: string) => void) | null>(null)
+  const sidebarSearch = useSearch({ strict: false })
   useEffect(() => {
     if (!libraryOpen) return
     const dismiss = (event: PointerEvent) => {
@@ -48,6 +51,17 @@ export function ReaderPage() {
   const workingBook = books.find(w => w.workspace_id === working)
   const chosen = sourceId ? undefined : workspaceId ? books.find(w => w.workspace_id === workspaceId) : books.find(w => w.workspace_id === last) ?? books.find(w => w.workspace_id === working) ?? books[0]
   const archivedBook = workspaceId && all.data?.workspaces.find(w => w.workspace_id === workspaceId && w.metadata.lifecycle.archived)
+  const id = chosen?.workspace_id ?? ''
+  const selectedKey = chosen ? id : chosenSource ? `source:${sourceId}` : ''
+  const activeTab = selectedKey ? sidebarTab : 'library'
+  const sidebarReaderPath = chosen ? endpoint(chosen.workspace_id, 'reader') : chosenSource ? `/api/library/sources/${encodeURIComponent(chosenSource.source_id)}/reader` : ''
+  const sidebarMetadata = useApi(sidebarReaderPath, readerSchema, !!sidebarReaderPath)
+  const sidebarProgress = useApi(endpoint(chosen?.workspace_id ?? '', 'reader/progress'), readerProgressSchema, !!chosen)
+  const sidebarChapters = sidebarMetadata.data?.chapters ?? []
+  const savedChapter = preference(scope, `${selectedKey}.reader.chapter`)
+  const activeChapter = sidebarChapters.find(c => c.id === sidebarSearch.chapter)?.id ?? sidebarChapters.find(c => c.id === savedChapter)?.id ?? sidebarChapters[0]?.id
+  const availableChapters = new Set(chosenSource ? sidebarChapters.map(c => c.id) : sidebarProgress.data?.chapters.map(c => c.id) ?? [])
+  useEffect(() => { setSidebarTab(selectedKey ? 'chapters' : 'library'); setLibraryOpen(false) }, [selectedKey])
   useEffect(() => {
     if (workspaceId || sourceId || !all.data || !library.data) return
     let cancelled = false
@@ -66,11 +80,15 @@ export function ReaderPage() {
     void select()
     return () => { cancelled = true }
   }, [all.data, library.data, books, sources, workspaceId, sourceId, last, working, navigate])
-  const id = chosen?.workspace_id ?? ''
-  const bookList = <nav className={`reader-books ${libraryOpen ? 'open' : ''}`} aria-label="Reading books" {...debugTag('RBL')}>{workingBook && <Link to="/reader/$workspaceId" params={{ workspaceId: workingBook.workspace_id }} onClick={() => setLibraryOpen(false)} className="reader-book reader-current-workspace"><strong>Current workspace</strong><span>{workingBook.metadata.title}</span><span className="reader-book-identity">{workingBook.metadata.label ? `${workingBook.metadata.label} · ` : ''}Workspace {workingBook.workspace_id}</span></Link>}{books.map(w => <Link key={w.workspace_id} to="/reader/$workspaceId" params={{ workspaceId: w.workspace_id }} onClick={() => setLibraryOpen(false)} className={`reader-book ${id === w.workspace_id ? 'active' : ''}`} {...debugTag('RBB', w.workspace_id)}><strong>{w.metadata.title}</strong><span className="reader-book-identity">{w.metadata.label ? `${w.metadata.label} · ` : ''}Workspace {w.workspace_id}</span><span>{w.metadata.creators.join(', ') || '—'}</span></Link>)}{sources.map(source => <Link key={source.source_id} to="/reader/source/$sourceId" params={{sourceId:source.source_id}} onClick={() => setLibraryOpen(false)} className={`reader-book ${sourceId === source.source_id ? 'active' : ''}`} {...debugTag('RBB', source.source_id)}><strong>{source.title}</strong><span className="reader-book-identity">Original EPUB · no workspace markers</span></Link>)}</nav>
-  return <main className="main reader-main" {...debugTag('RDR')}><div className="reader-mobile-books"><Button onClick={() => setLibraryOpen(open => !open)} aria-expanded={libraryOpen} title={chosen ? `${chosen.metadata.title} · Workspace ${chosen.workspace_id}` : chosenSource ? `${chosenSource.title} · Original EPUB` : 'Select book'}>Library · {chosen ? `${chosen.metadata.title} · ${chosen.metadata.label || chosen.workspace_id}` : chosenSource ? `${chosenSource.title} · EPUB` : 'Select book'}</Button></div><ErrorNote error={all.error ?? library.error} /><div className="reader-shell" {...debugTag('RSH')}>{bookList}<div className="reader-content" {...debugTag('RBC', id || sourceId)}>{chosen ? <ReadingBook key={id} id={id} libraryOpen={libraryOpen} /> : chosenSource ? <ReadingBook key={`source:${sourceId}`} id={`source:${sourceId}`} sourceId={sourceId} libraryOpen={libraryOpen} /> : <Empty>{all.isPending || library.isPending ? 'Loading books…' : archivedBook ? <>This workspace is archived and hidden from Reader. Restore it from <Link to="/work">Work → Archive</Link>.</> : workspaceId ? 'This workspace is not prepared for reading.' : sourceId ? 'This EPUB is unavailable in Library.' : 'No books available for reading.'}</Empty>}</div></div></main>
+  const openChapters = () => { setSidebarTab('chapters'); if (window.matchMedia?.('(max-width:720px)').matches) setLibraryOpen(true) }
+  const selectBook = () => { setSidebarTab('chapters'); setLibraryOpen(false) }
+  const sidebar = <aside id="reader-sidebar" className={`reader-books ${libraryOpen ? 'open' : ''}`} aria-label="Reader navigation" {...debugTag('RBL')}>
+    <div className="reader-sidebar-switch" role="group" aria-label="Reader navigation view"><button type="button" aria-pressed={activeTab === 'chapters'} disabled={!selectedKey} onClick={() => setSidebarTab('chapters')}>Chapters</button><button type="button" aria-pressed={activeTab === 'library'} onClick={() => setSidebarTab('library')}>Library</button></div>
+    {activeTab === 'library' ? <nav aria-label="Reading books">{workingBook && <Link to="/reader/$workspaceId" params={{ workspaceId: workingBook.workspace_id }} onClick={selectBook} className="reader-book reader-current-workspace"><strong>Current workspace</strong><span>{workingBook.metadata.title}</span><span className="reader-book-identity">{workingBook.metadata.label ? `${workingBook.metadata.label} · ` : ''}Workspace {workingBook.workspace_id}</span></Link>}{books.map(w => <Link key={w.workspace_id} to="/reader/$workspaceId" params={{ workspaceId: w.workspace_id }} onClick={selectBook} className={`reader-book ${id === w.workspace_id ? 'active' : ''}`} {...debugTag('RBB', w.workspace_id)}><strong>{w.metadata.title}</strong><span className="reader-book-identity">{w.metadata.label ? `${w.metadata.label} · ` : ''}Workspace {w.workspace_id}</span><span>{w.metadata.creators.join(', ') || '—'}</span></Link>)}{sources.map(source => <Link key={source.source_id} to="/reader/source/$sourceId" params={{sourceId:source.source_id}} onClick={selectBook} className={`reader-book ${sourceId === source.source_id ? 'active' : ''}`} {...debugTag('RBB', source.source_id)}><strong>{source.title}</strong><span className="reader-book-identity">Original EPUB · no workspace markers</span></Link>)}</nav> : <nav className="reader-chapter-list" aria-label="Table of contents" {...debugTag('RTC')}><div className="reader-chapter-book">{chosen?.metadata.title ?? chosenSource?.title}</div>{sidebarChapters.map(chapter => <button type="button" key={chapter.id} className={chapter.id === activeChapter ? 'active' : ''} aria-current={chapter.id === activeChapter ? 'page' : undefined} onClick={() => { chapterChooser.current?.(chapter.id); setLibraryOpen(false) }}>{chapter.title}{!chosenSource && sidebarProgress.data && !availableChapters.has(chapter.id) && <span>Awaiting translation</span>}</button>)}{!sidebarChapters.length && <p className="reader-sidebar-empty">{sidebarMetadata.isPending ? 'Loading chapters…' : 'No chapters available.'}</p>}</nav>}
+  </aside>
+  return <main className="main reader-main" {...debugTag('RDR')}><div className="reader-mobile-books"><Button onClick={() => setLibraryOpen(open => !open)} aria-expanded={libraryOpen} aria-controls="reader-sidebar" title={chosen ? `${chosen.metadata.title} · Workspace ${chosen.workspace_id}` : chosenSource ? `${chosenSource.title} · Original EPUB` : 'Select book'}>{activeTab === 'chapters' ? 'Chapters' : 'Library'} · {chosen ? `${chosen.metadata.title} · ${chosen.metadata.label || chosen.workspace_id}` : chosenSource ? `${chosenSource.title} · EPUB` : 'Select book'}</Button></div><ErrorNote error={all.error ?? library.error} /><div className="reader-shell" {...debugTag('RSH')}>{sidebar}<div className="reader-content" {...debugTag('RBC', id || sourceId)}>{chosen ? <ReadingBook key={id} id={id} libraryOpen={libraryOpen} onOpenChapters={openChapters} onRegisterChoose={choose => { chapterChooser.current = choose }} /> : chosenSource ? <ReadingBook key={`source:${sourceId}`} id={`source:${sourceId}`} sourceId={sourceId} libraryOpen={libraryOpen} onOpenChapters={openChapters} onRegisterChoose={choose => { chapterChooser.current = choose }} /> : <Empty>{all.isPending || library.isPending ? 'Loading books…' : archivedBook ? <>This workspace is archived and hidden from Reader. Restore it from <Link to="/work">Work → Archive</Link>.</> : workspaceId ? 'This workspace is not prepared for reading.' : sourceId ? 'This EPUB is unavailable in Library.' : 'No books available for reading.'}</Empty>}</div></div></main>
 }
-export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { id: string; libraryOpen: boolean; archived?: boolean; sourceId?: string }) {
+export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpenChapters, onRegisterChoose }: { id: string; libraryOpen: boolean; archived?: boolean; sourceId?: string; onOpenChapters?: () => void; onRegisterChoose?: (choose: ((id: string) => void) | null) => void }) {
   const readerPath = sourceId ? `/api/library/sources/${encodeURIComponent(sourceId)}/reader` : endpoint(id,'reader')
   const metadata = useApi(readerPath, readerSchema)
   const progress = useApi(endpoint(id,'reader/progress'), readerProgressSchema, !sourceId)
@@ -89,7 +107,6 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { i
   const [recentMarker, setRecentMarker] = useState<string | null>(null)
   const [hiddenMarkers, setHiddenMarkers] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [contentsOpen, setContentsOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
   const [fontSize, setFontSize] = useState(() => Number(preference(scope, 'reader.fontSize', '20')))
   const [fontFamily, setFontFamily] = useState(() => preference(scope, 'reader.fontFamily', 'serif'))
@@ -133,10 +150,10 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { i
     for (const [key, value] of Object.entries({fontSize, fontFamily, lineHeight, contentWidth, headerAutoHide, markerGesture, contextGesture})) savePreference(scope, `reader.${key}`, String(value))
   }, [scope, fontSize, fontFamily, lineHeight, contentWidth, headerAutoHide, markerGesture, contextGesture])
   useEffect(() => {
-    if (!headerAutoHide || settingsOpen || contentsOpen || progressOpen || libraryOpen) { setControlsHidden(false); if (controlTimer.current) clearTimeout(controlTimer.current); return }
+    if (!headerAutoHide || settingsOpen || progressOpen || libraryOpen) { setControlsHidden(false); if (controlTimer.current) clearTimeout(controlTimer.current); return }
     controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
     return () => { if (controlTimer.current) clearTimeout(controlTimer.current) }
-  }, [headerAutoHide, settingsOpen, contentsOpen, progressOpen, libraryOpen, chapterId])
+  }, [headerAutoHide, settingsOpen, progressOpen, libraryOpen, chapterId])
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('reader-chrome-hidden', controlsHidden)
     return () => document.documentElement.classList.remove('reader-chrome-hidden')
@@ -152,28 +169,27 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { i
     return () => clearTimeout(timer)
   }, [recentMarker])
   useEffect(() => {
-    if (!settingsOpen && !contentsOpen && !progressOpen) return
+    if (!settingsOpen && !progressOpen) return
     const dismiss = (event: PointerEvent) => {
       const target = event.target
       if (!(target instanceof Element)) return
       if (settingsOpen && !target.closest('.reader-settings, [aria-label="Reader settings"]')) setSettingsOpen(false)
-      if (contentsOpen && !target.closest('.reader-toc, [aria-label="Table of contents"]')) setContentsOpen(false)
       if (progressOpen && !target.closest('.reader-progress-popup, .reader-progress-line')) setProgressOpen(false)
     }
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { setSettingsOpen(false); setContentsOpen(false); setProgressOpen(false) }
+      if (event.key === 'Escape') { setSettingsOpen(false); setProgressOpen(false) }
     }
     document.addEventListener('pointerdown', dismiss)
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
-  }, [settingsOpen, contentsOpen, progressOpen])
+  }, [settingsOpen, progressOpen])
   const wakeControls = useCallback(() => {
     if (!controlsHidden && Date.now() - lastActivity.current < 500) return
     lastActivity.current = Date.now()
     setControlsHidden(false)
     if (controlTimer.current) clearTimeout(controlTimer.current)
-    if (headerAutoHide && !settingsOpen && !contentsOpen && !progressOpen && !libraryOpen) controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
-  }, [controlsHidden, headerAutoHide, settingsOpen, contentsOpen, progressOpen, libraryOpen])
+    if (headerAutoHide && !settingsOpen && !progressOpen && !libraryOpen) controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
+  }, [controlsHidden, headerAutoHide, settingsOpen, progressOpen, libraryOpen])
   useEffect(() => {
     document.addEventListener('pointermove', wakeControls, { passive: true })
     document.addEventListener('pointerdown', wakeControls, { passive: true })
@@ -234,7 +250,8 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { i
   // The handler is installed for the selected chapter; settings only affect the control timer.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, chapterId, metadata.data, scope, progress.data])
-  const choose = (value: string) => { setSelection(null); setContext(null); setActiveMarker(null); setReadWords(0); setNewText(false); setContentsOpen(false); scrollArea.current?.scrollTo({ top: 0 }); savePreference(scope, `${id}.reader.chapter`, value); if (metadata.data) savePreference(scope, `${id}.${metadata.data.book_fingerprint}.${value}.anchor`, JSON.stringify({block_id:'',offset:0})); void queryClient.invalidateQueries({queryKey: [scope, `${readerPath}/chapters/${encodeURIComponent(value)}`], exact: true}); void navigate({ to: '.', search: old => ({ ...old, chapter: value }), replace: true }) }
+  const choose = (value: string) => { setSelection(null); setContext(null); setActiveMarker(null); setReadWords(0); setNewText(false); scrollArea.current?.scrollTo({ top: 0 }); savePreference(scope, `${id}.reader.chapter`, value); if (metadata.data) savePreference(scope, `${id}.${metadata.data.book_fingerprint}.${value}.anchor`, JSON.stringify({block_id:'',offset:0})); void queryClient.invalidateQueries({queryKey: [scope, `${readerPath}/chapters/${encodeURIComponent(value)}`], exact: true}); void navigate({ to: '.', search: old => ({ ...old, chapter: value }), replace: true }) }
+  useEffect(() => { onRegisterChoose?.(choose); return () => onRegisterChoose?.(null) })
   const index = chapters.findIndex(c => c.id === chapterId)
   const refreshChapter = () => { if (window.getSelection()?.toString()) return; setNewText(false); void chapter.refetch() }
   const markerPath = endpoint(id, 'reader/markers')
@@ -330,16 +347,15 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId }: { i
   return <div className="reader-reading-area" ref={scrollArea} onPointerDown={wakeControls} onPointerMove={wakeControls}>
     <div className="reader-range-layer" ref={previewLayer} aria-hidden="true" />
     <div className={`reader-controls ${controlsHidden ? 'reader-controls-hidden' : ''}`} {...debugTag('RCO')}>
-      <Button variant="ghost" aria-label="Table of contents" aria-expanded={contentsOpen} onClick={() => { setContentsOpen(!contentsOpen); setSettingsOpen(false) }}>☰</Button>
+      <Button variant="ghost" aria-label="Table of contents" disabled={!onOpenChapters} onClick={() => { onOpenChapters?.(); setSettingsOpen(false) }}>☰</Button>
       <Button variant="ghost" aria-label="Previous chapter" disabled={index <= 0} onClick={() => choose(chapters[index - 1]!.id)}>‹</Button>
       <div className="reader-current"><strong title={sourceId ? 'Original EPUB' : `Workspace ${id}`}>{metadata.data?.title ?? 'Reader'} · {sourceId ? 'Original EPUB' : id}</strong><span>{chapter.data?.title ?? chapters[index]?.title ?? 'Choose a chapter'}</span></div>
       <Button variant="ghost" aria-label="Next chapter" disabled={index < 0 || index >= chapters.length - 1} onClick={() => choose(chapters[index + 1]!.id)}>›</Button>
-      <Button variant="ghost" aria-label="Reader settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen(!settingsOpen); setContentsOpen(false) }}>Aa</Button>
+      <Button variant="ghost" aria-label="Reader settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>Aa</Button>
       <Button variant="ghost" aria-label="Toggle fullscreen" onClick={() => { void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()) }}>⛶</Button>
     </div>
     {!sourceId && <button className="reader-progress-line" aria-label="Show reading progress" aria-expanded={progressOpen} onClick={() => setProgressOpen(!progressOpen)}><span style={{ width: `${percent}%` }} /></button>}
     {progressOpen && <div className="reader-progress-popup" role="status"><strong>{percent}% of available translation</strong><span>{readWords} of {progress.data?.total_words ?? 0} available words</span><span>{progress.data?.last_chapter ? `Available through ${progress.data.last_chapter.title}` : 'No verified text yet'}</span></div>}
-    {contentsOpen && <aside className="reader-toc" aria-label="Table of contents" {...debugTag('RTC')}><h3>Contents</h3>{chapters.map(c => <button key={c.id} className={c.id === chapterId ? 'active' : ''} onClick={() => choose(c.id)}>{c.title}{availableChapters.has(c.id) ? '' : ' · awaiting translation'}</button>)}</aside>}
     {settingsOpen && <aside className="reader-settings" aria-label="Reader settings" {...debugTag('RST')}><h3>Reading settings</h3>
       <label>Font size <input type="range" min="15" max="30" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /><output>{fontSize}px</output></label>
       <label>Font family <select value={fontFamily} onChange={e => setFontFamily(e.target.value)}><option value="serif">Serif</option><option value="sans">Sans serif</option><option value="mono">Monospace</option></select></label>
