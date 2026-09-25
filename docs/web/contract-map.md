@@ -182,6 +182,15 @@ workspace, book fingerprint, chapter, block ID and Unicode code-point offset. Lo
 contains UI preferences/location only; sessionStorage contains pending request keys only.
 Entering Reader without an explicit book reuses the last valid Reader route or checks
 backend Reader progress for the first workspace with verified translated text.
+Reader now exposes the prepared workspace library through a compact mobile button and
+a desktop list, including archived workspaces. The current Work workspace is a direct
+choice when prepared. It reads verified P5 chapter prefixes, shows a clear empty state,
+and checks Reader progress during the existing 15-second reconciliation. A changed
+current chapter loads automatically only while empty; when text is already visible,
+the reader offers an explicit load action so prose, selection and scroll stay in place.
+The Reader controls include contents, available-text progress, typography, fullscreen,
+auto-hide, marker gestures and Context Helper. Global appearance has dark, sepia and
+light themes; the Reader shares that setting.
 
 The Work Library loads its first bounded page only when the section enters the
 viewport. The request asks for at least 12 books, rounded up to complete rows at
@@ -317,7 +326,7 @@ an independent browser test. Runtime/API/application assertions remain in Python
 | V33-30 | Verified Reader and archive availability | Reader Python regressions; Reader/marker browser journey |
 | V33-31 | Stable chapter cache + canonical location | Range tests; chapter replacement excluded in coordinator |
 | V33-32 | Read-only real profiles and UI-only reset | Browser Settings; profile redaction/API tests |
-| V33-33 | Scoped themes/native dialog accessibility | Two-theme visual suite; overlay/component/browser tests |
+| V33-33 | Scoped themes/native dialog accessibility | Dark/light v33 reference; sepia added globally, browser visual QA pending |
 | V33-34 | Same-origin, confinement, serializers, escaped text | Both-adapter route/body/security matrix; historical SSE tests |
 | V33-35 | Explicit ASGI SPA/asset/API routes | ASGI static/path tests; browser deep reload |
 | V33-36 | Bounded/coalesced stream and activity | 1,000 sections/2,000 terms/100 events per second browser test |

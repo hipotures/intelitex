@@ -90,7 +90,8 @@ const usagePass = z.object({ pass_no: count, profile: nullableText, provider: nu
   failed_attempt_count: count, retry_count: count, cost: costEstimate.nullable() })
 export const usageSchema = z.object({ scope: text, warning: nullableText, units: z.array(z.object({ unit_id: text, chapter_id: nullableText, passes: z.array(usagePass) })) })
 export const readerSchema = z.object({ title: text, book_fingerprint: text, chapters: z.array(z.object({ id: text, title: text }).passthrough()) })
-export const readerProgressSchema = z.object({ total_words: count, last_chapter: z.object({ id: text, title: text }).nullable() })
+export const readerProgressSchema = z.object({ total_words: count, last_chapter: z.object({ id: text, title: text }).nullable(),
+  chapters: z.array(z.object({ id: text, start: count, words: count, blocks: z.array(z.object({ id: text, start: count, words: count })) })) })
 export const chapterSchema = z.object({ id: text, title: text, complete: z.boolean(), stale: z.boolean(), warning: nullableText.optional(),
   unavailable: z.object({ after_blocks: count, reason: text }).optional(),
   blocks: z.array(z.object({ id: text, kind: text, text, formatting: z.array(z.object({ start: count, end: count, style: z.enum(['em','strong']) })).optional() })) })
@@ -98,7 +99,8 @@ export const markerSchema = z.object({ id: text, chapter_id: text, block_id: tex
 export const markersSchema = z.object({ _revision: text, book_fingerprint: text, markers: z.array(markerSchema) })
 export const markerMutationSchema = z.object({ revision: text, marker: markerSchema.optional(), deleted: text.optional() })
 export const contextSchema = z.object({ recognized: z.boolean(), matched_text: text.optional(), title: text.optional(),
-  display_name: text.optional(), attributes: z.array(z.object({ label: text, value: text })).optional(), statements: z.array(text).optional() }).passthrough()
+  display_name: text.optional(), attributes: z.array(z.object({ label: text, value: text })).optional(), statements: z.array(text).optional(),
+  earlier_mentions: z.array(z.object({ text, chapter_title: text })).optional(), same_block_context: z.array(z.object({ text })).optional() }).passthrough()
 export const activitySchema = z.object({ events: z.array(eventSchema) })
 export const draftSchema = z.object({ workspace_id: text, source_id: text })
 export const preflightSchema = z.object({ source_id: text, title: text, creators: z.array(text), declared_language: nullableText,

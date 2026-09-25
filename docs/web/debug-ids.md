@@ -69,6 +69,8 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RBB | Reader book card | `web/src/features/reader/Reader.tsx` |
 | RBC | Reader content region | `web/src/features/reader/Reader.tsx` |
 | RCO | Reader chapter controls | `web/src/features/reader/Reader.tsx` |
+| RTC | Reader table of contents | `web/src/features/reader/Reader.tsx` |
+| RST | Reader settings panel | `web/src/features/reader/Reader.tsx` |
 | RPG | Reader translated chapter | `web/src/features/reader/Reader.tsx` |
 | RSL | Reader text selection actions | `web/src/features/reader/Reader.tsx` |
 | RMK | Reader markers accordion | `web/src/features/reader/Reader.tsx` |

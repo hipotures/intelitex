@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { it,expect } from 'vitest'
-import { inlineRuns,utf16ToCodePoint,codePointToUtf16,selectedRange } from './ranges'
+import { inlineRuns,utf16ToCodePoint,codePointToUtf16,selectedRange,snapWordRange } from './ranges'
 it('maps astral Unicode through inline elements to canonical code-point offsets',() => {
  document.body.innerHTML='<p data-block-id="b1">A😀<em>Żółw</em> rests.</p><p data-block-id="b2">Other</p>'
  const paragraph=document.querySelector('p')!; const em=document.querySelector('em')!
@@ -14,4 +14,8 @@ it('maps astral Unicode through inline elements to canonical code-point offsets'
 it('rejects overlapping formatting and renders hostile text as text',() => {
  expect(inlineRuns('<script>😀</script>',[{start:0,end:2,style:'em'},{start:1,end:3,style:'strong'}])).toEqual([{text:'<script>😀</script>',style:null}])
  expect(inlineRuns('A😀B',[{start:1,end:2,style:'em'}])).toEqual([{text:'A',style:null},{text:'😀',style:'em'},{text:'B',style:null}])
+})
+it('snaps a reversed gesture across Unicode words',() => {
+ expect(snapWordRange('A😀 Żółw wraca', 11, 3)).toEqual({start:3,end:13})
+ expect(snapWordRange('  —  ', 2)).toBeNull()
 })

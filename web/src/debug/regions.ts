@@ -57,6 +57,8 @@ export const debugRegions = [
   { id: 'RBB', description: 'Reader book card', source: 'features/reader/Reader.tsx' },
   { id: 'RBC', description: 'Reader content region', source: 'features/reader/Reader.tsx' },
   { id: 'RCO', description: 'Reader chapter controls', source: 'features/reader/Reader.tsx' },
+  { id: 'RTC', description: 'Reader table of contents', source: 'features/reader/Reader.tsx' },
+  { id: 'RST', description: 'Reader settings panel', source: 'features/reader/Reader.tsx' },
   { id: 'RPG', description: 'Reader translated chapter', source: 'features/reader/Reader.tsx' },
   { id: 'RSL', description: 'Reader text selection actions', source: 'features/reader/Reader.tsx' },
   { id: 'RMK', description: 'Reader markers accordion', source: 'features/reader/Reader.tsx' },
