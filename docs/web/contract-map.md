@@ -28,9 +28,10 @@ and recorded usage still pass through the existing five-pass attempt boundary;
 the web profiles query exposes this configured profile through its existing
 fields. No new browser route or settings editor was added. Local fixture tests in
 `tests/test_transports.py` cover response shape, evidence, capacity rejection and
-incomplete streaming. `vllm-diffusiongemma` is a centrally available profile
-for the explicitly supplied local GPU endpoint; the generic bundled template is
-disabled until configured.
+incomplete streaming. `gemma4-31b-vllm` and `gemma4-26b-vllm` are centrally
+available for the supplied local GPU endpoint. The 31B served model ID was
+verified through `GET /v1/models`; the owner supplied the future 26B
+`--served-model-name`. The generic bundled template is disabled until configured.
 
 `uv run intelitex serve --workspace-root …` creates one `ASGIServer`, one supervisor,
 one runtime registry and detached workers. FastAPI/Starlette/Uvicorn serve `web/dist`,

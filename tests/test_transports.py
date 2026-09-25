@@ -152,27 +152,35 @@ def test_vllm_profile_resolves_through_provider_pool(tmp_path, vllm_server, quie
         pool.close()
 
 
-def test_builtin_vllm_profile_is_available_without_project_copy(tmp_path):
+def test_builtin_vllm_profiles_are_available_without_project_copy(tmp_path):
     settings = read_json(Path(__file__).resolve().parent.parent / "settings.default.json")
-    assert "vllm-diffusiongemma" not in settings["profiles"]
-    name, profile, _ = resolve_profile(settings, 1, command_profile="vllm-diffusiongemma", project=tmp_path)
-    assert name == "vllm-diffusiongemma"
-    assert profile["provider"] == "vllm"
-    assert profile["model"] == "diffusiongemma"
-    assert profile["context_size"] == 131072
-    assert profile["endpoint"] == builtin_vllm_profiles()[name]["endpoint"]
-    assert profile["options"]["diffusion"] is True
-    assert profile["max_output_tokens"] == settings["passes"]["1"]["max_tokens"]
+    assert set(builtin_vllm_profiles()) == {"gemma4-31b-vllm", "gemma4-26b-vllm"}
+    for name, model in (("gemma4-31b-vllm", "gemma-4-31B-it-FP8"),
+                        ("gemma4-26b-vllm", "gemma-4-26B-A4B-it-FP8")):
+        assert name not in settings["profiles"]
+        resolved, profile, _ = resolve_profile(settings, 1, command_profile=name, project=tmp_path)
+        assert resolved == name
+        assert profile["provider"] == "vllm"
+        assert profile["model"] == model
+        assert profile["context_size"] == 131072
+        assert profile["endpoint"] == builtin_vllm_profiles()[name]["endpoint"]
+        assert profile["options"] == {}
+        assert profile["max_output_tokens"] == settings["passes"]["1"]["max_tokens"]
+    with pytest.raises(PipelineError, match="Unknown profile"):
+        resolve_profile(settings, 1, command_profile="vllm-diffusiongemma", project=tmp_path)
 
 
 def test_vllm_diffusion_rejects_unsupported_sampling_options(tmp_path, quiet_ui):
     settings = read_json(Path(__file__).resolve().parent.parent / "settings.default.json")
     settings["profiles"]["gpu"] = {
-        **builtin_vllm_profiles()["vllm-diffusiongemma"], "temperature": 0.1,
+        "provider": "vllm", "enabled": True, "model": "diffusiongemma",
+        "endpoint": "http://127.0.0.1:8080/v1", "context_size": 131072,
+        "options": {"diffusion": True}, "temperature": 0.1,
     }
     with pytest.raises(PipelineError, match="do not support temperature"):
         validate_profiles(settings, tmp_path)
-    settings["profiles"]["gpu"] = {**builtin_vllm_profiles()["vllm-diffusiongemma"], "options": {}}
+    settings["profiles"]["gpu"] = {**settings["profiles"]["gpu"], "temperature": None,
+                                   "options": {}}
     validate_profiles(settings, tmp_path)
     alias = VLLMClient({**settings["profiles"]["gpu"], "profile_name": "gpu", "resolved_profile": {}},
                        quiet_ui, settings)

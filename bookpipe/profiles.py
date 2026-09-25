@@ -54,12 +54,16 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
 
 def builtin_vllm_profiles() -> dict[str, dict[str, Any]]:
     """The explicitly configured local GPU server, selectable in any workspace."""
-    return {"vllm-diffusiongemma": {
-        "provider": "vllm", "enabled": True, "model": "diffusiongemma",
+    base = {
+        "provider": "vllm", "enabled": True,
         "endpoint": "http://192.168.100.207:8080/v1", "context_size": 131072,
         "planning_output_reserve": 16000, "max_output_tokens": None,
-        "request_timeout": 1200, "options": {"diffusion": True},
-    }}
+        "request_timeout": 1200,
+    }
+    return {
+        "gemma4-31b-vllm": {**base, "model": "gemma-4-31B-it-FP8", "options": {}},
+        "gemma4-26b-vllm": {**base, "model": "gemma-4-26B-A4B-it-FP8", "options": {}},
+    }
 
 
 def with_builtin_profiles(settings: dict[str, Any]) -> dict[str, Any]:
