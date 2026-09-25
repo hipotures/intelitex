@@ -25,6 +25,7 @@ const phase = createRoute({ getParentRoute: () => rootRoute, path: '/work/worksp
   beforeLoad: ({ params }) => { if (params.phase === 'review') throw redirect({ to: '/work/workspaces/$workspaceId/review', params: { workspaceId: params.workspaceId } }); if (!['prepare','analyse','translate','publish'].includes(params.phase)) throw redirect({ to: '/work/workspaces/$workspaceId', params: { workspaceId: params.workspaceId } }) } })
 const review = createRoute({ getParentRoute: () => rootRoute, path: '/work/workspaces/$workspaceId/review', component: ReviewPage, remountDeps: ({params}) => params.workspaceId })
 const reader = createRoute({ getParentRoute: () => rootRoute, path: '/reader', component: ReaderPage })
+const sourceBook = createRoute({ getParentRoute: () => rootRoute, path: '/reader/source/$sourceId', component: ReaderPage })
 const book = createRoute({ getParentRoute: () => rootRoute, path: '/reader/$workspaceId', component: ReaderPage })
-export const router = createRouter({ routeTree: rootRoute.addChildren([index,work,workspace,phase,review,reader,book]), scrollRestoration: true })
+export const router = createRouter({ routeTree: rootRoute.addChildren([index,work,workspace,phase,review,reader,sourceBook,book]), scrollRestoration: true })
 declare module '@tanstack/react-router' { interface Register { router: typeof router } }

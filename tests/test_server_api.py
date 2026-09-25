@@ -5,6 +5,7 @@ import io
 import json
 import sys
 import threading
+import zipfile
 
 import pytest
 
@@ -498,6 +499,61 @@ def test_marker_concurrent_mutations_commit_once(api):
     with ThreadPoolExecutor(max_workers=5) as pool:
         results = list(pool.map(lambda _: request(server, 'POST', '/api/workspaces/book/reader/markers', payload)[0], range(5)))
     assert results.count(200) == 1 and results.count(409) == 4
+
+
+def test_archived_workspace_rejects_marker_changes_but_allows_reading(api):
+    _, root, service, server = api
+    analyze(root); approve(service); translate(root)
+    chapter = service.reader('book', 'chapter', identifier='ch0001')
+    revision = service.reader('book', 'markers')['_revision']
+    payload = {'revision': revision, 'chapter_id': 'ch0001', 'block_id': chapter['blocks'][0]['id'],
+               'start': 0, 'end': 3, 'text': 'Ada'}
+    code, saved = request(server, 'POST', '/api/workspaces/book/reader/markers', payload)
+    assert code == 200
+    lifecycle = service.application.web.lifecycle(root)
+    assert request(server, 'POST', '/api/workspaces/book/archive', {'revision': lifecycle['revision']})[0] == 200
+    assert request(server, 'GET', '/api/workspaces/book/reader/markers')[0] == 200
+    assert request(server, 'GET', '/api/workspaces/book/reader/chapters/ch0001')[0] == 200
+    assert request(server, 'POST', '/api/workspaces/book/reader/markers', {**payload, 'revision': saved['revision']})[0] == 409
+    assert request(server, 'DELETE', f"/api/workspaces/book/reader/markers/{saved['marker']['id']}",
+                   {'revision': saved['revision']})[0] == 409
+
+
+def test_original_library_epub_is_readable_without_workspace_markers(api):
+    _, root, _, server = api
+    source = root.parent.parent / 'sources' / 'original.epub'
+    with zipfile.ZipFile(source, 'w') as archive:
+        archive.writestr('mimetype', 'application/epub+zip')
+        archive.writestr('META-INF/container.xml',
+                         '<container><rootfiles><rootfile full-path="OEBPS/package.opf"/></rootfiles></container>')
+        archive.writestr('OEBPS/package.opf',
+                         '<package><metadata><title>Untranslated Book</title></metadata><manifest>'
+                         '<item id="first" href="one.xhtml" media-type="application/xhtml+xml"/></manifest>'
+                         '<spine><itemref idref="first"/></spine></package>')
+        archive.writestr('OEBPS/one.xhtml',
+                         '<html><body><h1>One</h1><p>Readable <em>source</em> text.</p>'
+                         '<script>Never show this</script></body></html>')
+    base = '/api/library/sources/original.epub/reader'
+    status, metadata = request(server, 'GET', base)
+    assert status == 200 and metadata['title'] == 'Untranslated Book'
+    assert metadata['chapters'] == [{'id': 's0001', 'title': 'Section 1'}]
+    status, chapter = request(server, 'GET', base + '/chapters/s0001')
+    assert status == 200 and [block['text'] for block in chapter['blocks']] == ['One', 'Readable source text.']
+    assert request(server, 'GET', base + '/markers')[0] == 404
+
+
+def test_same_source_in_two_workspaces_keeps_reader_markers_separate(api):
+    app, root, service, server = api
+    analyze(root); approve(service); translate(root)
+    source = root.parent.parent / 'sources' / 'book'
+    app.projects.import_book(ImportBookCommand(root.parent / 'second', source, chapter_mode='file'))
+    chapter = service.reader('book', 'chapter', identifier='ch0001')
+    revision = service.reader('book', 'markers')['_revision']
+    payload = {'revision': revision, 'chapter_id': 'ch0001', 'block_id': chapter['blocks'][0]['id'],
+               'start': 0, 'end': 3, 'text': 'Ada'}
+    assert request(server, 'POST', '/api/workspaces/book/reader/markers', payload)[0] == 200
+    assert len(request(server, 'GET', '/api/workspaces/book/reader/markers')[1]['markers']) == 1
+    assert request(server, 'GET', '/api/workspaces/second/reader/markers')[1]['markers'] == []
 
 
 def test_pipeline_reports_failed_publication_and_retry(api):

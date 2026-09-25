@@ -28,6 +28,10 @@ def dispatch(service, method, parts, body=None, query=None):
     if method == 'GET' and len(parts) == 5 and parts[:3] == ['api', 'library', 'sources']:
         if parts[4] in {'preflight', 'inspect'}:
             return response(200, service.inspect_source(parts[3], detailed=parts[4] == 'inspect'))
+        if parts[4] == 'reader':
+            return response(200, service.source_reader(parts[3]))
+    if method == 'GET' and len(parts) == 7 and parts[:3] == ['api', 'library', 'sources'] and parts[4:6] == ['reader', 'chapters']:
+        return response(200, service.source_reader(parts[3], parts[6]))
     if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
         ident, tail = parts[2], parts[3:]
         if method == 'POST':

@@ -68,6 +68,17 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .reader-heading { font-weight:700; }
 .reader-markers { margin-top:24px;font-size:13px; }
 .reader-markers > div { display:flex;justify-content:space-between;gap:10px;margin:10px 0; }
+.reader-work-link { display:inline-block;margin:9px 0;color:var(--accent);font-size:12px;text-decoration:underline;text-underline-offset:3px; }
+.reader-marker-saved { position:fixed;right:18px;bottom:18px;z-index:18;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 36px);padding:8px 10px;border:1px solid var(--line-strong);border-radius:9px;background:var(--panel);box-shadow:var(--shadow);color:var(--text-soft);font-size:12px; }
+.reader-marker-saved a { color:var(--accent);text-decoration:underline;text-underline-offset:3px; }
+.reader-marker-saved button { padding:2px 6px; }
+.review-reader-markers { margin:18px 0;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--panel);scroll-margin-top:calc(var(--header-h) + 16px); }
+.review-reader-markers h2 { margin:0 0 6px;font-size:17px; }
+.review-reader-markers > p { margin:0 0 12px;color:var(--text-dim);font-size:12px; }
+.review-reader-marker { padding:12px 0;border-top:1px solid var(--line); }
+.review-reader-marker > span { color:var(--text-dim);font-size:11px; }
+.review-reader-marker blockquote { margin:5px 0;color:var(--text);font:15px/1.5 Georgia,serif;overflow-wrap:anywhere; }
+.review-reader-marker a { color:var(--accent);font-size:12px; }
 .reader-main { padding-top:18px; padding-bottom:18px; }
 .reader-main .reader-shell { position:relative;height:calc(100dvh - var(--header-h) - 36px);min-height:390px; }
 .reader-main .reader-content { min-height:0;padding:0;overflow:hidden; }

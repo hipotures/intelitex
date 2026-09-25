@@ -122,7 +122,7 @@ focus trapping, Escape, scrim close and focus return. CSS retains v33 tokens/lay
 | Section drawer | GET sections/id/page; PATCH sections/id | Escaped bounded source, F/T/E/content type; selecting a profile override saves immediately |
 | Pipeline models | GET profiles; PATCH settings | Five configured pass assignments and inheritance; selecting a model saves immediately |
 | Archive | POST archive/restore with lifecycle revision | Metadata-only archive for drafts and prepared projects; busy/cleanup rejection; Reader access retained |
-| Reader | GET reader/chapters/markers; POST context/markers; DELETE marker | Verified P5, stale/unavailable explanation, canonical Unicode offsets and marker revisions |
+| Reader | GET workspace reader/chapters/markers and Library source reader/chapters; POST context/markers; DELETE marker | Verified P5 or bounded original EPUB text, stale/unavailable explanation, canonical Unicode offsets and marker revisions; archived marker writes rejected |
 | Settings | GET capabilities/profiles | Real read-only scope/identity; theme and UI preference reset; unavailable diagnostics explained |
 
 Profile definitions/credentials are not edited in the browser. Persistent palette indices
@@ -201,6 +201,13 @@ the application header, book picker and Reader controls without shifting the pro
 Reader popovers close on outside pointer input or Escape.
 The marker details panel identifies the marker and uses a restrained, theme-aware
 surface; its delete action has a muted warning color.
+Reader can also open a packed Library EPUB directly as a bounded text view without a
+workspace. This view omits images and original page styling, and does not expose
+workspace markers or Context Helper. Archived workspaces keep marker reads but reject
+marker changes in the UI and API. Work Review displays Reader markers in a separate
+section, without folding them into terminology decisions or approval.
+Saving a marker offers a temporary direct link to that Work Review section without
+moving the reading position.
 
 The Work Library loads its first bounded page only when the section enters the
 viewport. The request asks for at least 12 books, rounded up to complete rows at

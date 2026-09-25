@@ -32,6 +32,8 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/library?limit=12&after={cursor}&links=false` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page. `links=false` skips imported-project linkage scans for Work, which derives links from its workspace list; the default retains full linkage. |
 | GET | `/api/library/sources/{source_id}/preflight` | Read-only selected-source fingerprint, metadata and local language sample for setup |
 | GET | `/api/library/sources/{source_id}/inspect` | Repeatable read-only structural sample, reading-order file count and bounded real text excerpts |
+| GET | `/api/library/sources/{source_id}/reader` | Packed EPUB text-view title, source fingerprint and spine sections; no workspace required |
+| GET | `/api/library/sources/{source_id}/reader/chapters/{section_id}` | Bounded plain-text blocks for one EPUB spine section; no markers or Context Helper |
 | POST | `/api/library/compatibility` | `{source_language,target_language,pass_profiles:{"1".."5":name}}` → `{compatible,warnings,target_choices}` |
 | POST | `/api/workspaces/setup` | Setup payload below → `{workspace_id,source_id}`; creates a durable unprepared draft |
 | POST | `/api/workspaces/{id}/reprepare` | `{revision,request_key?}` → supervised import job that rebuilds an untouched prepared plan in the same workspace |
@@ -255,6 +257,11 @@ and validate the selected text against verified translation. Stale text/revision
 return `marker_revision_conflict`. Standalone Reader still holds this same lock
 for its session, so API writes can return `workspace_busy` while it is open;
 API reads remain available. Standalone Review/Reader commands and UIs are unchanged.
+Archived workspaces allow marker reads but reject POST/DELETE with `workspace_archived`.
+Reader markers remain separate from terminology decisions; Work Review lists them
+without changing terminology approval. Library source EPUB routes are read-only and
+return only text and headings; images and original page styling are omitted. Their
+source fingerprint does not identify a workspace.
 
 ## Confined import
 

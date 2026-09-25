@@ -60,6 +60,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RVD | Review term detail | `web/src/features/review/Review.tsx` |
 | RVE | Review evidence group | `web/src/features/review/Review.tsx` |
 | RVM | Review navigation footer | `web/src/features/review/Review.tsx` |
+| RMR | Reader markers in Work Review | `web/src/features/review/ReaderMarkersReview.tsx` |
 | RUC | Unsaved Review form modal | `web/src/features/review/Review.tsx` |
 | RBM | Bulk acceptance confirmation modal | `web/src/features/review/Review.tsx` |
 | RAM | Review glossary approval modal | `web/src/features/review/Review.tsx` |

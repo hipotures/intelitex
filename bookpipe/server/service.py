@@ -508,6 +508,8 @@ class ServerService:
         if operation == 'markers':
             return dto.markers(service.query(root, 'markers'))
         if operation in {'create', 'delete'}:
+            if self.application.web.lifecycle(root)['archived']:
+                raise WorkspaceArchived('Restore this workspace before changing Reader markers.')
             allowed = {'revision', 'chapter_id', 'block_id', 'start', 'end', 'text'} if operation == 'create' else {'revision'}
             fields(payload, allowed, allowed)
             value = {k: v for k, v in payload.items() if k != 'revision'} if operation == 'create' else identifier
@@ -519,6 +521,10 @@ class ServerService:
         elif operation == 'chapter':
             args = (identifier,)
         return dto.reader(service.query(root, operation, *args), operation)
+
+    def source_reader(self, source_id, chapter_id=None):
+        from ..application.source_reader import read_source_epub
+        return read_source_epub(self.imports.root, source_id, chapter_id)
 
     def publication_resource(self, ident):
         return self.application.publishing.download(self.workspaces.resolve(ident))

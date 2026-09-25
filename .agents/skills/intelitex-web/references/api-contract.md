@@ -49,6 +49,12 @@ validated identifiers, not paths.
 | GET | /api/workspaces/{id}/reader/markers | format_version,book_fingerprint,markers,_revision |
 | POST | /api/workspaces/{id}/reader/markers | revision,chapter_id,block_id,start,end,text |
 | DELETE | /api/workspaces/{id}/reader/markers/{marker_id} | revision -> deleted,revision |
+| GET | /api/library/sources/{source_id}/reader | source EPUB title/fingerprint and spine sections; no workspace state |
+| GET | /api/library/sources/{source_id}/reader/chapters/{section_id} | bounded plain-text EPUB blocks; no markers or Context Helper |
+
+Archived workspaces preserve Reader and marker reads; marker POST/DELETE return
+`workspace_archived`. Work Review displays the workspace's Reader markers separately
+from terminology decisions.
 
 Payloads use `revision`, not the Python command's `expected_revision` name.
 JSON permits one Content-Length, no Transfer-Encoding, at most 16 KiB; no duplicate
