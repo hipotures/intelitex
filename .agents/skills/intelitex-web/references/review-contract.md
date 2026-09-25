@@ -22,7 +22,8 @@ according to the application response; don't write a parallel frontend authority
 
 Search/status/category intersect, selection remains when still visible. Use backend
 term IDs and order. Next/Previous without review do not mark the term reviewed.
-Review & next flushes the form, marks reviewed with the correct returned revision,
+Review individually & next flushes the form, marks the term with the individual
+review method using the correct returned revision,
 then advances only after success. Use the prior filtered order, not an index into a
 newly shortened Unreviewed list. Disable unavailable boundary actions; never auto-confirm.
 
@@ -58,5 +59,9 @@ Do not silently replace user's custom value or auto-approve a newer revision. Co
 requests, two tabs, and standalone/CLI writers must be tested. GET/read actions must not
 claim editability merely because no SSE job is visible; real locks still decide.
 
-The API has bulk-review, but v33 has no new bulk toolbar requirement. Don't invent a UI
-just because an endpoint exists. Preserve standalone bulk behavior independently.
+The production web Review UI has an explicitly requested bulk acceptance action.
+It marks pending terms with `review_method: "bulk"`; counts and row labels distinguish
+that action from individual review, inheritance and unknown legacy methods. Glossary
+approval shows these counts before committing and preserves each term's method.
+The original v33 does not define this later UI addition. Preserve standalone bulk
+behavior independently.

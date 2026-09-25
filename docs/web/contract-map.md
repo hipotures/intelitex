@@ -169,12 +169,14 @@ outcomes and resolves through GET requests/key; backend receipts reject mismatch
 Revision conflicts preserve buffered input and require explicit reapplication. Query refresh
 does not replace focused drafts, filters, drawer selection or current Reader prose.
 
-Review & next saves and reviews the current term, then wraps to the next unreviewed
-term in the current category/search scope, skipping reviewed terms. The visible
-Reviewed/Unreviewed toggle does not restrict that next-term search. Review remaining
-in this view sends the current filtered unreviewed IDs to the revision-checked bulk
-endpoint after confirmation. Previous/Next do not mark reviewed. Dirty navigation is
-guarded. Reader chapters are excluded from automatic
+Review individually & next saves and marks the current term with the individual
+review method, then wraps to the next pending term in the current category/search
+scope. The Accepted/Pending toggle does not restrict that next-term search. Bulk
+accept remaining in this view sends the current filtered pending IDs to the
+revision-checked bulk endpoint after confirmation. Review shows separate individual,
+bulk, inherited and unknown-method counts and row labels; glossary approval displays
+these counts before committing choices. Previous/Next do not mark terms accepted.
+Dirty navigation is guarded. Reader chapters are excluded from automatic
 text replacement; metadata/markers refresh independently. Location is scoped by server,
 workspace, book fingerprint, chapter, block ID and Unicode code-point offset. LocalStorage
 contains UI preferences/location only; sessionStorage contains pending request keys only.

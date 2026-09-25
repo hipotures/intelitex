@@ -265,18 +265,21 @@ the count and completion color.
 Green means the *matching scope* is fully reviewed, not that its entire category
 is finished under every filter. A genuinely empty scope stays gray. Under Unreviewed,
 an empty queue is green only if its nonempty category/search parent is completed.
-The status Reviewed filter intentionally includes previously reviewed entries.
+The Accepted filter includes individual, bulk, inherited and legacy entries.
 Uncertain records remain uncertain after review: model confidence is not overwritten
 by the human decision. Notes remain available for a later contextual check.
 
-**Review remaining in this view (N)** marks only still-unreviewed records in the
+**Bulk accept remaining in this view (N)** marks only pending records in the
 intersection of status, category and search. It asks for confirmation with the exact
 count and scope, preserves each current selected/custom form and all notes, and
 backs up the review JSON under `history/review_before_bulk_<hash>.json` before one
 atomic write. It does not choose candidate 1 again, approve hidden categories, call
 a model or globally confirm the glossary. Selecting All + All first deliberately
-expands this operation to all remaining records. Bulk-reviewed records are tagged
-with `review_method: "bulk"`; individual decisions use `"individual"`.
+expands this operation to all remaining records. Bulk-accepted records are tagged
+with `review_method: "bulk"`; individual decisions use `"individual"`. The web
+Review screen reports those methods separately, including inherited and unknown
+legacy methods. Glossary approval commits selected forms without changing a term's
+review method or claiming individual review of bulk-accepted terms.
 
 Browser writes are serialized. Revision tokens reject stale-tab overwrites instead
 of silently replacing another tab's edits. The token is API metadata and is not

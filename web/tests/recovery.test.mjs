@@ -53,7 +53,7 @@ test('1000 sections, 2000 terms, stream bursts, offline/refocus and one shared E
  assert.ok(elapsed<10000,`large-data navigation and filtering took ${elapsed}ms`)
  await context.setOffline(true)
  await page.getByRole('status').filter({hasText:'Offline'}).waitFor()
- assert.equal(await page.getByRole('button',{name:'Review & next',exact:true}).isDisabled(),true)
+ assert.equal(await page.getByRole('button',{name:'Review individually & next',exact:true}).isDisabled(),true)
  assert.equal(await search.inputValue(),'Term 1999')
  await context.setOffline(false)
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')))

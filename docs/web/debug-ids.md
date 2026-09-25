@@ -54,14 +54,15 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RVH | Review heading and approval | `web/src/features/review/Review.tsx` |
 | RVF | Review search and filters | `web/src/features/review/Review.tsx` |
 | RVC | Review category filters | `web/src/features/review/Review.tsx` |
-| RVB | Review visible-scope bulk action | `web/src/features/review/Review.tsx` |
+| RVB | Review visible-scope bulk acceptance | `web/src/features/review/Review.tsx` |
 | RVL | Review list and detail layout | `web/src/features/review/Review.tsx` |
 | RFL | Review terminology list | `web/src/features/review/Review.tsx` |
 | RVD | Review term detail | `web/src/features/review/Review.tsx` |
 | RVE | Review evidence group | `web/src/features/review/Review.tsx` |
 | RVM | Review navigation footer | `web/src/features/review/Review.tsx` |
 | RUC | Unsaved Review form modal | `web/src/features/review/Review.tsx` |
-| RBM | Bulk Review confirmation modal | `web/src/features/review/Review.tsx` |
+| RBM | Bulk acceptance confirmation modal | `web/src/features/review/Review.tsx` |
+| RAM | Review glossary approval modal | `web/src/features/review/Review.tsx` |
 | RDR | Reader page | `web/src/features/reader/Reader.tsx` |
 | RSH | Reader shell | `web/src/features/reader/Reader.tsx` |
 | RBL | Reader book list | `web/src/features/reader/Reader.tsx` |

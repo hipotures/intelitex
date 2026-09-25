@@ -900,7 +900,10 @@
       font-weight:600;
       white-space:nowrap;
     }
-    .review-term-status.reviewed { color:var(--green); }
+    .review-term-status.status-individual { color:var(--green); }
+    .review-term-status.status-bulk { color:var(--accent); }
+    .review-term-status.status-inherited,
+    .review-term-status.status-unknown { color:var(--text-soft); }
     .review-term-list-tail {
       display:none;
       height:16px;
@@ -1068,7 +1071,7 @@
     }
     @media (min-width:821px) {
       #reviewPrevBtn { width:118px; }
-      #reviewNextBtn { width:142px; }
+      #reviewNextBtn { min-width:190px; }
       #reviewOnlyNextBtn { width:96px; }
     }
     .review-warning {

@@ -50,7 +50,7 @@ export const pipelineSummarySchema = z.object({ workspace_id: text, stage: text,
   active_job: jobSchema.nullable(), last_job: jobSchema.nullable() })
 const note = z.object({ text, confidence: text.optional(), evidence: z.array(text).optional() })
 export const termSchema = z.object({ id: text, source: text, aliases: z.array(text), category: text, select: z.number(), custom: text,
-  reviewed: z.boolean(), user_notes: text, meaning_notes: z.array(note),
+  reviewed: z.boolean(), review_method: text.optional(), user_notes: text, meaning_notes: z.array(note),
   candidates: z.array(z.object({ number: count, text, reason: text.optional(), reasons: z.array(text).optional(), confidence: text.optional() })),
   observations: z.array(z.object({ id: text.optional(), about: z.array(text).optional(), kind: text.optional(), statement: text, confidence: text.optional() })).default([]),
   evidence: z.array(z.object({ chapter_id: text, block_id: text, excerpt: text.optional() })).default([]) })
