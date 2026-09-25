@@ -61,6 +61,7 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .diagnostic-scroll { overflow:auto; }
 .download { display:inline-flex;margin-top:16px; }
 .reader-book { display:block; }
+.reader-book .reader-book-identity { display:block;margin:3px 0;color:var(--text-soft);overflow-wrap:anywhere; }
 .reader-controls { display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;margin-bottom:24px; }
 .reader-selection { position:sticky;bottom:12px;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:12px;padding:12px;display:flex;gap:8px;flex-wrap:wrap;box-shadow:var(--shadow); }
 .reader-selection > span { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }

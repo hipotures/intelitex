@@ -184,7 +184,8 @@ Entering Reader without an explicit book reuses the last valid Reader route or c
 backend Reader progress for the first workspace with verified translated text.
 Reader now exposes the prepared workspace library through a compact mobile button and
 a desktop list, including archived workspaces. The current Work workspace is a direct
-choice when prepared. It reads verified P5 chapter prefixes, shows a clear empty state,
+choice when prepared. Book choices display their workspace label and ID so several
+workspaces for the same source book remain distinguishable. It reads verified P5 chapter prefixes, shows a clear empty state,
 and checks Reader progress during the existing 15-second reconciliation. A changed
 current chapter loads automatically only while empty; when text is already visible,
 the reader offers an explicit load action so prose, selection and scroll stay in place.
