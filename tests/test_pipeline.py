@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from jsonschema import ValidationError, validate as validate_schema
 
 from bookpipe.cli import main
 from bookpipe.application import (
@@ -26,6 +27,20 @@ from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
 from bookpipe.ui import Display
 from bookpipe.util import PipelineError, atomic_json, atomic_text, digest, dumps, read_json
+
+
+def test_translation_response_schema_requires_every_source_block():
+    inputs = {"SOURCE_BLOCKS": [{"id": f"B{i:04d}"} for i in range(24)]}
+    for pass_no in (3, 5):
+        schema = response_schema(pass_no, inputs)
+        complete = {"translations": [{"id": block["id"], "text": "Przekład"}
+                                     for block in inputs["SOURCE_BLOCKS"]]}
+        validate_schema(complete, schema)
+        with pytest.raises(ValidationError):
+            validate_schema({"translations": complete["translations"][:14]}, schema)
+        with pytest.raises(ValidationError):
+            validate_schema({"translations": [*complete["translations"][:-1],
+                                                      {"id": "B9999", "text": "Przekład"}]}, schema)
 
 
 class MockState:

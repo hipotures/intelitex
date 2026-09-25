@@ -82,6 +82,10 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'source_span_mismatch'
         elif 'draft_span is not found in the specified draft block' in message:
             code = 'draft_span_mismatch'
+        elif message.startswith('P3 failed validation.') and 'ID coverage mismatch' in message:
+            code = 'p3_id_coverage'
+        elif message.startswith('P5 failed validation.') and 'ID coverage mismatch' in message:
+            code = 'p5_id_coverage'
         elif 'has no current saved result for this chunk' in message:
             code = 'missing_prerequisite'
         elif 'already has a saved result' in message:

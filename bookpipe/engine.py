@@ -108,10 +108,10 @@ def validate_result(pass_no: int, value: dict, inputs: dict):
 def response_schema(pass_no: int, inputs: dict) -> dict:
     """Return the effective response schema for this exact request.
 
-    Pass 1 evidence is constrained to the block IDs that actually exist in the
-    current source unit. llama.cpp compiles response_format into a grammar, so
-    invented evidence IDs become impossible at generation time rather than a
-    post-hoc validation failure.
+    Pass 1 evidence and P3/P5 translations are constrained to the block IDs
+    that actually exist in the current source unit. Structured-output providers
+    can reject incomplete translation arrays during generation; the application
+    still validates exact ID coverage and order after generation.
     """
     schema = copy.deepcopy(SCHEMAS[pass_no])
     if pass_no == 1:
@@ -119,6 +119,12 @@ def response_schema(pass_no: int, inputs: dict) -> dict:
         evidence_item = {"type": "string", "enum": allowed}
         schema["properties"]["terms"]["items"]["properties"]["evidence"]["items"] = copy.deepcopy(evidence_item)
         schema["properties"]["observations"]["items"]["properties"]["evidence"]["items"] = copy.deepcopy(evidence_item)
+    elif pass_no in (3, 5):
+        allowed = [b["id"] for b in inputs["SOURCE_BLOCKS"]]
+        translations = schema["properties"]["translations"]
+        translations["minItems"] = len(allowed)
+        translations["maxItems"] = len(allowed)
+        translations["items"]["properties"]["id"]["enum"] = allowed
     return schema
 
 
@@ -577,6 +583,14 @@ class Runner:
                         "POLISH_DRAFT translation with the same block_id, or use an empty draft_span if no draft "
                         "quote applies. Keep source_span an exact quote from SOURCE_SENTENCES with the same sid. "
                         "Return one complete valid JSON object."
+                    )
+                elif pass_no in (3, 5) and "ID coverage mismatch" in last_error:
+                    block_ids = [block["id"] for block in inputs["SOURCE_BLOCKS"]]
+                    payload["RETRY_INSTRUCTION"] = (
+                        f"The previous response omitted source blocks. Return exactly {len(block_ids)} "
+                        "translations, one for every SOURCE_BLOCKS id in the same order. "
+                        f"Start with {block_ids[0]} and finish with {block_ids[-1]}. "
+                        "Do not stop after a partial list. Return one complete valid JSON object."
                     )
                 else:
                     payload["RETRY_INSTRUCTION"] = "The previous response failed structural validation. Correct this problem and return one complete valid JSON object. Evidence may cite ONLY IDs from ALLOWED_EVIDENCE_IDS; never invent or reuse IDs from another section."

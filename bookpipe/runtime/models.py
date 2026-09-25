@@ -88,6 +88,8 @@ class Job:
             'local_model_unavailable': 'The selected local model server is unavailable. Start llama.cpp or choose another profile for this pass.',
             'source_span_mismatch': 'Model output cited text that does not exactly match its source sentence. This attempt was not selected.',
             'draft_span_mismatch': 'P4 failed validation after its retry: the model cited draft text absent from the specified block. See Attempt diagnostics for the recorded attempts.',
+            'p3_id_coverage': 'P3 failed validation after its retry: the model did not translate every source block. Saved earlier passes remain available.',
+            'p5_id_coverage': 'P5 failed validation after its retry: the model did not return every source block. Saved earlier passes remain available.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
         }

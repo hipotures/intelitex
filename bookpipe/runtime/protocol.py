@@ -85,7 +85,8 @@ def decode(line: str) -> dict:
         error_type = error.get("type", "WorkerError")
         if not isinstance(error_type, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,127}", error_type):
             raise ValueError("Invalid error type.")
-        safe_codes = {'local_model_unavailable', 'source_span_mismatch', 'draft_span_mismatch', 'missing_prerequisite', 'pass_already_saved'}
+        safe_codes = {'local_model_unavailable', 'source_span_mismatch', 'draft_span_mismatch',
+                      'p3_id_coverage', 'p5_id_coverage', 'missing_prerequisite', 'pass_already_saved'}
         raw_code = error.get('code')
         code = raw_code if isinstance(raw_code, str) and raw_code in safe_codes else None
         value = {"type": "failure", "error": {"type": error_type,

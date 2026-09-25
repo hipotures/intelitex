@@ -513,6 +513,21 @@ def test_public_job_state_and_safe_worker_failure_code(tmp_path):
                  error=safe_frame['error']).public()
     assert 'P4 failed validation' in public['error']['message']
 
+    frames.clear()
+
+    def missing_blocks(_sink):
+        raise PipelineError("P3 failed validation. Artifacts: /private/path\n"
+                            "ID coverage mismatch: missing=['B0000113'], unexpected=[], duplicates=0")
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), missing_blocks) == 1
+    safe_frame = decode(json.dumps(frames[0]) + '\n')
+    assert safe_frame['error']['code'] == 'p3_id_coverage'
+    assert 'B0000113' not in json.dumps(safe_frame)
+    public = Job('j', str(tmp_path), 'w', str(project), 'translate', state='failed',
+                 error=safe_frame['error']).public()
+    assert 'did not translate every source block' in public['error']['message']
+
 
 def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, server):
     from test_pipeline import make_epub_source
