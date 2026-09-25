@@ -61,15 +61,15 @@ and responsive breakpoints. The following differences carry real application sem
   evidence is preserved in the workspace's versioned history. V33 has no reset UI.
 - Reload first shows a stable connection shell and phase loading card while backend
   state arrives. Neither screen uses mock pipeline data.
-- Confirm glossary commits approval against the latest complete Review revision.
+- Approve glossary commits approval against the latest complete Review revision.
   Subsequent terminology edits require renewed approval and retain prior output.
 - Review term edits update the saved draft view from the acknowledged PATCH response;
   Next advances after that response while workspace summaries refresh in the background.
   Failed writes keep the local form for explicit reapplication or discard.
-- Review & next follows the legacy next-unreviewed order within the current
-  category/search scope, including wraparound. Review remaining in this view uses
-  the existing revision-checked bulk command and keeps final glossary confirmation
-  separate.
+- Review individually & next follows the legacy next-pending order within the current
+  category/search scope, including wraparound. Bulk accept remaining in this view uses
+  the existing revision-checked bulk command and keeps final glossary approval
+  separate. Counts and row labels distinguish individual review from bulk acceptance.
 - P2–P4 retained receipts display amber retained/unverified state where the existing
   checkpoint query cannot establish current input fingerprints. They are not fabricated
   green completion. Checked P5 counts determine translation completion.
@@ -81,6 +81,8 @@ and responsive breakpoints. The following differences carry real application sem
   replace clickable mock divs.
 - Source preview is escaped, bounded and paginated. Diagnostic tables scroll internally
   on narrow screens; no extra section-table columns were introduced.
+- Scrollbars now use one theme-aware thin style across page and nested scroll areas,
+  replacing native defaults and separate panel-specific scrollbar declarations.
 - Reader uses actual verified translated chapters, canonical Unicode markers, deletion,
   contextual information and saved location instead of the mock's placeholder prose.
   Standalone Reader retains its existing gesture/preferences behavior. The new shell
