@@ -70,7 +70,8 @@ POST archive/restore take lifecycle revision. Archive is reversible metadata, re
 active imports as well as other active/cleanup ownership, and supports persisted drafts
 without creating a project directory. Draft archive state and revision live in the
 root-owned catalog; prepared projects retain `web.lifecycle.json`. Archive preserves
-all project evidence. Restore does not Run. Reader includes archived books. Drafts
+all project evidence. Restore does not Run. The current Reader UI excludes archived
+workspaces by the task owner's later decision; Work Archive remains the restore path. Drafts
 are not automatically imported by opening them.
 
 D04 is resolved: automatic publication displays disabled Publishing…; no Pause and

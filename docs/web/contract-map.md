@@ -183,7 +183,8 @@ contains UI preferences/location only; sessionStorage contains pending request k
 Entering Reader without an explicit book reuses the last valid Reader route or checks
 backend Reader progress for the first workspace with verified translated text.
 Reader now exposes the prepared workspace library through a compact mobile button and
-a desktop list, including archived workspaces. The current Work workspace is a direct
+a desktop list, excluding archived workspaces. Archived workspaces remain in the Work
+Archive drawer for restoration and are not opened through old Reader links. The current Work workspace is a direct
 choice when prepared. Book choices display their workspace label and ID so several
 workspaces for the same source book remain distinguishable. It reads verified P5 chapter prefixes, shows a clear empty state,
 and checks Reader progress during the existing 15-second reconciliation. A changed

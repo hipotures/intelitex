@@ -6,23 +6,33 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Scope, queryClient } from '../../api/client'
 import { ReaderPage, ReadingBook } from './Reader'
 
-vi.mock('@tanstack/react-router', async original => ({ ...await original<typeof import('@tanstack/react-router')>(), Link: ({ children }: { children: ReactNode }) => <a>{children}</a>, useParams: () => ({ sourceId: 'original.epub' }), useSearch: () => ({}), useNavigate: () => vi.fn() }))
+const routeParams = vi.hoisted(() => ({ workspaceId: undefined as string | undefined, sourceId: undefined as string | undefined }))
+vi.mock('@tanstack/react-router', async original => ({ ...await original<typeof import('@tanstack/react-router')>(), Link: ({ children }: { children: ReactNode }) => <a>{children}</a>, useParams: () => routeParams, useSearch: () => ({}), useNavigate: () => vi.fn() }))
 vi.mock('../../realtime/coordinator', () => ({ useConnection: () => 'Live' }))
 
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } })
 const marker = { id: 'M000001', chapter_id: 'c1', block_id: 'b1', start: 0, end: 5, text: 'Relay' }
 let finishDelete: ((response: Response) => void) | undefined
 let requests: ReturnType<typeof vi.fn>
+let listedWorkspaces: unknown[]
+
+const workspace = (id: string, title: string, archived: boolean) => ({
+  workspace_id: id, prepared: true, active_job: null, last_job: null,
+  metadata: { title, creators: [], language: null, word_count: null, label: null, lifecycle: { archived, revision: 'rev' } },
+})
 
 beforeEach(() => {
   queryClient.clear()
   localStorage.clear()
+  routeParams.workspaceId = undefined
+  routeParams.sourceId = undefined
+  listedWorkspaces = []
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
   Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() })
   Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [{ left: 20, top: 30, width: 50, height: 20 }] })
   requests = vi.fn((input: string, options?: RequestInit) => {
     const path = String(input)
-    if (path === '/api/workspaces') return Promise.resolve(json({ workspaces: [] }))
+    if (path === '/api/workspaces') return Promise.resolve(json({ workspaces: listedWorkspaces }))
     if (path === '/api/library') return Promise.resolve(json({ configured: true, sources: [{ source_id: 'original.epub', title: 'Original book', creators: [], language: null, word_count: null, workspace_id: null }] }))
     if (path.endsWith('/reader/markers/M000001') && options?.method === 'DELETE') return new Promise<Response>(resolve => { finishDelete = resolve })
     if (path.endsWith('/reader/markers') && options?.method === 'POST') return Promise.resolve(json({ revision: 'rev2', marker: { ...marker, id: 'M000002' } }))
@@ -67,10 +77,32 @@ it('reads an original EPUB without requesting workspace markers or progress', as
 })
 
 it('offers an original Library EPUB in Reader without a workspace', async () => {
+  routeParams.sourceId = 'original.epub'
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
   await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
   expect(screen.getByText('Original EPUB · no workspace markers')).toBeTruthy()
   expect(screen.getByText('Original EPUB text · read-only')).toBeTruthy()
+})
+
+it('hides archived workspaces from Reader choices and the current-workspace shortcut', async () => {
+  routeParams.workspaceId = 'active'
+  listedWorkspaces = [workspace('old', 'Archived book', true), workspace('active', 'Active book', false)]
+  localStorage.setItem('intelitex.ui.v1.reader-test.work.route', '/work/workspaces/old')
+  render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
+  await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
+  expect(screen.getByText('Active book')).toBeTruthy()
+  expect(screen.queryByText('Archived book')).toBeNull()
+  expect(screen.queryByText('Current workspace')).toBeNull()
+})
+
+it('does not open an archived workspace through an old Reader link', async () => {
+  routeParams.workspaceId = 'old'
+  listedWorkspaces = [workspace('old', 'Archived book', true)]
+  render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
+  await waitFor(() => expect(screen.getByText(/This workspace is archived and hidden from Reader/)).toBeTruthy())
+  expect(screen.getByText('Work → Archive')).toBeTruthy()
+  expect(requests.mock.calls.some(([path]) => String(path).startsWith('/api/workspaces/old/reader'))).toBe(false)
+  expect(screen.queryByText('Archived book')).toBeNull()
 })
 
 it('closes settings outside and removes the marker panel and gutter before DELETE resolves', async () => {
