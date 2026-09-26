@@ -9,6 +9,7 @@ import { Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../c
 import { Activity } from './Workspace'
 import { sectionTitles } from './sectionTitles'
 import { useConnection, useLive } from '../../realtime/coordinator'
+import { latestWorkspaceJob } from '../../realtime/state'
 
 const tokenFields = ['input_tokens', 'cached_input_tokens', 'reasoning_output_tokens', 'output_tokens'] as const
 const tokenLabels = ['Input', 'Cache', 'Reason', 'Output']
@@ -177,8 +178,9 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const liveCompleted = useMemo(() => completedPassesInLiveEvents(live.state.activity[id], liveProgressJobId),
     [live.state.activity, id, liveProgressJobId])
   const attempt = activeEvent?.event.values.attempt_number ?? active?.last_event?.event.values.attempt_number
-  const failedJob = pipeline.last_job?.operation === 'translate' && pipeline.last_job.state === 'failed' && !pipeline.busy
-    ? pipeline.last_job : null
+  const latestJob = latestWorkspaceJob(id, pipeline.active_job ?? pipeline.last_job, live.state.jobs)
+  const failedJob = latestJob?.operation === 'translate' && latestJob.state === 'failed'
+    ? latestJob : null
   const failureTime = failedJob?.finished_at ? new Date(failedJob.finished_at).toLocaleString() : null
   const failureDetail = failedJob?.error?.message
   const knownFailure = failureDetail && failureDetail !== 'Operation failed; inspect locally.'
@@ -258,7 +260,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   }
 
   return <div className="translate-content">
-    {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : 'This older job did not record a detailed reason.'} Saved passes remain available.</div>}
+    {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : failureDetail ? 'This older job did not record a detailed reason.' : 'Checking failure details…'} Saved passes remain available.</div>}
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <div className="phase-detail-grid translate-detail-grid"><div className="phase-detail-stack">
       <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {

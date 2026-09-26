@@ -2,6 +2,16 @@ import type { Envelope, Job } from '../api/schema'
 export type Connection = 'Live' | 'Reconnecting…' | 'Offline'
 export interface StreamState { jobs: Record<string, Job>; activity: Record<string, Envelope[]>; cursor: number; seen: Set<number> }
 export const emptyStream = (): StreamState => ({ jobs: {}, activity: {}, cursor: 0, seen: new Set() })
+export function latestWorkspaceJob(workspaceId: string, recorded: Job | null, liveJobs: Record<string, Job>): Job | null {
+  if (!recorded) return null
+  let latest = recorded
+  for (const job of Object.values(liveJobs)) {
+    if (job.workspace_id !== workspaceId) continue
+    if (job.job_id === latest.job_id ? job.sequence > latest.sequence :
+      !!job.started_at && (!latest.started_at || job.started_at > latest.started_at)) latest = job
+  }
+  return latest
+}
 export function snapshot(state: StreamState, value: { jobs: Job[]; cursor: number }, allowReset = true): StreamState {
   const base = allowReset && value.cursor < state.cursor ? emptyStream() : state
   const jobs = { ...base.jobs }

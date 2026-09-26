@@ -13,6 +13,8 @@ import { AnalyseContent } from './AnalyseContent'
 import { PublishSelection } from './PublishSelection'
 import { p1Cost, translationCost } from './p1Cost'
 import { debugTag } from '../../debug/regions'
+import { useLive } from '../../realtime/coordinator'
+import { latestWorkspaceJob } from '../../realtime/state'
 const fields = ['input_tokens','cached_input_tokens','reasoning_output_tokens','output_tokens'] as const
 const labels = ['Input','Cache','Reason','Output']
 export function usageTotals(usage: Usage | undefined, numbers: number[]) {
@@ -33,6 +35,7 @@ export function PhasePage() {
   const preparation = useApi(endpoint(id,'preparation'), preparationSchema, !!workspace?.prepared && phase === 'prepare')
   const analysisReset = useApi(endpoint(id,'analysis-reset'), analysisResetSchema, !!workspace?.prepared && phase === 'analyse')
   const command = useCommand(id)
+  const live = useLive()
   const navigate = useNavigate()
   const scope = useContext(Scope)
   const [rebuildOpen, setRebuildOpen] = useState(false)
@@ -44,7 +47,8 @@ export function PhasePage() {
   const processingLatch = useRef(false)
   const p = query.data
   const title = ({ prepare: 'Prepare', analyse: 'Analyse', translate: 'Translate', publish: 'Publish' } as Record<string,string>)[phase] ?? phase
-  const state = p ? phaseStatus(p,phase) : 'blocked'
+  const latestJob = p ? latestWorkspaceJob(id, p.active_job ?? p.last_job, live.state.jobs) : null
+  const state = p ? phaseStatus({ ...p, last_job: latestJob }, phase) : 'blocked'
   const totals = usageTotals(usage.data, phase === 'analyse' ? [1] : [2,3,4,5])
   const cost = p1Cost(usage.data)
   const translateCost = translationCost(usage.data)

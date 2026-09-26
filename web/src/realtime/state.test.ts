@@ -1,5 +1,5 @@
 import { describe,it,expect } from 'vitest'
-import { emptyStream,snapshot,progress } from './state'
+import { emptyStream,snapshot,progress,latestWorkspaceJob } from './state'
 import type { Envelope,Job } from '../api/schema'
 const job = (id='one',sequence=5): Job => ({ job_id:id,workspace_id:id,sequence,operation:'translate',state:'running',started_at:null,finished_at:null,last_event:null,error:null })
 const event = (id:number,sequence:number, workspace='one', state='running'): Envelope => ({ id,sequence,job_id:workspace,workspace_id:workspace,timestamp:'2026-09-22T00:00:00Z',event:{ kind:'job_state',values:{state} } })
@@ -33,4 +33,16 @@ it('an older in-flight HTTP snapshot cannot reset a newer stream state',()=>{
  const initial=progress(snapshot(emptyStream(),{jobs:[job()],cursor:50}),event(52,7)).state
  const refreshed=snapshot(initial,{jobs:[job('one',6)],cursor:51},false)
  expect(refreshed.jobs.one?.sequence).toBe(7);expect(refreshed.cursor).toBe(52)
+})
+
+it('replaces an old failed job when a later retry starts or succeeds', () => {
+ const failed = { ...job('old', 3), workspace_id: 'book', state: 'failed' as const,
+   started_at: '2026-09-26T00:54:29Z', finished_at: '2026-09-26T00:54:30Z' }
+ const retry = { ...job('retry', 2), workspace_id: 'book', started_at: '2026-09-26T00:59:03Z' }
+ const other = { ...job('other', 9), workspace_id: 'other', started_at: '2026-09-26T01:00:00Z' }
+ expect(latestWorkspaceJob('book', failed, { retry, other })?.job_id).toBe('retry')
+ expect(latestWorkspaceJob('book', failed, { retry: { ...retry, state: 'succeeded', sequence: 7 } })?.state).toBe('succeeded')
+ expect(latestWorkspaceJob('book', retry, { retry: { ...retry, state: 'succeeded', sequence: 7 } })?.state).toBe('succeeded')
+ expect(latestWorkspaceJob('book', failed, { other })?.state).toBe('failed')
+ expect(latestWorkspaceJob('book', null, { retry })).toBeNull()
 })
