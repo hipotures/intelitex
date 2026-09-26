@@ -129,7 +129,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   const markerBusy = useRef(false)
   const previewFrame = useRef<number | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastActivity = useRef(0)
+  const progressTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastAvailable = useRef<{ chapter: string; signature: string } | null>(null)
   const gesture = useRef<{ id: number; x: number; y: number; timer?: ReturnType<typeof setTimeout>; fired?: boolean } | null>(null)
   const controlTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -150,10 +150,12 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     for (const [key, value] of Object.entries({fontSize, fontFamily, lineHeight, contentWidth, headerAutoHide, markerGesture, contextGesture})) savePreference(scope, `reader.${key}`, String(value))
   }, [scope, fontSize, fontFamily, lineHeight, contentWidth, headerAutoHide, markerGesture, contextGesture])
   useEffect(() => {
-    if (!headerAutoHide || settingsOpen || progressOpen || libraryOpen) { setControlsHidden(false); if (controlTimer.current) clearTimeout(controlTimer.current); return }
+    if (controlTimer.current) clearTimeout(controlTimer.current)
+    if (!headerAutoHide || settingsOpen || libraryOpen) { setControlsHidden(false); return }
+    if (controlsHidden || progressOpen) return
     controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
     return () => { if (controlTimer.current) clearTimeout(controlTimer.current) }
-  }, [headerAutoHide, settingsOpen, progressOpen, libraryOpen, chapterId])
+  }, [headerAutoHide, settingsOpen, progressOpen, libraryOpen, chapterId, controlsHidden])
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('reader-chrome-hidden', controlsHidden)
     return () => document.documentElement.classList.remove('reader-chrome-hidden')
@@ -162,6 +164,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     if (gesture.current?.timer) clearTimeout(gesture.current.timer)
     if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current)
     if (previewTimer.current) clearTimeout(previewTimer.current)
+    if (progressTapTimer.current) clearTimeout(progressTapTimer.current)
   }, [])
   useEffect(() => {
     if (!recentMarker) return
@@ -183,18 +186,34 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
   }, [settingsOpen, progressOpen])
-  const wakeControls = useCallback(() => {
-    if (!controlsHidden && Date.now() - lastActivity.current < 500) return
-    lastActivity.current = Date.now()
-    setControlsHidden(false)
+  const chromeActivity = useCallback(() => {
+    if (!headerAutoHide) return
     if (controlTimer.current) clearTimeout(controlTimer.current)
-    if (headerAutoHide && !settingsOpen && !progressOpen && !libraryOpen) controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
+    if (controlsHidden) { setControlsHidden(false); return }
+    if (!settingsOpen && !progressOpen && !libraryOpen) controlTimer.current = setTimeout(() => setControlsHidden(true), headerAutoHide * 1000)
   }, [controlsHidden, headerAutoHide, settingsOpen, progressOpen, libraryOpen])
   useEffect(() => {
-    document.addEventListener('pointermove', wakeControls, { passive: true })
-    document.addEventListener('pointerdown', wakeControls, { passive: true })
-    return () => { document.removeEventListener('pointermove', wakeControls); document.removeEventListener('pointerdown', wakeControls) }
-  }, [wakeControls])
+    const onChromePointer = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('.topbar, .reader-controls, .reader-books, .reader-mobile-books, .reader-settings')) chromeActivity()
+    }
+    document.addEventListener('pointerdown', onChromePointer, { passive: true })
+    return () => document.removeEventListener('pointerdown', onChromePointer)
+  }, [chromeActivity])
+  useEffect(() => {
+    if (!progressOpen) return
+    const timer = setTimeout(() => setProgressOpen(false), 3600)
+    return () => clearTimeout(timer)
+  }, [progressOpen])
+  const tapProgress = () => {
+    if (progressTapTimer.current) {
+      clearTimeout(progressTapTimer.current)
+      progressTapTimer.current = null
+      setProgressOpen(false)
+      chromeActivity()
+      return
+    }
+    progressTapTimer.current = setTimeout(() => { progressTapTimer.current = null; setProgressOpen(open => !open) }, 300)
+  }
   useEffect(() => {
     if (!metadata.data || !chapter.data || restored.current === chapterId) return
     restored.current = chapterId ?? ''
@@ -242,7 +261,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     }
     const area = scrollArea.current
     let timer: ReturnType<typeof setTimeout>
-    const onScroll = () => { wakeControls(); paintRanges(previewLayer.current, []); clearTimeout(timer); timer = setTimeout(save, 140) }
+    const onScroll = () => { paintRanges(previewLayer.current, []); clearTimeout(timer); timer = setTimeout(save, 140) }
     area?.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('beforeunload', save)
@@ -344,7 +363,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   }
   const chapterMarkers = useMemo(() => markers.data?.markers.filter(m => m.chapter_id === chapterId && !hiddenMarkers.has(m.id)) ?? [], [markers.data, chapterId, hiddenMarkers])
   const percent = progress.data?.total_words ? Math.min(100, Math.round(readWords / progress.data.total_words * 100)) : 0
-  return <div className="reader-reading-area" ref={scrollArea} onPointerDown={wakeControls} onPointerMove={wakeControls}>
+  return <div className="reader-reading-area" ref={scrollArea}>
     <div className="reader-range-layer" ref={previewLayer} aria-hidden="true" />
     <div className={`reader-controls ${controlsHidden ? 'reader-controls-hidden' : ''}`} {...debugTag('RCO')}>
       <Button variant="ghost" aria-label="Table of contents" disabled={!onOpenChapters} onClick={() => { onOpenChapters?.(); setSettingsOpen(false) }}>☰</Button>
@@ -354,7 +373,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       <Button variant="ghost" aria-label="Reader settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>Aa</Button>
       <Button variant="ghost" aria-label="Toggle fullscreen" onClick={() => { void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()) }}>⛶</Button>
     </div>
-    {!sourceId && <button className="reader-progress-line" aria-label="Show reading progress" aria-expanded={progressOpen} onClick={() => setProgressOpen(!progressOpen)}><span style={{ width: `${percent}%` }} /></button>}
+    <button className="reader-progress-line" aria-label={sourceId ? 'Show Reader controls' : 'Show reading progress'} aria-expanded={sourceId ? undefined : progressOpen} onClick={sourceId ? chromeActivity : tapProgress}>{!sourceId && <span style={{ width: `${percent}%` }} />}</button>
     {progressOpen && <div className="reader-progress-popup" role="status"><strong>{percent}% of available translation</strong><span>{readWords} of {progress.data?.total_words ?? 0} available words</span><span>{progress.data?.last_chapter ? `Available through ${progress.data.last_chapter.title}` : 'No verified text yet'}</span></div>}
     {settingsOpen && <aside className="reader-settings" aria-label="Reader settings" {...debugTag('RST')}><h3>Reading settings</h3>
       <label>Font size <input type="range" min="15" max="30" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /><output>{fontSize}px</output></label>

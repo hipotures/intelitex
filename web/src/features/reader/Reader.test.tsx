@@ -78,6 +78,19 @@ it('reads an original EPUB without requesting workspace markers or progress', as
   expect(requests.mock.calls.some(([path]) => String(path).endsWith('/reader/markers') || String(path).endsWith('/reader/progress'))).toBe(false)
 })
 
+it('restores hidden controls in an original EPUB from the top edge', async () => {
+  render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReadingBook id="source:original.epub" sourceId="original.epub" libraryOpen={false} /></Scope.Provider></QueryClientProvider>)
+  await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
+  vi.useFakeTimers()
+  fireEvent.click(screen.getByRole('button', { name: 'Reader settings' }))
+  fireEvent.change(screen.getByLabelText('Header auto-hide'), { target: { value: '5' } })
+  fireEvent.pointerDown(document.body)
+  act(() => vi.advanceTimersByTime(5000))
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Show Reader controls' }))
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(false)
+})
+
 it('offers an original Library EPUB in Reader without a workspace', async () => {
   routeParams.sourceId = 'original.epub'
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
@@ -176,7 +189,7 @@ it('restores the marker indicator after a revision conflict without highlighting
   expect(screen.getByText('Marker revision changed.')).toBeTruthy()
 })
 
-it('paints a gesture preview and hides Reader chrome after the selected delay', async () => {
+it('paints a gesture preview and keeps Reader chrome hidden while prose moves', async () => {
   const view = mount()
   await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
   const paragraph = view.container.querySelector<HTMLElement>('[data-block-id="b1"]')!
@@ -199,6 +212,21 @@ it('paints a gesture preview and hides Reader chrome after the selected delay', 
   fireEvent.pointerDown(document.body)
   act(() => vi.advanceTimersByTime(5000))
   expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
-  fireEvent.pointerMove(view.container.querySelector('.reader-reading-area')!)
+  const readingArea = view.container.querySelector('.reader-reading-area')!
+  fireEvent.scroll(readingArea)
+  fireEvent.pointerMove(readingArea)
+  fireEvent.pointerDown(paragraph, { pointerId: 2, button: 0, clientX: 30, clientY: 30 })
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
+  const progress = screen.getByRole('button', { name: 'Show reading progress' })
+  fireEvent.click(progress)
+  act(() => vi.advanceTimersByTime(150))
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
+  fireEvent.click(progress)
   expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(false)
+  act(() => vi.advanceTimersByTime(5000))
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
+  fireEvent.click(progress)
+  act(() => vi.advanceTimersByTime(300))
+  expect(screen.getByRole('status').textContent).toContain('of available translation')
+  expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
 })

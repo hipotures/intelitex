@@ -202,6 +202,10 @@ pending and restores it on failure. Marker writes update the scoped snapshot fro
 revision without waiting for unrelated query reconciliation. Reader auto-hide covers
 the application header, book picker and Reader controls without shifting the prose.
 Reader popovers close on outside pointer input or Escape.
+As in the legacy Reader, scrolling prose and moving a pointer over it do not
+restore auto-hidden chrome. The progress line stays at the top edge when the
+chrome is hidden; two taps restore the bars. An original EPUB uses that same
+edge to restore controls without showing workspace reading progress.
 The marker details panel identifies the marker and uses a restrained, theme-aware
 surface; its delete action has a muted warning color.
 Reader can also open a packed Library EPUB directly as a bounded text view without a
