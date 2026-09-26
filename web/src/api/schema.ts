@@ -41,7 +41,7 @@ export const pipelineSchema = z.object({ workspace_id: text, stage: text, active
     attempt_result: nullableText, failed_attempt_count: count })) }),
   review: z.object({ prepared: z.boolean(), current: z.boolean(), revision: nullableText, summary: summary.nullable() }),
   approved: z.boolean(), translation_complete: z.boolean(), sections: z.array(sectionSchema), config: configSchema,
-  units: z.array(z.object({ id: text, chapter_id: text, status: text, passes: z.record(text, z.object({ checkpoint_state: text, retained_count: count,
+  units: z.array(z.object({ id: text, chapter_id: text, source_words: count.nullable().optional(), status: text, passes: z.record(text, z.object({ checkpoint_state: text, retained_count: count,
     attempt_result: nullableText, failed_attempt_count: count })) })), publication: publicationSchema, actions: z.record(text, action) })
 export const pipelineSummarySchema = z.object({ workspace_id: text, stage: text, progress: workflowProgress,
   analysis: z.object({ complete: z.boolean() }), approved: z.boolean(),

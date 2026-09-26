@@ -94,7 +94,8 @@ def approve(service):
 
 
 def test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage(api, monkeypatch):
-    app, root, service, _ = api
+    app, root, service, server = api
+    prepared_words = {chunk['id']: chunk['source_words'] for chunk in read_json(root / 'book.json')['chunks']}
     files = app.web.dependencies.files
     original = type(files).read_json
     reads = []
@@ -108,6 +109,9 @@ def test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage(api,
     value = service.pipeline('book')
     assert value['sections'] and value['metadata']['title']
     assert len(reads) == 1
+    assert {unit['id']: unit['source_words'] for unit in value['units']} == prepared_words
+    response = request(server, 'GET', '/api/workspaces/book/pipeline')[1]
+    assert {unit['id']: unit['source_words'] for unit in response['units']} == prepared_words
 
 
 def test_work_card_summary_uses_checkpoint_truth_without_attempt_history(api, monkeypatch):

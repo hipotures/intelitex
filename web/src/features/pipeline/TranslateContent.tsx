@@ -1,8 +1,8 @@
-import { useContext, useLayoutEffect, useRef, useState } from 'react'
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
 import { endpoint, queryClient, reconcile, request, Scope } from '../../api/client'
-import { jobSchema, pipelineSchema, translationPassPreviewSchema, type Pipeline, type Profiles, type TranslationPassPreview, type Usage } from '../../api/schema'
+import { jobSchema, pipelineSchema, translationPassPreviewSchema, type Envelope, type Pipeline, type Profiles, type TranslationPassPreview, type Usage } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { createRequestKey } from '../../api/requestKey'
 import { Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
@@ -83,14 +83,30 @@ export function PreviewPage({ page, passNo }: { page: TranslationPassPreview; pa
 
 type ChunkPass = Pipeline['units'][number]['passes'][string]
 
-export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string, retrying = false) {
+export function completedPassesInLiveEvents(events: Envelope[] | undefined, jobId: string | null) {
+  const completed = new Set<string>()
+  if (!jobId) return completed
+  for (const { job_id, event } of events ?? []) {
+    if (job_id !== jobId || typeof event.values.chunk_id !== 'string') continue
+    const passNo = typeof event.values.pass_no === 'number' ? event.values.pass_no :
+      event.kind === 'translation_unit_progress' && typeof event.current === 'number' ? event.current + 1 : null
+    if (passNo == null) continue
+    const key = `${event.values.chunk_id}:${passNo}`
+    if (event.kind === 'pass_started') completed.delete(key)
+    else if (event.kind === 'translation_unit_progress') completed.add(key)
+  }
+  return completed
+}
+
+export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string, retrying = false, completedInLive = false) {
   const state = pass?.checkpoint_state ?? 'pending'
   if (state === 'completed') return { tone: 'completed', symbol: '✓', label: 'verified final result' }
   if (state === 'stale' || chunkStatus === 'stale' && !!pass?.retained_count)
     return { tone: 'stale', symbol: '↻', label: 'saved result needs revalidation' }
+  if (pass?.retained_count) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
+  if (completedInLive) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
   if (state === 'error' || !retrying && !pass?.retained_count && (pass?.failed_attempt_count || pass?.attempt_result === 'not_checkpointed'))
     return { tone: 'error', symbol: '×', label: 'failed attempt' }
-  if (pass?.retained_count) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
   return { tone: 'pending', symbol: '○', label: 'pending' }
 }
 
@@ -154,6 +170,12 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
     (['succeeded', 'failed', 'cancelled', 'abandoned'].includes(startedJob?.state ?? '') ||
       (pipeline.last_job?.job_id === startedTarget.jobId && ['succeeded', 'failed', 'cancelled', 'abandoned'].includes(pipeline.last_job.state)))
   const working = activeTarget ?? (!startedFinished ? startedTarget : null)
+  // The checkpoint projection and job registry are read separately. A pipeline
+  // request can start before a pass commits but finish after its job succeeds.
+  const liveProgressJobId = startedTarget?.jobId ?? candidateActive?.job_id ??
+    (pipeline.last_job?.operation === 'translate' ? pipeline.last_job.job_id : null)
+  const liveCompleted = useMemo(() => completedPassesInLiveEvents(live.state.activity[id], liveProgressJobId),
+    [live.state.activity, id, liveProgressJobId])
   const attempt = activeEvent?.event.values.attempt_number ?? active?.last_event?.event.values.attempt_number
   const failedJob = pipeline.last_job?.operation === 'translate' && pipeline.last_job.state === 'failed' && !pipeline.busy
     ? pipeline.last_job : null
@@ -242,15 +264,17 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
       <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
         const section = sections.get(item.chapter_id)
         const finished = item.passes['5']?.checkpoint_state === 'completed' && passNumbers.every(number => !!item.passes[String(number)]?.retained_count)
-        return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(null) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}</small></button></td>{passNumbers.map(number => {
+        const size = item.source_words == null ? '' : ` · ${item.source_words.toLocaleString('en-US')} ${item.source_words === 1 ? 'word' : 'words'}`
+        return <tr key={item.id} className={[unit?.id === item.id ? 'selected' : '', finished ? 'finished' : ''].filter(Boolean).join(' ')}><td title={item.id}><button className="translate-chunk-choice" onClick={() => { setSelectedId(item.id); setSelectedPass(null) }}>{(section?.processing === 'full' || section?.processing === 'translate') && <span className={`translate-mode-badge ${section.processing}`} title={section.processing === 'translate' ? 'Translate only: skips P1 analysis; runs P2–P5' : 'Full: runs P1–P5'}>{section.processing === 'translate' ? 'T' : 'F'}</span>}{titles.get(item.chapter_id) ?? section?.fallback_excerpt ?? item.chapter_id}<small>{item.id}{size}</small></button></td>{passNumbers.map(number => {
           const pass = item.passes[String(number)]
           // A failed physical attempt is not a failed pass while this job can still
           // retry it. Keep this cell pending until its checkpoint is visible.
-          const retrying = activeTarget?.chunkId === item.id && number <= activeTarget.passNo
-          const display = passDisplay(pass, item.status, retrying)
+          const completedInLive = liveCompleted.has(`${item.id}:${number}`)
+          const retrying = activeTarget?.chunkId === item.id && number <= activeTarget.passNo && !completedInLive
+          const display = passDisplay(pass, item.status, retrying, completedInLive)
           const hasSaved = !!pass?.retained_count
           const previous = number === 2 || !!item.passes[String(number - 1)]?.retained_count
-          const isWorking = working?.chunkId === item.id && working.passNo === number
+          const isWorking = working?.chunkId === item.id && working.passNo === number && !completedInLive
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
           const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'
           return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && previewPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>

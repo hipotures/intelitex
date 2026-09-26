@@ -180,11 +180,14 @@ atomic manifests, draft, retained usage and publication records. It returns:
 - `review:{prepared,current,revision,summary}`, `approved`;
 - `translation_complete`, `chapters:[{id,title,unit_ids}]`;
 - `excluded_sections:[{id,title,role}]` from the imported non-narrative manifest;
-- `units:[{id,chapter_id,status,passes:{"2":pass,"3":pass,"4":pass,"5":pass}}]`;
+- `units:[{id,chapter_id,source_words,status,passes:{"2":pass,"3":pass,"4":pass,"5":pass}}]`;
 - `publication`, `actions`.
 
 Analysis units are not guessed before planning. Their states are `pending`,
 `completed` (receipt with verified checkpoint), or `error` (invalid receipt/checkpoint).
+`source_words` is the segment word count from the prepared source plan (nullable for
+older plans without the field). The pipeline response passes through the existing
+chunk value without recounting text for this field.
 Translation unit status is the saved `pending`/`done`/`stale` value. Each pass has
 `checkpoint_state`, `retained_count`, `attempt_result` (nullable existing usage
 result status), and `failed_attempt_count`. P2–P4 show `pending` or `retained`:

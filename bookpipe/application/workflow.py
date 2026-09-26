@@ -102,6 +102,7 @@ class WorkflowQueries:
                                            'attempt_result': attempt.result_status if attempt else None,
                                            'failed_attempt_count': attempt.failed_attempt_count if attempt else 0}
                 chunks.append({'id': chunk['id'], 'chapter_id': chunk['chapter_id'],
+                               'source_words': chunk.get('source_words'),
                                'status': saved['status'], 'passes': passes})
             review = files.read_json(root / 'terms.review.json') if files.is_file(root / 'terms.review.json') else None
             review_current = bool(review is not None and review.get('book_fingerprint') == book['source_fingerprint']
