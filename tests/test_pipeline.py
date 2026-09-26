@@ -8,11 +8,14 @@ import zipfile
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import ValidationError, validate as validate_schema
 
 from bookpipe.cli import main
+from bookpipe.application.pipeline import check_model
+from bookpipe.application.ports import NullProgress
 from bookpipe.application import (
     AnalyzeCommand, ApproveCommand, ExportCommand, ReaderSessionCommand, ReviewSessionCommand,
     PublicationStatusCommand, PublishCommand, StatusCommand, TranslateCommand,
@@ -27,6 +30,31 @@ from bookpipe.schemas import SCHEMAS
 from bookpipe.store import Store
 from bookpipe.ui import Display
 from bookpipe.util import PipelineError, atomic_json, atomic_text, digest, dumps, read_json
+
+
+def test_legacy_codex_discovery_identity_accepts_the_same_model_without_generation():
+    saved = {
+        "provider": "codex", "requested_model": "gpt-6-astra",
+        "reported_model": "gpt-6-astra", "cli_version": "codex-cli 0.155.1",
+        "executable": "/usr/bin/codex", "model_metadata": {"displayName": "GPT-6-Astra"},
+    }
+    current = {"provider": "codex", "requested_model": "gpt-6-astra", "profile": "codex-astra-low"}
+    check_model(SimpleNamespace(identity=current), {"model_identity": saved}, False, NullProgress())
+    for changed in (
+        {**current, "requested_model": "gpt-5.6-sol"},
+        {**current, "provider": "openai"},
+    ):
+        with pytest.raises(PipelineError, match="model differs"):
+            check_model(SimpleNamespace(identity=changed), {"model_identity": saved}, False, NullProgress())
+    with pytest.raises(PipelineError, match="model differs"):
+        check_model(SimpleNamespace(identity=current),
+                    {"model_identity": {**saved, "reported_model": "another-model"}}, False, NullProgress())
+    events = []
+    check_model(SimpleNamespace(identity={**current, "requested_model": "gpt-5.6-sol"}),
+                {"model_identity": saved}, True,
+                SimpleNamespace(emit=events.append))
+    assert len(events) == 1 and events[0].kind == "model_changed"
+    assert events[0].values["replace_successful_outputs"] is False
 
 
 def test_translation_response_schema_requires_every_source_block():

@@ -32,7 +32,18 @@ def _reload_after_pass(progress: ProgressSink, completed_units: int) -> None:
 
 def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) -> None:
     old = book.get("model_identity", {})
-    if old and digest(old) != digest(client.identity):
+    current = client.identity
+    # Older Codex imports saved the complete app-server model discovery response.
+    # Web runs now carry a compact identity without a discovery call. The model
+    # request is unchanged when the provider and both saved model IDs agree.
+    same_codex_model = (
+        isinstance(old, dict) and isinstance(current, dict)
+        and old.get("provider") == current.get("provider") == "codex"
+        and isinstance(old.get("requested_model"), str) and bool(old["requested_model"])
+        and old["requested_model"] == current.get("requested_model")
+        and old.get("reported_model", old["requested_model"]) == old["requested_model"]
+    )
+    if old and digest(old) != digest(current) and not same_codex_model:
         if not allowed:
             raise PipelineError(
                 "The server model differs from the import model. Use --allow-model-change intentionally. "
