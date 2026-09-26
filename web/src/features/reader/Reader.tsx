@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { ApiError, endpoint, queryClient, request, Scope, useApi } from '../../api/client'
 import { chapterSchema, contextSchema, librarySchema, markerMutationSchema, markersSchema, readerProgressSchema, readerSchema, workspacesSchema } from '../../api/schema'
@@ -28,7 +29,7 @@ export function ReaderPage() {
   const scope = useContext(Scope)
   const navigate = useNavigate()
   const all = useApi('/api/workspaces', workspacesSchema)
-  const library = useApi('/api/library', librarySchema)
+  const library = useQuery({ queryKey: [scope, '/api/library', 'reader'], queryFn: ({ signal }) => request('/api/library', librarySchema, { signal }) })
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [sidebarTab, setSidebarTab] = useState<'chapters' | 'library'>('chapters')
   const chapterChooser = useRef<((chapterId: string) => void) | null>(null)
@@ -92,6 +93,8 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   const readerPath = sourceId ? `/api/library/sources/${encodeURIComponent(sourceId)}/reader` : endpoint(id,'reader')
   const metadata = useApi(readerPath, readerSchema)
   const progress = useApi(endpoint(id,'reader/progress'), readerProgressSchema, !sourceId)
+  const progressRef = useRef(progress.data)
+  progressRef.current = progress.data
   const markers = useApi(endpoint(id,'reader/markers'), markersSchema, !sourceId)
   const scope = useContext(Scope)
   const search = useSearch({ strict: false })
@@ -123,18 +126,22 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   const [selection, setSelection] = useState<ReturnType<typeof selectedRange>>(null)
   const [context, setContext] = useState<z.infer<typeof contextSchema> | null>(null)
   const restored = useRef('')
+  const savePosition = useRef<(() => void) | null>(null)
   const article = useRef<HTMLElement>(null)
   const scrollArea = useRef<HTMLDivElement>(null)
   const previewLayer = useRef<HTMLDivElement>(null)
+  const markerPopover = useRef<HTMLElement>(null)
   const markerBusy = useRef(false)
   const previewFrame = useRef<number | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastAvailable = useRef<{ chapter: string; signature: string } | null>(null)
-  const gesture = useRef<{ id: number; x: number; y: number; timer?: ReturnType<typeof setTimeout>; fired?: boolean } | null>(null)
+  const gesture = useRef<{ id: number; x: number; y: number; scrollTop: number; scrolling?: boolean; timer?: ReturnType<typeof setTimeout>; fired?: boolean } | null>(null)
+  const [markerAnchor, setMarkerAnchor] = useState<string | null>(null)
   const controlTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const availableChapters = new Set(sourceId ? chapters.map(c => c.id) : progress.data?.chapters.map(c => c.id) ?? [])
   const visibleProgress = progress.data?.chapters.find(c => c.id === chapterId)
+  const fingerprint = metadata.data?.book_fingerprint
   useEffect(() => {
     if (sourceId || !progress.data || !chapterId) return
     const signature = JSON.stringify(visibleProgress?.blocks.map(block => [block.id, block.words]) ?? [])
@@ -214,62 +221,87 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     }
     progressTapTimer.current = setTimeout(() => { progressTapTimer.current = null; setProgressOpen(open => !open) }, 300)
   }
-  useEffect(() => {
-    if (!metadata.data || !chapter.data || restored.current === chapterId) return
-    restored.current = chapterId ?? ''
+  useLayoutEffect(() => {
+    if (!metadata.data || !chapter.data || chapter.data.id !== chapterId) return
+    const restoreKey = `${id}.${metadata.data.book_fingerprint}.${chapterId}`
+    if (restored.current === restoreKey) return
+    restored.current = restoreKey
     const key = `${id}.${metadata.data.book_fingerprint}.${chapterId}.anchor`
     const stored = preference(scope, key)
     let anchor: { block_id: string; offset: number }
     try { anchor = JSON.parse(stored) as typeof anchor } catch { anchor = { block_id: stored, offset: 0 } }
-    if (!anchor || typeof anchor.block_id !== 'string' || !Number.isInteger(anchor.offset)) { scrollArea.current?.scrollTo({ top: 0 }); return }
+    if (!anchor || typeof anchor.block_id !== 'string' || !anchor.block_id || !Number.isInteger(anchor.offset) || anchor.offset < 0) { scrollArea.current?.scrollTo({ top: 0 }); return }
     const node = Array.from(article.current?.querySelectorAll<HTMLElement>('[data-block-id]') ?? []).find(n => n.dataset.blockId === anchor.block_id)
     if (node) {
-      node.scrollIntoView({ block: 'start' })
       let remaining = codePointToUtf16(node.textContent ?? '', anchor.offset)
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
       let text: Node | null
       while ((text = walker.nextNode())) {
         if (remaining <= (text.textContent?.length ?? 0)) {
           const range = document.createRange(); range.setStart(text, remaining); range.collapse(true)
-          scrollArea.current?.scrollBy(0, range.getBoundingClientRect().top - (scrollArea.current?.getBoundingClientRect().top ?? 0) - 76); break
+          const area = scrollArea.current
+          if (area) {
+            const visibleTop = Math.max(area.getBoundingClientRect().top, area.querySelector('.reader-progress-line')?.getBoundingClientRect().bottom ?? 0)
+            area.scrollBy(0, range.getBoundingClientRect().top - visibleTop - 8)
+          }
+          break
         }
         remaining -= text.textContent?.length ?? 0
       }
     }
   }, [chapter.data, chapterId, id, metadata.data, scope])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const save = () => {
-      if (!metadata.data || !chapterId || !article.current) return
+      if (!fingerprint || !chapterId || !article.current || article.current.dataset.chapterId !== chapterId) return
+      if (!scrollArea.current || scrollArea.current.scrollTop <= 1) {
+        savePreference(scope, `${id}.${fingerprint}.${chapterId}.anchor`, JSON.stringify({ block_id: '', offset: 0 }))
+        savePreference(scope, `${id}.reader.chapter`, chapterId)
+        setReadWords(0)
+        return
+      }
       const nodes = Array.from(article.current.querySelectorAll<HTMLElement>('[data-block-id]'))
-      const top = scrollArea.current?.getBoundingClientRect().top ?? 70
+      const top = Math.max(scrollArea.current.getBoundingClientRect().top, scrollArea.current.querySelector('.reader-progress-line')?.getBoundingClientRect().bottom ?? 0)
       const node = nodes.find(n => n.getBoundingClientRect().bottom > top + 8) ?? nodes.at(-1)
       if (node) {
         const rect = node.getBoundingClientRect()
-        const caret = document.caretPositionFromPoint?.(rect.left + 2, Math.max(top + 10, rect.top + 3))
+        const x = rect.left + 2, y = Math.max(top + 10, rect.top + 3)
+        const caret = document.caretPositionFromPoint?.(x, y)
+        const fallback = caret ? null : document.caretRangeFromPoint?.(x, y)
+        const caretNode = caret?.offsetNode ?? fallback?.startContainer
+        const caretOffset = caret?.offset ?? fallback?.startOffset
         let offset = rect.bottom <= top + 8 ? Array.from(node.textContent ?? '').length : 0
-        if (caret && node.contains(caret.offsetNode)) {
-          const prefix = document.createRange(); prefix.selectNodeContents(node); prefix.setEnd(caret.offsetNode, caret.offset)
+        if (caretNode && caretOffset !== undefined && node.contains(caretNode)) {
+          const prefix = document.createRange(); prefix.selectNodeContents(node); prefix.setEnd(caretNode, caretOffset)
           offset = Array.from(prefix.toString()).length
         }
-        savePreference(scope, `${id}.${metadata.data.book_fingerprint}.${chapterId}.anchor`, JSON.stringify({ block_id: node.dataset.blockId, offset }))
-        const snapshot = visibleProgress?.blocks.find(b => b.id === node.dataset.blockId)
+        savePreference(scope, `${id}.${fingerprint}.${chapterId}.anchor`, JSON.stringify({ block_id: node.dataset.blockId, offset }))
+        savePreference(scope, `${id}.reader.chapter`, chapterId)
+        const currentProgress = progressRef.current
+        const snapshot = currentProgress?.chapters.find(c => c.id === chapterId)?.blocks.find(b => b.id === node.dataset.blockId)
         if (snapshot) {
           const prefix = Array.from(node.textContent ?? '').slice(0, offset).join('')
-          setReadWords(Math.min(progress.data?.total_words ?? 0, snapshot.start + (prefix.match(/[\p{L}\p{N}\p{M}_]+(?:[’'-][\p{L}\p{N}\p{M}_]+)*/gu)?.length ?? 0)))
+          setReadWords(Math.min(currentProgress?.total_words ?? 0, snapshot.start + (prefix.match(/[\p{L}\p{N}\p{M}_]+(?:[’'-][\p{L}\p{N}\p{M}_]+)*/gu)?.length ?? 0)))
         }
       }
     }
     const area = scrollArea.current
     let timer: ReturnType<typeof setTimeout>
-    const onScroll = () => { paintRanges(previewLayer.current, []); clearTimeout(timer); timer = setTimeout(save, 140) }
+    savePosition.current = save
+    const onScroll = () => {
+      if (gesture.current) {
+        gesture.current.scrolling = true
+        if (gesture.current.timer) clearTimeout(gesture.current.timer)
+      }
+      paintRanges(previewLayer.current, [])
+      clearTimeout(timer)
+      timer = setTimeout(save, 400)
+    }
     area?.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('beforeunload', save)
-    return () => { area?.removeEventListener('scroll', onScroll); window.removeEventListener('scroll', onScroll); window.removeEventListener('beforeunload', save); clearTimeout(timer) }
-  // The handler is installed for the selected chapter; settings only affect the control timer.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, chapterId, metadata.data, scope, progress.data])
-  const choose = (value: string) => { setSelection(null); setContext(null); setActiveMarker(null); setReadWords(0); setNewText(false); scrollArea.current?.scrollTo({ top: 0 }); savePreference(scope, `${id}.reader.chapter`, value); if (metadata.data) savePreference(scope, `${id}.${metadata.data.book_fingerprint}.${value}.anchor`, JSON.stringify({block_id:'',offset:0})); void queryClient.invalidateQueries({queryKey: [scope, `${readerPath}/chapters/${encodeURIComponent(value)}`], exact: true}); void navigate({ to: '.', search: old => ({ ...old, chapter: value }), replace: true }) }
+    window.addEventListener('pagehide', save)
+    return () => { area?.removeEventListener('scroll', onScroll); window.removeEventListener('pagehide', save); clearTimeout(timer); save(); if (savePosition.current === save) savePosition.current = null }
+  // Keep the handler stable across query updates so a pending restore is not overwritten by cleanup.
+  }, [id, chapterId, fingerprint, scope])
+  const choose = (value: string) => { if (value === chapterId) return; savePosition.current?.(); setSelection(null); setContext(null); setActiveMarker(null); setMarkerAnchor(null); setReadWords(0); setNewText(false); scrollArea.current?.scrollTo({ top: 0 }); savePreference(scope, `${id}.reader.chapter`, value); if (metadata.data) savePreference(scope, `${id}.${metadata.data.book_fingerprint}.${value}.anchor`, JSON.stringify({block_id:'',offset:0})); void queryClient.invalidateQueries({queryKey: [scope, `${readerPath}/chapters/${encodeURIComponent(value)}`], exact: true}); void navigate({ to: '.', search: old => ({ ...old, chapter: value }), replace: true }) }
   useEffect(() => { onRegisterChoose?.(choose); return () => onRegisterChoose?.(null) })
   const index = chapters.findIndex(c => c.id === chapterId)
   const refreshChapter = () => { if (window.getSelection()?.toString()) return; setNewText(false); void chapter.refetch() }
@@ -288,6 +320,8 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       await queryClient.cancelQueries({ queryKey: [scope, markerPath], exact: true })
       updateMarkers(result.revision, items => items.some(item => item.id === result.marker!.id) ? items : [...items, result.marker!])
       setRecentMarker(result.marker.id)
+      setActiveMarker(result.marker.block_id)
+      setMarkerAnchor(result.marker.id)
     } catch (error) {
       setMarkerError(error)
       setSelection(value)
@@ -308,6 +342,7 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       await queryClient.cancelQueries({ queryKey: [scope, markerPath], exact: true })
       updateMarkers(result.revision, items => items.filter(item => item.id !== markerId))
       setActiveMarker(null)
+      setMarkerAnchor(null)
     } catch (error) {
       setMarkerError(error)
       if (error instanceof ApiError && error.status === 409) void markers.refetch()
@@ -362,6 +397,37 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     else { setContextGesture(value); if (value !== 'off' && markerGesture === value) setMarkerGesture(contextGesture) }
   }
   const chapterMarkers = useMemo(() => markers.data?.markers.filter(m => m.chapter_id === chapterId && !hiddenMarkers.has(m.id)) ?? [], [markers.data, chapterId, hiddenMarkers])
+  useLayoutEffect(() => {
+    if (!activeMarker || !markerPopover.current) return
+    const popover = markerPopover.current
+    const position = () => {
+      const block = Array.from(article.current?.querySelectorAll<HTMLElement>('[data-block-id]') ?? []).find(node => node.dataset.blockId === activeMarker)
+      const marker = chapterMarkers.find(item => item.id === markerAnchor && item.block_id === activeMarker) ?? chapterMarkers.find(item => item.block_id === activeMarker)
+      const wrapper = block?.parentElement
+      if (!block || !marker || !wrapper) return
+      const rects = Array.from(blockRange(block, marker.start, marker.end)?.getClientRects() ?? [])
+      const tag = rects.at(-1) ?? block.getBoundingClientRect()
+      const box = wrapper.getBoundingClientRect()
+      const computed = getComputedStyle(block)
+      const font = Number.parseFloat(computed.fontSize) || fontSize
+      const lineValue = Number.parseFloat(computed.lineHeight)
+      const line = Number.isFinite(lineValue) ? computed.lineHeight.endsWith('px') ? lineValue : lineValue * font : font * lineHeight
+      popover.style.top = `${Math.max(0, tag.bottom - box.top + line * 2)}px`
+      popover.style.left = `${Math.max(0, Math.min(tag.left - box.left, box.width - Math.min(520, box.width)))}px`
+      const area = scrollArea.current
+      if (area) {
+        const areaBottom = area.getBoundingClientRect().bottom
+        const controlsBottom = document.querySelector('.reader-progress-line')?.getBoundingClientRect().bottom ?? 0
+        const canScroll = Math.max(0, tag.top - controlsBottom - 8)
+        const desiredScroll = Math.max(0, popover.getBoundingClientRect().top + Math.min(popover.scrollHeight, 160) - areaBottom + 12)
+        if (desiredScroll > 0 && canScroll > 0) area.scrollBy(0, Math.min(desiredScroll, canScroll))
+        popover.style.maxHeight = `${Math.max(80, Math.min(520, areaBottom - popover.getBoundingClientRect().top - 12))}px`
+      }
+    }
+    position()
+    window.addEventListener('resize', position)
+    return () => window.removeEventListener('resize', position)
+  }, [activeMarker, markerAnchor, chapterMarkers, chapter.data, fontSize, fontFamily, lineHeight, contentWidth])
   const percent = progress.data?.total_words ? Math.min(100, Math.round(readWords / progress.data.total_words * 100)) : 0
   return <div className="reader-reading-area" ref={scrollArea}>
     <div className="reader-range-layer" ref={previewLayer} aria-hidden="true" />
@@ -388,22 +454,21 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     <ErrorNote error={metadata.error ?? progress.error ?? chapter.error ?? markers.error ?? markerError} retry={() => { setMarkerError(null); void progress.refetch(); void chapter.refetch(); void markers.refetch() }} />
     {contextError && <div className="notice" role="alert">{contextError}</div>}
     {chapter.data?.stale && <div className="notice">{chapter.data.warning ?? 'This verified output is stale and may need retranslation.'}</div>}
-    <article className={`reader-page ${!sourceId && [archived ? 'off' : markerGesture, contextGesture].some(value => value === 'drag' || value === 'long') ? 'gesture-active' : ''}`} style={{ maxWidth: `${contentWidth}rem`, fontSize, lineHeight, fontFamily: fontFamily === 'mono' ? 'ui-monospace, monospace' : fontFamily === 'sans' ? 'Inter, ui-sans-serif, system-ui, sans-serif' : 'Georgia, ui-serif, serif' }} {...debugTag('RPG', chapterId)} ref={article}
-      onPointerDown={event => { const block = (event.target as Element).closest<HTMLElement>('[data-block-id]'); if (sourceId || !block || event.button !== 0 || !((!archived && markerGesture !== 'off') || contextGesture !== 'off')) return; window.getSelection()?.removeAllRanges(); setSelection(null); if (previewTimer.current) clearTimeout(previewTimer.current); event.currentTarget.setPointerCapture?.(event.pointerId); const point = { id: event.pointerId, x: event.clientX, y: event.clientY } as NonNullable<typeof gesture.current>; gesture.current = point; previewGesture(point.x, point.y); if ((!archived && markerGesture === 'long') || contextGesture === 'long') point.timer = setTimeout(() => { point.fired = true; gestureAt('long', point.x, point.y) }, 550) }}
-      onPointerMove={event => { const point = gesture.current; if (!point || point.id !== event.pointerId || point.fired) return; const dx = event.clientX - point.x, dy = event.clientY - point.y; if (Math.hypot(dx, dy) > 11 && point.timer) clearTimeout(point.timer); if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy) * 1.2 && ((!archived && markerGesture === 'drag') || contextGesture === 'drag')) { if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = requestAnimationFrame(() => { previewFrame.current = null; previewGesture(point.x, point.y, event.clientX, event.clientY) }) } else if (Math.abs(dy) > 11) paintRanges(previewLayer.current, []) }}
-      onPointerUp={event => { const point = gesture.current; if (!point || point.id !== event.pointerId) return; if (point.timer) clearTimeout(point.timer); if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = null; gesture.current = null; const dx = event.clientX - point.x, dy = event.clientY - point.y; if (!point.fired && Math.hypot(dx, dy) <= 11) gestureAt('tap', point.x, point.y); else if (!point.fired && Math.abs(dx) >= 28 && Math.abs(dx) > Math.abs(dy) * 1.2) gestureAt('drag', point.x, point.y, event.clientX, event.clientY); else if (!point.fired) paintRanges(previewLayer.current, []) }}
+    <article className={`reader-page ${!sourceId && [archived ? 'off' : markerGesture, contextGesture].some(value => value === 'drag' || value === 'long') ? 'gesture-active' : ''}`} style={{ maxWidth: `${contentWidth}rem`, fontSize, lineHeight, fontFamily: fontFamily === 'mono' ? 'ui-monospace, monospace' : fontFamily === 'sans' ? 'Inter, ui-sans-serif, system-ui, sans-serif' : 'Georgia, ui-serif, serif' }} {...debugTag('RPG', chapterId)} data-chapter-id={chapter.data?.id} ref={article}
+      onPointerDown={event => { const block = (event.target as Element).closest<HTMLElement>('[data-block-id]'); if (sourceId || !block || event.button !== 0 || !((!archived && markerGesture !== 'off') || contextGesture !== 'off')) return; if (previewTimer.current) clearTimeout(previewTimer.current); const point = { id: event.pointerId, x: event.clientX, y: event.clientY, scrollTop: scrollArea.current?.scrollTop ?? 0 } as NonNullable<typeof gesture.current>; gesture.current = point; if ((!archived && markerGesture === 'long') || contextGesture === 'long') point.timer = setTimeout(() => { if (point.scrolling || Math.abs((scrollArea.current?.scrollTop ?? 0) - point.scrollTop) > 2) return; point.fired = true; gestureAt('long', point.x, point.y) }, 550) }}
+      onPointerMove={event => { const point = gesture.current; if (!point || point.id !== event.pointerId || point.fired || point.scrolling) return; const dx = event.clientX - point.x, dy = event.clientY - point.y; if (Math.hypot(dx, dy) > 11 && point.timer) clearTimeout(point.timer); if (Math.abs(dy) > 11 && Math.abs(dy) >= Math.abs(dx)) { point.scrolling = true; paintRanges(previewLayer.current, []); return } if (Math.abs(dx) > 11 && Math.abs(dx) > Math.abs(dy) * 1.2 && ((!archived && markerGesture === 'drag') || contextGesture === 'drag')) { event.currentTarget.setPointerCapture?.(event.pointerId); if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = requestAnimationFrame(() => { previewFrame.current = null; previewGesture(point.x, point.y, event.clientX, event.clientY) }) } }}
+      onPointerUp={event => { const point = gesture.current; if (!point || point.id !== event.pointerId) return; if (point.timer) clearTimeout(point.timer); if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = null; gesture.current = null; const dx = event.clientX - point.x, dy = event.clientY - point.y; if (point.scrolling || Math.abs((scrollArea.current?.scrollTop ?? 0) - point.scrollTop) > 2) { paintRanges(previewLayer.current, []); return } if (!point.fired && Math.hypot(dx, dy) <= 11) gestureAt('tap', point.x, point.y); else if (!point.fired && Math.abs(dx) >= 28 && Math.abs(dx) > Math.abs(dy) * 1.2) gestureAt('drag', point.x, point.y, event.clientX, event.clientY); else if (!point.fired) paintRanges(previewLayer.current, []) }}
       onPointerCancel={() => { if (gesture.current?.timer) clearTimeout(gesture.current.timer); if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = null; gesture.current = null; paintRanges(previewLayer.current, []) }}
       onContextMenu={event => { if (((!archived && markerGesture === 'long') || contextGesture === 'long') && (event.target as Element).closest('[data-block-id]')) event.preventDefault() }}
       onMouseUp={() => { if (sourceId) return; const value = selectedRange(window.getSelection()); if (value) setSelection(value) }} onKeyUp={() => { if (sourceId) return; const value = selectedRange(window.getSelection()); if (value) setSelection(value) }}>
       <h2>{chapter.data?.title ?? metadata.data?.title ?? 'Loading translated text…'}</h2>
-      {chapter.data?.blocks.map(block => <div className="reader-block-wrap" key={block.id}>{chapterMarkers.some(m => m.block_id === block.id) && <button className="reader-gutter-marker" aria-label={`Markers in ${block.id}`} onClick={() => setActiveMarker(activeMarker === block.id ? null : block.id)}>▮</button>}<p data-block-id={block.id} className={block.kind.startsWith('h') ? 'reader-heading' : undefined}>{inlineRuns(block.text, block.formatting).map((run,i) => run.style === 'em' ? <em key={i}>{run.text}</em> : run.style === 'strong' ? <strong key={i}>{run.text}</strong> : run.text)}</p>{activeMarker === block.id && chapterMarkers.some(m => m.block_id === block.id) && <aside className="reader-marker-popover" aria-label="Marker details" {...debugTag('RMP', block.id)}><div className="reader-marker-popover-title">Marker</div>{chapterMarkers.filter(m => m.block_id === block.id).map(m => <div className="reader-marker-popover-entry" key={m.id}><span className="reader-marker-id">ID <code>{m.id}</code></span><blockquote>{m.text}</blockquote>{!archived && <Button className="reader-delete-marker" disabled={markerPending || connection !== 'Live'} onClick={() => void deleteMarker(m.id)}>Delete marker</Button>}</div>)}<Link className="reader-work-link" to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">View markers in Work →</Link></aside>}</div>)}
+      {chapter.data?.blocks.map(block => <div className="reader-block-wrap" key={block.id}>{chapterMarkers.some(m => m.block_id === block.id) && <button className="reader-gutter-marker" aria-label={`Markers in ${block.id}`} onClick={() => { setMarkerAnchor(chapterMarkers.find(m => m.block_id === block.id)?.id ?? null); setActiveMarker(activeMarker === block.id ? null : block.id) }}>▮</button>}<p data-block-id={block.id} className={block.kind.startsWith('h') ? 'reader-heading' : undefined}>{inlineRuns(block.text, block.formatting).map((run,i) => run.style === 'em' ? <em key={i}>{run.text}</em> : run.style === 'strong' ? <strong key={i}>{run.text}</strong> : run.text)}</p>{activeMarker === block.id && chapterMarkers.some(m => m.block_id === block.id) && <aside ref={markerPopover} className="reader-marker-popover" aria-label="Marker details" {...debugTag('RMP', block.id)}><div className="reader-marker-popover-title">Marker {recentMarker === markerAnchor && <span role="status">saved</span>}</div>{chapterMarkers.filter(m => m.block_id === block.id).map(m => <div className="reader-marker-popover-entry" key={m.id}><span className="reader-marker-id">ID <code>{m.id}</code></span><blockquote>{m.text}</blockquote>{!archived && <Button className="reader-delete-marker" disabled={markerPending || connection !== 'Live'} onClick={() => void deleteMarker(m.id)}>Delete marker</Button>}</div>)}<Link className="reader-work-link" to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">View markers in Work →</Link></aside>}</div>)}
       {chapter.data && !chapter.data.blocks.length && <Empty>{sourceId ? 'This EPUB section has no readable text.' : 'No completed translation segments are available for this chapter yet. Reader checks for new segments automatically.'}</Empty>}
       {chapter.data?.unavailable && chapter.data.blocks.length > 0 && <div className="reader-boundary">End of currently available translation. {chapter.data.unavailable.reason}</div>}
       {chapter.data && <footer className="reader-chapter-end">{chapters[index + 1] && availableChapters.has(chapters[index + 1]!.id) ? <Button variant="ghost" onClick={() => choose(chapters[index + 1]!.id)}>Next chapter → {chapters[index + 1]!.title}</Button> : sourceId ? 'End of book' : 'End of available translation'}</footer>}
     </article>
     {selection && <div className="reader-selection" {...debugTag('RSL')}><span>{selection.text}</span>{!archived && <Button disabled={markerPending || connection !== 'Live' || !markers.data} onClick={() => void mark(selection)}>Mark selection</Button>}<Button onClick={() => void openContext(selection.block_id, selection.start)}>Context</Button><Button variant="ghost" onClick={() => setSelection(null)}>Dismiss</Button></div>}
     {!!chapterMarkers.length && <details className="reader-markers" {...debugTag('RMK')}><summary>Markers · {chapterMarkers.length}</summary>{chapterMarkers.map(m => <div key={m.id}><span>{m.text}</span>{!archived && <Button className="reader-delete-marker" disabled={markerPending || connection !== 'Live'} onClick={() => void deleteMarker(m.id)}>Delete marker</Button>}</div>)}<Link className="reader-work-link" to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">View markers in Work →</Link></details>}
-    {recentMarker && <div className="reader-marker-saved" role="status"><span>Marker saved</span><Link to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">Open in Work Review →</Link><Button variant="ghost" aria-label="Dismiss marker shortcut" onClick={() => setRecentMarker(null)}>×</Button></div>}
     {context && <Overlay debugId="RCM" title={context.recognized ? context.display_name ?? context.title ?? 'Context' : 'No recognized term'} close={() => setContext(null)} compact><div className="modal-body reader-context-body">{context.recognized ? <>{!!context.attributes?.length && <dl>{context.attributes.map(a => <div key={a.label}><dt>{a.label}</dt><dd>{a.value}</dd></div>)}</dl>}{!!context.statements?.length && <ul>{context.statements.map((s,i) => <li key={i}>{s}</li>)}</ul>}{!!context.earlier_mentions?.length && <section><h3>Earlier mentions</h3>{context.earlier_mentions.map((m,i) => <figure key={i}><blockquote>{m.text}</blockquote><figcaption>{m.chapter_title}</figcaption></figure>)}</section>}{!!context.same_block_context?.length && <section><h3>Earlier in this passage</h3>{context.same_block_context.map((m,i) => <blockquote key={i}>{m.text}</blockquote>)}</section>}{!context.attributes?.length && !context.statements?.length && !context.earlier_mentions?.length && !context.same_block_context?.length && <p>No earlier context is available at this reading position.</p>}</> : <p>No terminology context was recognized at this position.</p>}</div></Overlay>}
   </div>
 }

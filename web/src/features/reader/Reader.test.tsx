@@ -30,8 +30,11 @@ beforeEach(() => {
   navigateMock.mockReset()
   listedWorkspaces = []
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+  Object.defineProperty(HTMLElement.prototype, 'scrollBy', { configurable: true, value: vi.fn() })
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
   Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() })
-  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [{ left: 20, top: 30, width: 50, height: 20 }] })
+  Object.defineProperty(Range.prototype, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 20, top: 30, right: 70, bottom: 50, width: 50, height: 20 }) })
+  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [{ left: 20, right: 70, top: 30, bottom: 50, width: 50, height: 20 }] })
   requests = vi.fn((input: string, options?: RequestInit) => {
     const path = String(input)
     if (path === '/api/workspaces') return Promise.resolve(json({ workspaces: listedWorkspaces }))
@@ -93,6 +96,7 @@ it('restores hidden controls in an original EPUB from the top edge', async () =>
 
 it('offers an original Library EPUB in Reader without a workspace', async () => {
   routeParams.sourceId = 'original.epub'
+  queryClient.setQueryData(['reader-test', '/api/library'], { pages: [{ configured: true, sources: [] }], pageParams: [null] })
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
   await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
   expect(within(screen.getByRole('navigation', { name: 'Table of contents' })).getByRole('button', { name: 'Section 1' })).toBeTruthy()
@@ -194,15 +198,15 @@ it('paints a gesture preview and keeps Reader chrome hidden while prose moves', 
   await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
   const paragraph = view.container.querySelector<HTMLElement>('[data-block-id="b1"]')!
   Object.defineProperty(document, 'caretPositionFromPoint', { configurable: true, value: (x: number) => ({ offsetNode: paragraph.firstChild, offset: x < 50 ? 2 : 9 }) })
-  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: function(this: Range) { return [{ left: 20, top: 30, width: this.toString().length * 10, height: 20 }] } })
+  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: function(this: Range) { return [{ left: 20, right: 20 + this.toString().length * 10, top: 30, bottom: 50, width: this.toString().length * 10, height: 20 }] } })
   fireEvent.pointerDown(paragraph, { pointerId: 1, button: 0, clientX: 30, clientY: 30 })
-  expect(view.container.querySelector<HTMLElement>('.reader-range-rect.preview')?.style.width).toBe('50px')
+  expect(view.container.querySelector('.reader-range-rect.preview')).toBeNull()
   fireEvent.pointerMove(paragraph, { pointerId: 1, clientX: 100, clientY: 30 })
   await waitFor(() => expect(view.container.querySelector<HTMLElement>('.reader-range-rect.preview')?.style.width).toBe('120px'))
   vi.useFakeTimers()
   fireEvent.pointerUp(paragraph, { pointerId: 1, clientX: 100, clientY: 30 })
   await act(async () => { await Promise.resolve() })
-  expect(screen.getByText('Open in Work Review →')).toBeTruthy()
+  expect(within(screen.getByRole('complementary', { name: 'Marker details' })).getByText('View markers in Work →')).toBeTruthy()
   expect(view.container.querySelector('.reader-range-rect.preview')).not.toBeNull()
   act(() => vi.advanceTimersByTime(900))
   expect(view.container.querySelector('.reader-range-rect.preview')).toBeNull()
@@ -229,4 +233,52 @@ it('paints a gesture preview and keeps Reader chrome hidden while prose moves', 
   act(() => vi.advanceTimersByTime(300))
   expect(screen.getByRole('status').textContent).toContain('of available translation')
   expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(true)
+})
+
+it('saves the latest position immediately on close and restores the same book position', async () => {
+  const view = mount()
+  await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
+  const paragraph = view.container.querySelector<HTMLElement>('[data-block-id="b1"]')!
+  const area = view.container.querySelector<HTMLElement>('.reader-reading-area')!
+  Object.defineProperty(paragraph, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 10, top: 150, bottom: 250 }) })
+  Object.defineProperty(document, 'caretPositionFromPoint', { configurable: true, value: () => ({ offsetNode: document.querySelector('[data-block-id="b1"]')?.firstChild, offset: 6 }) })
+  const writes = vi.spyOn(Storage.prototype, 'setItem')
+  area.scrollTop = 100
+  fireEvent.scroll(area)
+  fireEvent.scroll(area)
+  expect(writes.mock.calls.filter(([key]) => String(key).endsWith('.anchor'))).toHaveLength(0)
+  view.unmount()
+  const anchorKey = 'intelitex.ui.v1.reader-test.w1.fp.c1.anchor'
+  expect(JSON.parse(localStorage.getItem(anchorKey)!)).toEqual({ block_id: 'b1', offset: 6 })
+  expect(writes.mock.calls.filter(([key]) => key === anchorKey)).toHaveLength(1)
+  writes.mockRestore()
+  const restored = mount()
+  await waitFor(() => expect(restored.container.querySelector('[data-block-id="b1"]')).not.toBeNull())
+  expect(HTMLElement.prototype.scrollBy).toHaveBeenCalled()
+})
+
+it('does not highlight or tag words during a vertical reading scroll', async () => {
+  const view = mount()
+  await waitFor(() => expect(screen.getByText('Relay stayed')).toBeTruthy())
+  const paragraph = view.container.querySelector<HTMLElement>('[data-block-id="b1"]')!
+  const area = view.container.querySelector<HTMLElement>('.reader-reading-area')!
+  Object.defineProperty(document, 'caretPositionFromPoint', { configurable: true, value: () => ({ offsetNode: paragraph.firstChild, offset: 3 }) })
+  fireEvent.pointerDown(paragraph, { pointerId: 7, button: 0, clientX: 30, clientY: 30 })
+  expect(view.container.querySelector('.reader-range-rect.preview')).toBeNull()
+  fireEvent.pointerMove(paragraph, { pointerId: 7, clientX: 34, clientY: 75 })
+  fireEvent.scroll(area)
+  fireEvent.pointerUp(paragraph, { pointerId: 7, clientX: 34, clientY: 75 })
+  expect(view.container.querySelector('.reader-range-rect.preview')).toBeNull()
+  expect(requests.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+})
+
+it('places marker details two text lines below the tagged word', async () => {
+  const view = mount()
+  await waitFor(() => expect(view.container.querySelector('.reader-gutter-marker')).not.toBeNull())
+  const wrapper = view.container.querySelector<HTMLElement>('.reader-block-wrap')!
+  Object.defineProperty(wrapper, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 10, top: 10, width: 600 }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Markers in b1' }))
+  const details = screen.getByRole('complementary', { name: 'Marker details' }) as HTMLElement
+  expect(details.style.top).toBe('108px')
+  expect(details.style.left).toBe('10px')
 })

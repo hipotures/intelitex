@@ -202,6 +202,11 @@ pending and restores it on failure. Marker writes update the scoped snapshot fro
 revision without waiting for unrelated query reconciliation. Reader auto-hide covers
 the application header, book picker and Reader controls without shifting the prose.
 Reader popovers close on outside pointer input or Escape.
+The Reader saves its per-book, per-chapter block and Unicode offset after scrolling
+settles (400 ms), and flushes the last position on navigation or page close. Reopening
+the book restores its saved chapter and position. Vertical scrolling cancels gesture
+recognition before a highlight or marker write. Marker details open two text lines
+below the marked range, including immediately after a marker is saved.
 As in the legacy Reader, scrolling prose and moving a pointer over it do not
 restore auto-hidden chrome. The progress line stays at the top edge when the
 chrome is hidden; two taps restore the bars. An original EPUB uses that same
@@ -213,8 +218,8 @@ workspace. This view omits images and original page styling, and does not expose
 workspace markers or Context Helper. Archived workspaces keep marker reads but reject
 marker changes in the UI and API. Work Review displays Reader markers in a separate
 section, without folding them into terminology decisions or approval.
-Saving a marker offers a temporary direct link to that Work Review section without
-moving the reading position.
+Saving a marker opens its nearby details panel with a direct link to that Work Review
+section while keeping the marked text visible.
 
 The Work Library loads its first bounded page only when the section enters the
 viewport. The request asks for at least 12 books, rounded up to complete rows at
