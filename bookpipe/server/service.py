@@ -9,6 +9,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from datetime import datetime
 import re
+import threading
 from ..application.imports import ImportDisabled, ImportQueries, confined_source, workspace_destination
 from ..runtime.models import ImportJobSpec, JobSpec
 from . import serialization as dto
@@ -33,8 +34,33 @@ class ServerService:
         self.supervisor = supervisor
         self.imports = ImportQueries(import_root)
         self.catalog = WebCatalog(workspaces.root, self.imports)
+        self._summary_lock = threading.Lock()
+        self._summary_cache = {}
         roots = [None, *(self.workspaces.resolve(i) for i in self.workspaces.list())]
         self.catalog.register_profiles(p['name'] for root in roots for p in self.application.workflow.settings(root)['profiles'])
+
+    def _book_summary(self, root):
+        """Reuse immutable book-derived listing fields; read lifecycle/setup on every request."""
+        path = root / 'book.json'
+        stat = path.stat()
+        stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        with self._summary_lock:
+            cached = self._summary_cache.get(root)
+            if cached is None or cached[0] != stamp:
+                book = self.application.web.book(root)
+                metadata = self.application.web.metadata(root, book=book)
+                static = {key: metadata[key] for key in ('title', 'creators', 'language', 'format', 'word_count')}
+                source = Path(book.get('source_archive', book['source_root'])).resolve()
+                self._summary_cache[root] = (stamp, static, source)
+            else:
+                _, static, source = cached
+        from ..application.workspace_setup import read_workspace_setup
+        setup = read_workspace_setup(root)
+        metadata = {**static, 'label': setup.get('label'),
+                    'source_language': setup.get('source_language'),
+                    'target_language': setup.get('target_language'),
+                    'lifecycle': self.application.web.lifecycle(root)}
+        return metadata, source, setup
 
     def last_job(self, ident):
         resets = self.workspaces.root / ident / 'history' / 'p1_resets'
@@ -70,18 +96,14 @@ class ServerService:
             if archived is not None and self.application.web.lifecycle(root)['archived'] != archived:
                 continue
             active = self.supervisor.active_for_project(root)
-            from ..application.workspace_setup import read_workspace_setup
-            setup = read_workspace_setup(root)
+            metadata, path, setup = self._book_summary(root)
             source_id = setup.get('source_id')
-            book = None
             if source_id is None and self.imports.root is not None:
-                book = self.application.web.book(root)
-                path = Path(book.get('source_archive', book['source_root'])).resolve()
                 if path.parent == self.imports.root:
                     source_id = path.name
             result.append({'workspace_id': ident, 'prepared': True,
                            **({'source_id': source_id} if source_id else {}),
-                           'metadata': self.application.web.metadata(root, book=book),
+                           'metadata': metadata,
                            'active_job': active.public() if active else None, 'last_job': self.last_job(ident)})
         for entry in self.catalog.entries():
             if entry['workspace_id'] not in imported:
@@ -124,7 +146,10 @@ class ServerService:
                 return self.catalog.archive_draft(ident, archived, revision(payload))
             if self.supervisor.owns_project(root) or self.supervisor.active_for_project(root):
                 raise JobConflict('Workspace busy.')
-            return self.application.web.archive(root, archived, revision(payload))
+            result = self.application.web.archive(root, archived, revision(payload))
+            with self._summary_lock:
+                self._summary_cache.pop(root, None)
+            return result
 
     def configure(self, ident, payload, section_id=None):
         fields(payload, {'revision', 'processing', 'content_type', 'profiles', 'allow_model_change'} if section_id
@@ -239,10 +264,10 @@ class ServerService:
         raw = self.application.web.dependencies.files.read_json(self.application.web.dependencies.bundle / 'settings.default.json')
         return self.catalog.save_setup(payload, raw)
 
-    def library(self):
+    def library(self, *, links=True):
         sources = self.catalog.library()
-        imported = {str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
-        if self.imports.root:
+        if links and self.imports.root:
+            imported = {str(self._book_summary(self.workspaces.resolve(i))[1]): i for i in self.workspaces.list()}
             for source in sources:
                 source['workspace_id'] = source['workspace_id'] or imported.get(str((self.imports.root / source['source_id']).resolve()))
         return {'sources': sources, 'configured': self.imports.root is not None}
@@ -264,7 +289,7 @@ class ServerService:
                                   or '/' in after or '\\' in after or '\x00' in after):
             raise ValueError('Invalid Library cursor.')
         sources, next_cursor = self.catalog.library_page(after, limit)
-        imported = ({str(Path((book := self.application.web.book(self.workspaces.resolve(i))).get('source_archive', book['source_root'])).resolve()): i for i in self.workspaces.list()}
+        imported = ({str(self._book_summary(self.workspaces.resolve(i))[1]): i for i in self.workspaces.list()}
                     if links == 'true' else {})
         if self.imports.root and links == 'true':
             for source in sources:

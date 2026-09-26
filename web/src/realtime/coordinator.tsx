@@ -21,16 +21,15 @@ export function Realtime() {
       if (refreshing) { dirty = true; return }
       refreshing = true
       const predicate = (q: { queryKey: readonly unknown[]; getObserversCount(): number }) => q.queryKey[0] === scope && q.getObserversCount() > 0 && !String(q.queryKey[1]).startsWith('/api/library') && !String(q.queryKey[1]).includes('/reader/chapters/')
-      const results = await Promise.allSettled([
-        queryClient.invalidateQueries({ predicate }, { cancelRefetch: false }),
-        request('/api/jobs', jobsSchema),
-      ])
-      const jobs = results[1]
-      if (jobs.status === 'fulfilled') view = { ...view, state: snapshot(view.state, jobs.value, false) }
+      // Revalidating large Reader/Review queries must not hold the connection in
+      // "Reconnecting" or prevent read-only navigation while their responses load.
+      void queryClient.invalidateQueries({ predicate }, { cancelRefetch: false })
+      const jobs = await Promise.allSettled([request('/api/jobs', jobsSchema)])
+      if (jobs[0].status === 'fulfilled') view = { ...view, state: snapshot(view.state, jobs[0].value, false) }
       if (closed) return
       // An unrelated detail query can fail while SSE and the job endpoint are
       // healthy. Its own panel reports that error; it must not lock every action.
-      const failed = jobs.status === 'rejected'
+      const failed = jobs[0].status === 'rejected'
       view = { ...view, connection: navigator.onLine ? connected && !failed ? 'Live' : 'Reconnecting…' : 'Offline' }; emit()
       refreshing = false
       if (dirty) { dirty = false; schedule() }
@@ -43,7 +42,9 @@ export function Realtime() {
       try {
         const value = jobsSchema.parse(JSON.parse(event.data))
         view = { ...view, state: snapshot(view.state, value) }
-        connected = true; hasSnapshot = true; emit(); schedule(true)
+        connected = true; hasSnapshot = true
+        view = { ...view, connection: navigator.onLine ? 'Live' : 'Offline' }
+        emit(); schedule(true)
       } catch { connected = false; view = { ...view, connection: 'Reconnecting…' }; emit(); schedule(true) }
     })
     source.addEventListener('progress', (event: MessageEvent<string>) => {
@@ -64,8 +65,7 @@ export function Realtime() {
     const polling = setInterval(() => {
       if (document.hidden) return
       ticks++
-      if (!connected || ticks % 3 === 0) schedule(true)
-      else void queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === scope && q.getObserversCount() > 0 && String(q.queryKey[1]).endsWith('/review') }, { cancelRefetch: false })
+      if (!connected || ticks % 6 === 0) schedule(true)
     }, 5000)
     window.addEventListener('focus', resume); window.addEventListener('online', resume); window.addEventListener('offline', offline)
     document.addEventListener('visibilitychange', resume)

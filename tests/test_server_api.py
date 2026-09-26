@@ -546,6 +546,38 @@ def test_original_library_epub_is_readable_without_workspace_markers(api):
     assert request(server, 'GET', base + '/markers')[0] == 404
 
 
+def test_reader_library_lists_originals_without_loading_workspace_books(api, monkeypatch):
+    _, _, service, server = api
+    def unexpected_book(_root):
+        raise AssertionError('Original EPUB list must not load workspace book.json')
+    monkeypatch.setattr(service.application.web, 'book', unexpected_book)
+    status, library = request(server, 'GET', '/api/library?links=false')
+    assert status == 200
+    assert library['configured'] is True
+    assert isinstance(library['sources'], list)
+
+
+def test_workspace_listing_reuses_book_summary_and_refreshes_after_edit(api, monkeypatch):
+    _, root, service, server = api
+    original = service.application.web.book
+    calls = []
+    def counted(path):
+        calls.append(path)
+        return original(path)
+    monkeypatch.setattr(service.application.web, 'book', counted)
+    assert request(server, 'GET', '/api/workspaces')[0] == 200
+    assert request(server, 'GET', '/api/workspaces')[0] == 200
+    assert request(server, 'GET', '/api/library')[0] == 200
+    assert calls == [root]
+
+    book = read_json(root / 'book.json')
+    book['metadata']['title'] = 'Updated title'
+    atomic_json(root / 'book.json', book)
+    status, listing = request(server, 'GET', '/api/workspaces')
+    assert status == 200 and listing['workspaces'][0]['metadata']['title'] == 'Updated title'
+    assert calls == [root, root]
+
+
 def test_same_source_in_two_workspaces_keeps_reader_markers_separate(api):
     app, root, service, server = api
     analyze(root); approve(service); translate(root)

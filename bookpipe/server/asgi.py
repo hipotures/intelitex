@@ -138,7 +138,7 @@ def create_app(service, allowed_hosts, *, frontend=None):
                 if not target.is_relative_to(assets) or target.is_symlink():
                     raise KeyError()
                 mime = 'text/javascript' if target.suffix == '.js' else 'text/css' if target.suffix == '.css' else 'font/woff2'
-            elif path == '' or re.fullmatch(r'(?:work(?:/workspaces/[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/(?:prepare|analyse|review|translate|publish))?)?|reader(?:/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?)', path):
+            elif path == '' or re.fullmatch(r'(?:work(?:/workspaces/[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/(?:prepare|analyse|review|translate|publish))?)?|reader(?:/source/[^/\\]{1,255}|/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?)', path):
                 target, mime = assets / 'index.html', 'text/html'
             else:
                 raise KeyError()

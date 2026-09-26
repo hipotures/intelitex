@@ -939,6 +939,8 @@ def test_asgi_guards_and_static_route_isolation(api, tmp_path):
     async def checks():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test:80', headers={'Host': 'test:80'}) as client:
             assert (await client.get('/work/workspaces/book/review')).status_code == 200
+            assert (await client.get('/reader/source/original.epub')).status_code == 200
+            assert (await client.get('/reader/source/Book%20One.epub')).status_code == 200
             for path in ['/api/missing', '/assets/missing.js', '/book.json', '/docs']:
                 response = await client.get(path)
                 assert response.status_code == 404

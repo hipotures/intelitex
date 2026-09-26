@@ -38,7 +38,7 @@ beforeEach(() => {
   requests = vi.fn((input: string, options?: RequestInit) => {
     const path = String(input)
     if (path === '/api/workspaces') return Promise.resolve(json({ workspaces: listedWorkspaces }))
-    if (path === '/api/library') return Promise.resolve(json({ configured: true, sources: [{ source_id: 'original.epub', title: 'Original book', creators: [], language: null, word_count: null, workspace_id: null }] }))
+    if (path === '/api/library?links=false') return Promise.resolve(json({ configured: true, sources: [{ source_id: 'original.epub', title: 'Original book', creators: [], language: null, word_count: null, workspace_id: null }] }))
     if (path.endsWith('/reader/markers/M000001') && options?.method === 'DELETE') return new Promise<Response>(resolve => { finishDelete = resolve })
     if (path.endsWith('/reader/markers') && options?.method === 'POST') return Promise.resolve(json({ revision: 'rev2', marker: { ...marker, id: 'M000002' } }))
     if (path.endsWith('/reader/markers')) return Promise.resolve(json({ _revision: 'rev1', book_fingerprint: 'fp', markers: [marker] }))
@@ -119,12 +119,13 @@ it('keeps mobile reading available when the browser disallows fullscreen', async
 
 it('offers an original Library EPUB in Reader without a workspace', async () => {
   routeParams.sourceId = 'original.epub'
-  queryClient.setQueryData(['reader-test', '/api/library'], { pages: [{ configured: true, sources: [] }], pageParams: [null] })
   render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReaderPage /></Scope.Provider></QueryClientProvider>)
   await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
+  expect(requests.mock.calls.some(([path]) => path === '/api/workspaces')).toBe(false)
+  expect(requests.mock.calls.some(([path]) => path === '/api/library?links=false')).toBe(false)
   expect(within(screen.getByRole('navigation', { name: 'Table of contents' })).getByRole('button', { name: 'Section 1' })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Library' }))
-  expect(screen.getByText('Original EPUB · no workspace markers')).toBeTruthy()
+  await waitFor(() => expect(screen.getByText('Original EPUB · no workspace markers')).toBeTruthy())
   expect(screen.getByText('Original EPUB text · read-only')).toBeTruthy()
 })
 

@@ -187,6 +187,18 @@ class ReaderSession:
 class ReaderService:
     def __init__(self, dependencies: ApplicationDependencies, progress: ProgressSink):
         self.dependencies, self.progress = dependencies, progress
+        self._query_lock = threading.RLock()
+        self._query_snapshot: tuple[Path, tuple, ReaderContext] | None = None
+
+    @staticmethod
+    def _manifest_stamp(project: Path) -> tuple:
+        def stamp(path: Path):
+            try:
+                state = path.stat()
+                return (state.st_dev, state.st_ino, state.st_size, state.st_mtime_ns, state.st_ctime_ns)
+            except FileNotFoundError:
+                return None
+        return stamp(project / "book.json"), stamp(project / "web.config.json")
 
     def open_session(self, command: ReaderSessionCommand | Path) -> ReaderSession:
         if isinstance(command, Path):
@@ -194,15 +206,26 @@ class ReaderService:
         return ReaderSession(self.dependencies, command, self.progress)
 
     def query(self, project: Path, operation: str, *args) -> dict:
-        """One request, no lifetime lock, mutable Store or retained context."""
+        """Reuse one validated source manifest; inspect P5 checkpoints on each read."""
         project = project.resolve()
-        load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files)
-        context = ReaderContext(project)
-        if operation == "markers":
-            return MarkerRepository(project, context, self.dependencies.files).load()
-        methods = {"metadata": context.metadata, "progress": context.progress,
-                   "chapter": context.chapter, "context": context.context}
-        return copy.deepcopy(methods[operation](*args))
+        with self._query_lock:
+            stamp = self._manifest_stamp(project)
+            cached = self._query_snapshot
+            if cached is None or cached[0] != project or cached[1] != stamp:
+                book = load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files)
+                context = ReaderContext(project, book)
+                context.metadata()
+                self._query_snapshot = (project, stamp, context)
+            else:
+                context = cached[2]
+            # P5 output can advance without changing book.json. Never reuse prose
+            # assembled from a previous checkpoint snapshot.
+            context._verified_blocks.clear()
+            if operation == "markers":
+                return MarkerRepository(project, context, self.dependencies.files).load()
+            methods = {"metadata": context.metadata, "progress": context.progress,
+                       "chapter": context.chapter, "context": context.context}
+            return copy.deepcopy(methods[operation](*args))
 
     def mutate_marker(self, project: Path, operation: str, value, revision: str) -> dict:
         # Same lock as the compatibility Reader, held only for this mutation.

@@ -24,6 +24,8 @@ def dispatch(service, method, parts, body=None, query=None):
     if method == 'POST' and parts == ['api', 'library', 'compatibility']:
         return response(200, service.compatibility(body))
     if method == 'GET' and parts == ['api', 'library']:
+        if query == {'links': 'false'}:
+            return response(200, service.library(links=False))
         return response(200, service.library_page(query) if query is not None else service.library())
     if method == 'GET' and len(parts) == 5 and parts[:3] == ['api', 'library', 'sources']:
         if parts[4] in {'preflight', 'inspect'}:

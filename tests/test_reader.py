@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -694,6 +695,29 @@ def test_reader_context_reuses_frozen_book_manifest(tmp_path, monkeypatch):
     context.metadata()
     context.chapter("ch0001")
     assert calls == [root / "book.json"]
+
+
+def test_reader_service_reuses_validated_manifest_until_source_changes(tmp_path, monkeypatch):
+    root, _ = make_reader_project(tmp_path)
+    original = reader_application.load_valid_book
+    calls = []
+
+    def counted(*args):
+        calls.append(args[0])
+        return original(*args)
+
+    monkeypatch.setattr(reader_application, "load_valid_book", counted)
+    service = reader_application.ReaderService(SimpleNamespace(plan_fingerprint=lambda _: None, files=None), None)
+    assert service.query(root, "metadata")["title"] == "Książka"
+    assert service.query(root, "chapter", "ch0001")["complete"]
+    assert service.query(root, "progress")["total_words"] > 0
+    assert calls == [root]
+
+    book = read_json(root / "book.json")
+    book["metadata"]["title"] = "Nowy tytuł"
+    atomic_json(root / "book.json", book)
+    assert service.query(root, "metadata")["title"] == "Nowy tytuł"
+    assert calls == [root, root]
 
 
 def test_reader_can_read_checkpoint_while_pipeline_sqlite_writer_is_active(tmp_path):

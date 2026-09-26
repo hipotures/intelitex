@@ -70,8 +70,9 @@ def reader_word_count(text: str) -> int:
 class ReaderContext:
     """Assemble canonical Polish blocks only from registered P5 artifacts."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, book_data: dict | None = None):
         self.root = root.resolve()
+        self._validated_book = book_data
         self._book_data: dict | None = None
         self._canonical_blocks: set[tuple[str, str]] = set()
         self._block_orders: dict[str, int] = {}
@@ -91,10 +92,14 @@ class ReaderContext:
     def _book(self) -> dict:
         if self._book_data is not None:
             return self._book_data
-        path = self.root / "book.json"
-        if not path.is_file():
-            raise PipelineError("Reader project has no book.json.")
-        book = read_json(path)
+        if self._validated_book is None:
+            path = self.root / "book.json"
+            if not path.is_file():
+                raise PipelineError("Reader project has no book.json.")
+            book = read_json(path)
+        else:
+            book = self._validated_book
+            self._validated_book = None
         from .processing import effective_book
         book = effective_book(book, self.root, include_dormant=True)
         if not isinstance(book.get("chapters"), list) or not isinstance(book.get("chunks"), list):
