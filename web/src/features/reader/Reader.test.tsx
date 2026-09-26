@@ -94,6 +94,29 @@ it('restores hidden controls in an original EPUB from the top edge', async () =>
   expect(document.documentElement.classList.contains('reader-chrome-hidden')).toBe(false)
 })
 
+it('keeps mobile reading available when the browser disallows fullscreen', async () => {
+  const previous = Object.getOwnPropertyDescriptor(document, 'fullscreenEnabled')
+  const previousRequest = Object.getOwnPropertyDescriptor(document.documentElement, 'requestFullscreen')
+  const requestFullscreen = vi.fn()
+  Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false })
+  Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen })
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query.includes('pointer: coarse') })))
+  try {
+    render(<QueryClientProvider client={queryClient}><Scope.Provider value="reader-test"><ReadingBook id="source:original.epub" sourceId="original.epub" libraryOpen={false} /></Scope.Provider></QueryClientProvider>)
+    await waitFor(() => expect(screen.getByText('Original prose')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Reader settings' }))
+    fireEvent.change(screen.getByLabelText('Header auto-hide'), { target: { value: '5' } })
+    expect(screen.getByText('This browser does not allow Reader to hide its address bar.')).toBeTruthy()
+    expect(requestFullscreen).not.toHaveBeenCalled()
+    expect(screen.getByText('Original prose')).toBeTruthy()
+  } finally {
+    if (previous) Object.defineProperty(document, 'fullscreenEnabled', previous)
+    else Reflect.deleteProperty(document, 'fullscreenEnabled')
+    if (previousRequest) Object.defineProperty(document.documentElement, 'requestFullscreen', previousRequest)
+    else Reflect.deleteProperty(document.documentElement, 'requestFullscreen')
+  }
+})
+
 it('offers an original Library EPUB in Reader without a workspace', async () => {
   routeParams.sourceId = 'original.epub'
   queryClient.setQueryData(['reader-test', '/api/library'], { pages: [{ configured: true, sources: [] }], pageParams: [null] })

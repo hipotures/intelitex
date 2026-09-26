@@ -201,6 +201,11 @@ gutter indicator; deletion hides the indicator while the revision-checked reques
 pending and restores it on failure. Marker writes update the scoped snapshot from the returned
 revision without waiting for unrelated query reconciliation. Reader auto-hide covers
 the application header, book picker and Reader controls without shifting the prose.
+On touch screens at the mobile breakpoint, enabling auto-hide requests browser
+fullscreen during the settings interaction. A restored preference requests it on the
+next Reader tap, since browsers require a user action. Disabling auto-hide or leaving
+Reader exits only fullscreen entered by this setting; a browser refusal leaves Reader
+usable.
 Reader popovers close on outside pointer input or Escape.
 The Reader saves its per-book, per-chapter block and Unicode offset after scrolling
 settles (400 ms), and flushes the last position on navigation or page close. Reopening

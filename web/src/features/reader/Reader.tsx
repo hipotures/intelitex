@@ -24,6 +24,7 @@ function paintRanges(layer: HTMLDivElement | null, ranges: Range[]) {
   }
   layer.replaceChildren(fragment)
 }
+const mobileReader = () => window.matchMedia?.('(max-width: 720px) and (pointer: coarse)').matches ?? false
 export function ReaderPage() {
   const { workspaceId, sourceId } = useParams({ strict: false })
   const scope = useContext(Scope)
@@ -116,6 +117,10 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   const [lineHeight, setLineHeight] = useState(() => Number(preference(scope, 'reader.lineHeight', '1.7')))
   const [contentWidth, setContentWidth] = useState(() => Number(preference(scope, 'reader.contentWidth', '42')))
   const [headerAutoHide, setHeaderAutoHide] = useState(() => Number(preference(scope, 'reader.headerAutoHide', '0')))
+  const autoFullscreenWanted = useRef(headerAutoHide > 0)
+  const autoFullscreenOwned = useRef(false)
+  const autoFullscreenDismissed = useRef(false)
+  const autoFullscreenPending = useRef(false)
   const [markerGesture, setMarkerGesture] = useState(() => preference(scope, 'reader.markerGesture', 'drag'))
   const [contextGesture, setContextGesture] = useState(() => preference(scope, 'reader.contextGesture', 'long'))
   const [controlsHidden, setControlsHidden] = useState(false)
@@ -142,6 +147,44 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
   const availableChapters = new Set(sourceId ? chapters.map(c => c.id) : progress.data?.chapters.map(c => c.id) ?? [])
   const visibleProgress = progress.data?.chapters.find(c => c.id === chapterId)
   const fingerprint = metadata.data?.book_fingerprint
+  const releaseAutoFullscreen = useCallback(() => {
+    autoFullscreenWanted.current = false
+    if (autoFullscreenOwned.current && document.fullscreenElement === document.documentElement) {
+      autoFullscreenOwned.current = false
+      void document.exitFullscreen().catch(() => {})
+    }
+  }, [])
+  const requestAutoFullscreen = useCallback(() => {
+    if (!autoFullscreenWanted.current || autoFullscreenDismissed.current || autoFullscreenPending.current || !mobileReader() || document.fullscreenElement ||
+      document.fullscreenEnabled === false || typeof document.documentElement.requestFullscreen !== 'function') return
+    try {
+      autoFullscreenPending.current = true
+      void document.documentElement.requestFullscreen().then(() => {
+        autoFullscreenPending.current = false
+        if (document.fullscreenElement !== document.documentElement) return
+        autoFullscreenOwned.current = true
+        if (!autoFullscreenWanted.current) releaseAutoFullscreen()
+      }).catch(() => { autoFullscreenPending.current = false })
+    } catch { autoFullscreenPending.current = false }
+  }, [releaseAutoFullscreen])
+  const changeHeaderAutoHide = (seconds: number) => {
+    autoFullscreenWanted.current = seconds > 0
+    autoFullscreenDismissed.current = false
+    if (seconds > 0) requestAutoFullscreen()
+    else releaseAutoFullscreen()
+    setHeaderAutoHide(seconds)
+  }
+  useEffect(() => {
+    autoFullscreenWanted.current = Number(preference(scope, 'reader.headerAutoHide', '0')) > 0
+    const onFullscreenChange = () => {
+      if (autoFullscreenWanted.current && document.fullscreenElement !== document.documentElement) {
+        autoFullscreenOwned.current = false
+        autoFullscreenDismissed.current = true
+      }
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => { document.removeEventListener('fullscreenchange', onFullscreenChange); releaseAutoFullscreen() }
+  }, [releaseAutoFullscreen, scope])
   useEffect(() => {
     if (sourceId || !progress.data || !chapterId) return
     const signature = JSON.stringify(visibleProgress?.blocks.map(block => [block.id, block.words]) ?? [])
@@ -429,7 +472,9 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     return () => window.removeEventListener('resize', position)
   }, [activeMarker, markerAnchor, chapterMarkers, chapter.data, fontSize, fontFamily, lineHeight, contentWidth])
   const percent = progress.data?.total_words ? Math.min(100, Math.round(readWords / progress.data.total_words * 100)) : 0
-  return <div className="reader-reading-area" ref={scrollArea}>
+  return <div className="reader-reading-area" ref={scrollArea} onClickCapture={event => {
+    if (!(event.target as Element).closest('.reader-settings, [aria-label="Toggle fullscreen"]')) requestAutoFullscreen()
+  }}>
     <div className="reader-range-layer" ref={previewLayer} aria-hidden="true" />
     <div className={`reader-controls ${controlsHidden ? 'reader-controls-hidden' : ''}`} {...debugTag('RCO')}>
       <Button variant="ghost" aria-label="Table of contents" disabled={!onOpenChapters} onClick={() => { onOpenChapters?.(); setSettingsOpen(false) }}>☰</Button>
@@ -437,7 +482,16 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       <div className="reader-current"><strong title={sourceId ? 'Original EPUB' : `Workspace ${id}`}>{metadata.data?.title ?? 'Reader'} · {sourceId ? 'Original EPUB' : id}</strong><span>{chapter.data?.title ?? chapters[index]?.title ?? 'Choose a chapter'}</span></div>
       <Button variant="ghost" aria-label="Next chapter" disabled={index < 0 || index >= chapters.length - 1} onClick={() => choose(chapters[index + 1]!.id)}>›</Button>
       <Button variant="ghost" aria-label="Reader settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>Aa</Button>
-      <Button variant="ghost" aria-label="Toggle fullscreen" onClick={() => { void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()) }}>⛶</Button>
+      <Button variant="ghost" aria-label="Toggle fullscreen" onClick={() => {
+        if (document.fullscreenElement) {
+          autoFullscreenOwned.current = false
+          autoFullscreenDismissed.current = true
+          void document.exitFullscreen().catch(() => {})
+        } else {
+          autoFullscreenDismissed.current = false
+          void document.documentElement.requestFullscreen().catch(() => {})
+        }
+      }}>⛶</Button>
     </div>
     <button className="reader-progress-line" aria-label={sourceId ? 'Show Reader controls' : 'Show reading progress'} aria-expanded={sourceId ? undefined : progressOpen} onClick={sourceId ? chromeActivity : tapProgress}>{!sourceId && <span style={{ width: `${percent}%` }} />}</button>
     {progressOpen && <div className="reader-progress-popup" role="status"><strong>{percent}% of available translation</strong><span>{readWords} of {progress.data?.total_words ?? 0} available words</span><span>{progress.data?.last_chapter ? `Available through ${progress.data.last_chapter.title}` : 'No verified text yet'}</span></div>}
@@ -446,7 +500,8 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       <label>Font family <select value={fontFamily} onChange={e => setFontFamily(e.target.value)}><option value="serif">Serif</option><option value="sans">Sans serif</option><option value="mono">Monospace</option></select></label>
       <label>Line height <input type="range" min="1.35" max="2.1" step="0.05" value={lineHeight} onChange={e => setLineHeight(Number(e.target.value))} /><output>{lineHeight.toFixed(2)}</output></label>
       <label>Content width <input type="range" min="32" max="54" value={contentWidth} onChange={e => setContentWidth(Number(e.target.value))} /><output>{contentWidth} rem</output></label>
-      <label>Header auto-hide <select value={headerAutoHide} onChange={e => setHeaderAutoHide(Number(e.target.value))}><option value="0">Off</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
+      <label>Header auto-hide <select value={headerAutoHide} onChange={e => changeHeaderAutoHide(Number(e.target.value))}><option value="0">Off</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
+      {mobileReader() && (document.fullscreenEnabled === false || typeof document.documentElement.requestFullscreen !== 'function') && <p role="status">This browser does not allow Reader to hide its address bar.</p>}
       <label>Marker gesture <select value={markerGesture} disabled={archived || !!sourceId} onChange={e => setGesture('marker', e.target.value)}><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag</option><option value="off">Off</option></select></label>
       {archived && <p role="status">This workspace is archived. Existing markers are read-only; restore the workspace in Work to add or delete them.</p>}
       <label>Context Helper <select value={contextGesture} disabled={!!sourceId} onChange={e => setGesture('context', e.target.value)}><option value="tap">Tap / click</option><option value="long">Long press</option><option value="drag">Horizontal drag</option><option value="off">Off</option></select></label>{sourceId && <p role="status">Original EPUB text view from Library. Images and page styling are omitted. Workspace markers and Context Helper are unavailable.</p>}<p>Change the global color theme in Settings.</p></aside>}
