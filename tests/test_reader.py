@@ -62,8 +62,8 @@ def make_reader_project(tmp_path, *, pieces=False, translated=2):
         }],
         "chunks": chunks,
     }
-    atomic_json(root / "book.json", book)
     store = Store(root)
+    atomic_json(root / "book.json", book)
     store.register_chunks(book)
     paths = []
     for index, (chunk, output) in enumerate(zip(chunks, outputs), 1):

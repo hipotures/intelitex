@@ -28,7 +28,7 @@ def validate_draft_destination(root: Path, source_id: str) -> dict:
     value = read_workspace_setup(root)
     if not value or value['source_id'] != source_id:
         raise PipelineError('Import destination is not the selected draft.')
-    if (root / 'book.json').exists() or (root / 'state.sqlite3').exists():
+    if (root / 'book.json').exists() or (root / 'state.sqlite3').exists() or (root / 'state').exists():
         raise PipelineError('Draft already has project state.')
     settings = root / 'settings.json'
     if settings.is_symlink() or not settings.is_file():

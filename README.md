@@ -246,7 +246,7 @@ Passes 2-5 and the llama.cpp and native OpenAI transports intentionally remain
 canonical.
 
 Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When
-`state.sqlite3` exists, Intelitex first creates a SQLite backup under `backups/`.
+JSON checkpoint state exists, Intelitex first creates a JSON state backup under `backups/`.
 Frozen source IDs, review choices, approvals, checkpoints and old artifacts are
 not rewritten. Old token counts without matching tokenizer provenance are not
 reused for a different tokenizer.
@@ -305,7 +305,7 @@ project lock intentionally allows only one such command at a time.
 The evidence pane now shows **English original / Polish P5** side by side when a
 committed final translation exists. On narrower screens these columns stack.
 It reads the immutable source blocks from `book.json` and the registered final paths
-from `state.sqlite3` through a separate **read-only connection**. It checks artifact
+from JSON checkpoint state through a separate **read-only snapshot**. It checks artifact
 hashes against saved checkpoints. It never guesses an alignment by matching an
 inflected Polish term, picks an arbitrary result directory or makes an LLM request.
 Without a translation it shows `Not translated yet`. Without a full project manifest,
@@ -377,7 +377,7 @@ uv run intelitex reader --project "$PROJECT"
 ```
 
 The Reader defaults to `http://127.0.0.1:8766/` and opens the browser. It may run
-while `translate` continues: project manifests, SQLite checkpoints, and P5 artifacts
+while `translate` continues: project manifests, JSON checkpoints, and P5 artifacts
 are read-only in the Reader, while marker writes are isolated in
 `translation.review.json` under a separate Reader lock. A second Reader process for
 the same project is rejected. Use `--reader-port 0` to select a free port or
@@ -603,7 +603,7 @@ external authentication path in the predecessor first.
 
 P1 walks the **whole book** before any translation. Later P1 calls receive a
 relevant slice of accumulated memory and a bounded name catalogue. The complete
-memory stays in SQLite; it is not rebuilt from scratch or copied wholesale into
+memory stays in the JSON checkpoint state; it is not regenerated or copied wholesale into
 every request. Directly matching entries are never silently discarded to meet a
 budget. A limited catalogue is explicitly marked incomplete when necessary.
 
@@ -757,14 +757,14 @@ Every successful call writes:
 - separate partial/final answer and reasoning text when the server separates it;
 - response metadata, including available token usage;
 - validated JSON and, for P3/P5, readable TXT;
-- a SQLite checkpoint only after valid complete output is on disk.
+- a JSON checkpoint only after valid complete output is on disk.
 
 A response terminated by a token limit, connection loss or Ctrl+C is **not** marked
 complete. Rerun the same command. Prior successful passes are reused. The interrupted
 request itself restarts; this program does not restore an in-flight CUDA decoding
 state. This is the only work that may need repeating.
 
-SQLite transactions, atomic file replacement, filesystem sync, checksums and a
+JSON state transactions, atomic file replacement, filesystem sync, checksums and a
 project lock protect normal checkpoint operations. Do not run two pipeline-changing
 processes on the same project. The Reader is the narrow exception: it may run beside
 `translate` because it only reads pipeline state and writes the separately locked
@@ -779,7 +779,7 @@ between models/prompts, use separate projects.
 ## Changing a term after translation
 
 Edit `terms.review.json` and run `approve` again. The old/new choices are logged,
-all candidates remain, and a SQLite backup is taken before approval.
+all candidates remain, and a JSON state backup is taken before approval.
 
 Previously completed chunks whose tracked lexical dependencies include the changed
 term are marked `stale`. Their old translations remain on disk and visible until
@@ -882,7 +882,10 @@ project/
   series.seed.json             # optional deterministic inherited-memory snapshot
   analysis_plan.json           # P1 work units
   settings.json
-  state.sqlite3                # authoritative checkpoints, memory, choices, history
+  state/HEAD.json              # authoritative checkpoint state commit pointer
+  state/commits/               # immutable JSON revisions
+  state/objects/               # complete JSON records, shared between revisions
+  state.sqlite3                # retained legacy file only; no runtime access
   book_memory.json              # readable memory snapshot
   terms.review.json             # source of truth: choices, per-term review state, confirmation
   terms.review.html             # optional read-only snapshot/catalogue
@@ -898,7 +901,7 @@ project/
   analysis_inputs/              # frozen P1 input snapshots for resumption
   artifacts/pass1/...           # every request/result/attempt
   artifacts/pass2/...           # likewise for P2-P5
-  history/                     # review snapshots and pre-approval DB backups
+  history/                     # review/state snapshots and verified migration backups
 ```
 
 `translation.txt` is rebuilt from completed block artifacts; the program never

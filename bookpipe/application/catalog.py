@@ -2,13 +2,16 @@
 import threading
 import uuid
 import re
+from .. import book_metadata
 from datetime import datetime, timezone
 
 from ..util import atomic_json, digest, file_lock, project_lock, read_json
 from .imports import confined_source, RequestConflict
 from ..util import PipelineError
+from ..languages import language_code
 from .epub_sources import packed_epub_metadata
 from .source_preflight import source_signature, _folder_metadata
+from .library_groups import ancestors, ordered_sources
 from .imports import workspace_destination
 from ..profiles import resolve_profile, with_profiles
 import zipfile
@@ -19,6 +22,7 @@ class WebCatalog:
         self.root, self.imports = root, imports
         self.path = root / '.intelitex-web.json'
         self.lock = threading.RLock()
+        self._metadata_cache = {}
         with self.lock, file_lock(root, '.intelitex-web.lock', 'Catalog busy.'):
             if not self.path.exists():
                 atomic_json(self.path, {'scope_id': uuid.uuid4().hex, 'sources': {}})
@@ -186,18 +190,37 @@ class WebCatalog:
                         'pass_profiles': dict(assignments)}
 
     def source_metadata(self, source_id):
+        metadata = self._source_metadata(source_id)
+        if self.imports.root is not None:
+            source = confined_source(self.imports.root, source_id)
+            current = book_metadata.source_metadata(self.root, source)
+            if current:
+                metadata = {**metadata, **current['effective'], 'book_id': current['book_id']}
+                metadata['language'] = language_code(metadata.get('language'))
+        return metadata
+
+    def _source_metadata(self, source_id):
         if self.imports.root is None:
             return {'title': source_id, 'creators': [], 'language': None, 'word_count': None}
         try:
             source = confined_source(self.imports.root, source_id)
             if source.is_file() and source.suffix.lower() == '.epub':
-                return packed_epub_metadata(source)
+                stat = source.stat()
+                stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+                with self.lock:
+                    cached = self._metadata_cache.get(source_id)
+                    if cached is None or cached[0] != stamp:
+                        cached = (stamp, packed_epub_metadata(source))
+                        if len(self._metadata_cache) >= 2048:
+                            self._metadata_cache.pop(next(iter(self._metadata_cache)))
+                        self._metadata_cache[source_id] = cached
+                    return {**cached[1], 'language': language_code(cached[1].get('language'))}
             metadata = _folder_metadata(source)
             title = metadata.get('title') or source.name
         except (OSError, ValueError, PipelineError):
             metadata, title = {}, source_id
         return {'title': title,
-                'creators': metadata.get('creators', []), 'language': metadata.get('language'), 'word_count': None}
+                'creators': metadata.get('creators', []), 'language': language_code(metadata.get('language')), 'word_count': None}
 
     def setup_metadata(self, workspace_id):
         root = workspace_destination(self.root, workspace_id)
@@ -265,22 +288,36 @@ class WebCatalog:
         result = []
         if self.imports.root is None:
             return result
+        groups = {}
         for item in self.imports.sources():
             source = confined_source(self.imports.root, item['source_id'])
             entry = state['sources'].get(digest(str(source)))
             result.append({'source_id': item['source_id'], **self.source_metadata(item['source_id']),
+                           'groups': ancestors(self.imports.root, item['source_id'], groups),
                            'workspace_id': entry['workspace_id'] if entry else None})
         return result
 
-    def library_page(self, after, limit):
+    def library_page(self, after, limit, sort=None):
         if self.imports.root is None:
             return [], None
+        if sort is not None:
+            sources = ordered_sources(self.library(), sort)
+            start = 0
+            if after is not None:
+                positions = {source['source_id']: i for i, source in enumerate(sources)}
+                if after not in positions:
+                    raise ValueError('Library changed. Refresh Library to restart browsing.')
+                start = positions[after] + 1
+            page = sources[start:start + limit]
+            return page, page[-1]['source_id'] if start + limit < len(sources) else None
         state = self.read()
         items, next_cursor = self.imports.sources_page(after, limit)
         result = []
+        groups = {}
         for item in items:
             source = confined_source(self.imports.root, item['source_id'])
             entry = state['sources'].get(digest(str(source)))
             result.append({'source_id': item['source_id'], **self.source_metadata(item['source_id']),
+                           'groups': ancestors(self.imports.root, item['source_id'], groups),
                            'workspace_id': entry['workspace_id'] if entry else None})
         return result, next_cursor

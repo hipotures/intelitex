@@ -51,8 +51,8 @@ class OperationsService:
     def usage_by_unit(self, command: UsageByUnitCommand) -> UsageByUnitResult:
         root = command.project.resolve()
         with ProjectReadScope(self.dependencies, root):
-            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
-            return usage_by_unit_report(root, command.unit_id)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
+            return usage_by_unit_report(root, command.unit_id, book=book)
 
     def import_catalog(self, command: CatalogImportCommand) -> ReportResult:
         return self._offline(command.project, lambda root: import_catalog(command.source, root))

@@ -31,7 +31,7 @@ export function nextUnreviewed(terms: Term[], currentId: string, query: string, 
 export function ReviewPage() {
   const { workspaceId: id = '' } = useParams({ strict: false })
   const scope = useContext(Scope)
-  const all = useApi('/api/workspaces', workspacesSchema)
+  const all = useApi(`/api/workspaces?workspace_id=${encodeURIComponent(id)}`, workspacesSchema)
   const workspace = all.data?.workspaces.find(w => w.workspace_id === id)
   const pipeline = useApi(endpoint(id, 'pipeline'), pipelineSchema, !!workspace?.prepared)
   const query = useApi(endpoint(id, 'review'), reviewSchema, pipeline.data?.review.prepared === true)
@@ -166,6 +166,7 @@ export function ReviewPage() {
   const nextPending = selected ? nextUnreviewed(terms, selected.id, search.q ?? '', category) : undefined
   return <main className="main review-page" {...debugTag('REV', id)}><Back id={id} /><div className="review-page-head" {...debugTag('RVH')}><div className="review-page-title"><div><div className="eyebrow">Review · {p?.metadata.title ?? 'Workspace'}</div><h1>Terminology Review</h1><div className="review-page-meta">{query.data ? `${reviewCountLabel(terms)} · ${uncertain} uncertain` : 'Load the terminology draft to review its choices.'}</div></div></div><div className="review-heading-actions">{p?.approved && <span className="review-confirmed-badge">✓ Glossary approved</span>}<Button variant="primary" disabled={disabled || !query.data || counts.pending !== 0 || dirty || !p?.review.current} onClick={() => { command.clearError(); setApprovalPending(true) }}>{p?.approved ? 'Reapprove glossary' : 'Approve glossary'}</Button></div></div>
     {p?.approved && <div className="review-warning">This review remains available after confirmation. Editing terminology requires renewed approval before translation continues. Existing translation checkpoints are retained.</div>}
+    {!!p?.review.impact?.changed_term_ids.length && <p className="notice" role="status">After approval, {p.review.impact.affected_chunks.length} translated segments need regeneration: {p.review.impact.affected_chunks.map(item => item.chunk_id).join(', ') || 'none'}. Other segments keep their results. Later segments are rechecked only if their saved continuity text changes.</p>}
     <ErrorNote error={all.error ?? pipeline.error ?? query.error ?? command.error ?? (localError ? new Error(localError) : null)} retry={() => void query.refetch()} />
     {dirty && draft?.revision !== query.data?._revision && <div className="notice"><span>Review changed elsewhere. Your custom form is preserved.</span><Button disabled={disabled} onClick={() => void flush(true)}>Reapply my form</Button><Button onClick={() => { setDraft(null); setLocalError(null) }}>Discard my form</Button></div>}
     {!p?.analysis.complete ? <Empty>{workspace && !workspace.prepared ? 'Prepare this workspace before Review.' : 'Complete whole-book analysis before Review.'}</Empty> : !p.review.prepared ? <Empty><p>The terminology draft is not prepared.</p><Button disabled={disabled} onClick={() => void command.send(endpoint(id,'review/prepare'), reviewSchema, {})}>Prepare review</Button></Empty> : <>

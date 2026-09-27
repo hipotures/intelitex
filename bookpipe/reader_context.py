@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from .state_files import connect_state, state_path
 import unicodedata
 from pathlib import Path
 
@@ -627,7 +628,8 @@ class ReaderContext:
 
     def metadata(self) -> dict:
         book = self._book()
-        title = book.get("metadata", {}).get("title")
+        from .book_metadata import effective
+        title = effective(self.root, book)["title"]
         return {
             "book_fingerprint": book["source_fingerprint"],
             "title": title if isinstance(title, str) and title.strip() else "Translated book",
@@ -714,17 +716,15 @@ class ReaderContext:
                     raise PipelineError(f"Translation piece {piece['id']} has unknown parent block {parent_id}.")
                 expected_by_parent[parent_id].append(piece["id"])
 
-        database = self.root / "state.sqlite3"
-        if not database.is_file():
-            raise PipelineError("Reader project has no state.sqlite3 checkpoint database.")
+        if not state_path(self.root).is_file():
+            raise PipelineError("Reader project has no JSON checkpoint state. Explicit migration or recovery is required.")
         translated: dict[str, list[tuple[str, str]]] = {bid: [] for bid in canonical_by_id}
         unavailable_at: str | None = None
         unavailable_reason = "Translation is not available beyond this point."
         stale_units: list[str] = []
         connection = None
         try:
-            connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
-            connection.row_factory = sqlite3.Row
+            connection = connect_state(self.root, readonly=True)
             for chunk in chunks:
                 cid = chunk.get("id")
                 row = connection.execute(

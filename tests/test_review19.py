@@ -116,10 +116,10 @@ def prepare_final(root):
     block={'id':'B1','parent_id':'B1','text':'The Silver Keep rose above the valley.'}
     book={'chapters':[{'id':'ch1','blocks':[block]}],
           'chunks':[{'id':'ch1_c1','chapter_id':'ch1','blocks':[block]}]}
+    store=Store(root)
     atomic_json(root/'book.json',book)
     final=root/'artifacts/pass5/ch1_c1/fp/result.json'
     atomic_json(final,{'translations':[{'id':'B1','text':'A simulated translated paragraph with an inflected name.'}]})
-    store=Store(root)
     store.register_chunks(book)
     store.save_job('pass5/ch1_c1','fp',final,{})
     store.finish_chunk('ch1_c1',str(final.relative_to(root)),['T000001'],'lexicon')

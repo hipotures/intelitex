@@ -54,7 +54,7 @@ the full `/pipeline` snapshot. The existing unfiltered list route remains
 for other screens and compatibility. The two HTTP adapters share identical strict
 filter parsing; successful mutations invalidate both filtered lists.
 
-`state.sqlite3`, validated checkpoint receipts and atomic project JSON remain durable
+JSON checkpoint state (`state/HEAD.json`), validated receipts and atomic project JSON remain durable
 pipeline truth. Runtime jobs/events are execution history, not completion truth. Web
 metadata lives in `.intelitex-web.json` at the workspace root,
 `workspace.json` and `settings.json` for configured drafts, and `web.config.json`
@@ -307,7 +307,7 @@ pending unit because P1 memory is cumulative; completed units are previewable an
 their rerun requires the guarded whole-P1 reset. The five token and cost metrics
 remain visible above the panels.
 GET `/api/workspaces/{id}/analysis-reset` supplies an independent revision and
-eligibility; POST with that revision moves current P1 files and a SQLite backup into
+eligibility; POST with that revision moves current P1 files and a JSON state backup into
 `history/p1_resets/<version>` and clears active P1 database rows under the project
 lock. The command rejects active/cleanup ownership and dependent P2–P5, approved or
 series work. The browser confirms before sending and returns to the workspace after

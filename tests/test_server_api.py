@@ -114,6 +114,21 @@ def test_pipeline_reuses_one_validated_book_for_sections_metadata_and_usage(api,
     assert {unit['id']: unit['source_words'] for unit in response['units']} == prepared_words
 
 
+def test_workspace_filter_does_not_load_unrelated_books(api, monkeypatch):
+    _, root, service, server = api
+    original = service._book_summary
+    seen = []
+    def summary(path):
+        seen.append(path.name)
+        return original(path)
+    monkeypatch.setattr(service, '_book_summary', summary)
+    monkeypatch.setattr(service.workspaces, 'list', lambda: ['book', 'unrelated'])
+    code, value = request(server, 'GET', '/api/workspaces?workspace_id=book')
+    assert code == 200
+    assert [entry['workspace_id'] for entry in value['workspaces']] == ['book']
+    assert seen == ['book']
+
+
 def test_work_card_summary_uses_checkpoint_truth_without_attempt_history(api, monkeypatch):
     app, root, service, server = api
     from bookpipe.application import workflow
@@ -484,8 +499,16 @@ def test_real_import_to_publication_through_one_server(api, provider_server):
     complete = run('translate')
     assert complete['stage'] == 'complete' and complete['publication']['state'] == 'published'
     assert complete['publication']['current']
+    assert complete['actions']['publish']['allowed']
+    assert len(list(service.imports.root.glob('*.epub'))) == 1
     calls = dict(provider_state.calls)
     assert run('publish')['publication']['current']
+    exported = list(service.imports.root.glob('*.epub'))
+    assert len(exported) == 1
+    with zipfile.ZipFile(exported[0]) as epub:
+        assert epub.testzip() is None
+    assert run('publish')['publication']['current']
+    assert list(service.imports.root.glob('*.epub')) == exported
     assert dict(provider_state.calls) == calls
     assert request(server, 'GET', base + '/reader/progress')[1]['total_words'] > 0
     assert request(server, 'GET', base + '/usage')[1]['units']
@@ -570,11 +593,16 @@ def test_workspace_listing_reuses_book_summary_and_refreshes_after_edit(api, mon
     assert request(server, 'GET', '/api/library')[0] == 200
     assert calls == [root]
 
+    from bookpipe import book_metadata
     book = read_json(root / 'book.json')
-    book['metadata']['title'] = 'Updated title'
-    atomic_json(root / 'book.json', book)
+    current = book_metadata.snapshot(root, book)
+    book_metadata.update(root, book, current['revision'], {'title': 'Updated title'})
     status, listing = request(server, 'GET', '/api/workspaces')
     assert status == 200 and listing['workspaces'][0]['metadata']['title'] == 'Updated title'
+    assert calls == [root]  # Metadata edits must not reload the full source manifest.
+    assert read_json(root / 'book.json') == book
+    atomic_json(root / 'book.json', book)
+    assert request(server, 'GET', '/api/workspaces')[0] == 200
     assert calls == [root, root]
 
 

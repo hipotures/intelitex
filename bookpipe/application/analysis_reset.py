@@ -95,7 +95,7 @@ class AnalysisResetService:
             resets.mkdir(mode=0o700, parents=True, exist_ok=True)
             version = resets / uuid.uuid4().hex
             version.mkdir(mode=0o700)
-            store.backup_to(version / 'state.sqlite3')
+            store.backup_to(version / 'state.json')
             atomic_json(version / 'pending.json', {'revision': expected_revision})
             moved = []
             committed = False

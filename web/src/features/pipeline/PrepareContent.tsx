@@ -5,6 +5,7 @@ import { Button, Empty, ErrorNote, Panel } from '../../components/ui/common'
 import { useConnection } from '../../realtime/coordinator'
 import { prepareExcerpt } from './prepareExcerpt'
 import { sectionTitles } from './sectionTitles'
+import { SourceMetadata } from './SourceMetadata'
 
 const modes = { full: ['F', 'Full'], translate: ['T', 'Translate only'], excluded: ['E', 'Excluded'] } as const
 
@@ -90,7 +91,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
           </>}
         </div>
       </Panel>
-      <Panel debugId="PSM" title="Source metadata"><dl className="phase-kv"><dt>Title</dt><dd>{pipeline.metadata.title}</dd><dt>Author</dt><dd>{pipeline.metadata.creators.join(', ') || 'Not recorded'}</dd><dt>Source language</dt><dd>{pipeline.metadata.source_language ?? pipeline.metadata.language ?? 'Not recorded'}</dd><dt>{workspace?.source_id ? 'Library source' : 'Import folder'}</dt><dd>{workspace?.source_id ?? pipeline.preparation.source_id}</dd></dl></Panel>
+      <SourceMetadata id={id} metadata={pipeline.metadata} disabled={commandDisabled || pipeline.busy || pipeline.metadata.lifecycle.archived} />
       <Panel debugId="PCK" title="Checks">
         {(preparation?.checks ?? []).map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>)}
         <ErrorNote error={preparationError} />

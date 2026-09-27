@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import os
 import re
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -126,15 +125,17 @@ def with_profiles(settings: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     return value, True
 
 
-def backup_sqlite(project: Path) -> Path | None:
-    source = project / "state.sqlite3"
-    if not source.is_file():
+def backup_project_state(project: Path) -> Path | None:
+    from .state_files import backup_state, connect_state, state_path
+    if not state_path(project).exists() and not (project / 'state.sqlite3').exists():
         return None
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = project / "backups" / f"state-before-profiles-{stamp}-{digest(source.read_bytes())[:10]}.sqlite3"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(source) as src, sqlite3.connect(target) as dst:
-        src.backup(dst)
+    source = connect_state(project, readonly=True)
+    try:
+        target = project / 'backups' / f'state-before-profiles-{stamp}-{source._head["commit"][:10]}.json'
+        backup_state(source, target)
+    finally:
+        source.close()
     return target
 
 
@@ -142,7 +143,7 @@ def migrate_settings_file(project: Path, settings: dict[str, Any]) -> tuple[dict
     value, changed = with_profiles(settings)
     if not changed:
         return value, None
-    backup = backup_sqlite(project)
+    backup = backup_project_state(project)
     atomic_json(project / "settings.json", value)
     return value, backup
 

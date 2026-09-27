@@ -1,6 +1,8 @@
 """Project import, configuration and status use cases."""
 from __future__ import annotations
 
+from .. import book_metadata
+
 import copy
 import shutil
 import uuid
@@ -86,11 +88,13 @@ def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = 
     return settings
 
 
-def load_valid_book(root: Path, fingerprint=plan_fingerprint, files=None) -> dict:
+def load_valid_book(root: Path, fingerprint=plan_fingerprint, files=None, *, readonly=False) -> dict:
     exists = files.exists if files else Path.exists
     read = files.read_json if files else read_json
     if not exists(root / "book.json"):
         raise PipelineError("Project not imported. Run import first.")
+    if files is not None and hasattr(files, 'validated_book'):
+        return files.validated_book(root / 'book.json', fingerprint, readonly=readonly)
     book = read(root / "book.json")
     if book.get("content_fingerprint") != fingerprint(book):
         raise PipelineError(
@@ -126,7 +130,7 @@ class ProjectsService:
         with OperationScope(self.dependencies, root, self.progress, create=True) as scope:
             if self.dependencies.files.exists(root / "book.json"):
                 raise PipelineError("Project already imported. Use analyze/status/translate, not import again.")
-            if self.dependencies.files.exists(root / "state.sqlite3"):
+            if self.dependencies.files.exists(root / "state.sqlite3") or self.dependencies.files.exists(root / 'state'):
                 raise PipelineError("Incomplete or unrelated project database found. Use a new project directory.")
             if root.is_relative_to(source):
                 raise PipelineError("Keep the project outside the input folder to avoid importing generated files.")
@@ -197,6 +201,7 @@ class ProjectsService:
                 series_volume = handoff["previous_volume"] + 1
                 inherited_terms = len(handoff["seed"]["terms"])
                 inherited_observations = len(handoff["seed"]["observations"])
+            book_metadata.register(root, book, source)
             # Completed-import marker is deliberately last.
             self.dependencies.files.write_json(root / "book.json", book)
             return ImportResult(
@@ -226,7 +231,7 @@ class ProjectsService:
         if setup and source_signature(source.parent, source.name) != setup['source_fingerprint']:
             raise ReprepareLocked('The source changed since setup; use a new workspace.')
         allowed = {'book.json', 'settings.json', 'workspace.json', 'web.config.json',
-                   'web.lifecycle.json', 'state.sqlite3', 'state.sqlite3-wal', 'state.sqlite3-shm',
+                   'web.lifecycle.json', 'state', '.state.lock', 'state.sqlite3', 'state.sqlite3-wal', 'state.sqlite3-shm',
                    '.lock', 'source-package', 'chapters', 'matter', 'extracted', 'prompts',
                    'catalog', 'history'}
         if (scope.store.has_work_since_import() or
@@ -330,7 +335,7 @@ class ProjectsService:
                 total=len(chapter["chunk_ids"]),
             ) for chapter in book["chapters"])
             result = StatusResult(
-                project=root, title=book["metadata"].get("title") or Path(book["source_root"]).name,
+                project=root, title=book_metadata.effective(root, book)["title"],
                 series_id=series_id, series_volume=series_volume,
                 narrative_sections=len(book["chapters"]), chunks=chunks,
                 analysis_complete=bool(store.get("analysis_done")), approved=bool(store.get("approved")),

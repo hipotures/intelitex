@@ -19,6 +19,7 @@ from ..application.review import ReviewConflict
 from ..application.web import LifecycleConflict, WorkspaceArchived
 from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired
 from ..runtime.supervisor import JobConflict, RequestConflict
+from ..book_metadata import MetadataConflict
 from ..util import LockConflict, PipelineError
 from .http import BODY_LIMIT
 from .routes import dispatch
@@ -39,6 +40,7 @@ def error(exc):
     for kind, status, code, message in (
         (ReviewConflict, 409, 'review_revision_conflict', 'Review changed elsewhere. Reload the latest review to continue.'),
         (MarkerConflict, 409, 'marker_revision_conflict', 'Marker state or translated text changed.'),
+        (MetadataConflict, 409, 'metadata_revision_conflict', 'Book metadata changed. Reload before saving.'),
         (LifecycleConflict, 409, 'lifecycle_revision_conflict', 'Workspace membership changed.'),
         (ConfigConflict, 409, 'config_revision_conflict', 'Configuration changed. Reload before saving.'),
         (AnalysisMembershipLocked, 409, 'analysis_membership_locked', 'P1 membership is frozen after its first attempt.'),
@@ -130,7 +132,9 @@ def create_app(service, allowed_hosts, *, frontend=None):
                         raise ValueError('Duplicate query parameter.')
                     library_query = {key: values[0] for key, values in parsed_query.items()}
                 status, value = await run_in_threadpool(dispatch, service, request.method, parts, payload, library_query)
-                return json_response(status, value)
+                # Review/usage payloads can be large. Sanitizing and encoding them
+                # on the event loop stalls all other HTTP requests and SSE heartbeats.
+                return await run_in_threadpool(json_response, status, value)
             if request.method not in {'GET', 'HEAD'}:
                 raise KeyError()
             if re.fullmatch(r'assets/[A-Za-z0-9_.-]+\.(?:js|css|woff2)', path):
@@ -143,7 +147,8 @@ def create_app(service, allowed_hosts, *, frontend=None):
             else:
                 raise KeyError()
             data = await run_in_threadpool(target.read_bytes)
-            return Response(data if request.method != 'HEAD' else b'', media_type=mime, headers=HEADERS)
+            headers = {**HEADERS, 'Cache-Control': 'public, max-age=31536000, immutable'} if path.startswith('assets/') else HEADERS
+            return Response(data if request.method != 'HEAD' else b'', media_type=mime, headers=headers)
         except Exception as exc:
             return error(exc)
     return app

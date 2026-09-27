@@ -8,6 +8,7 @@ from ..application.web import LifecycleConflict, WorkspaceArchived
 from ..application.projects import ReprepareLocked
 from ..application.analysis_reset import AnalysisResetLocked
 from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired
+from ..book_metadata import MetadataConflict
 from ..util import PipelineError, LockConflict
 from ..application.review import ReviewConflict
 from ..application.reader import MarkerConflict
@@ -128,6 +129,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             known = (
                 (RequestConflict, 409, 'request_key_conflict', 'Request key already belongs to another operation.'),
+                (MetadataConflict, 409, 'metadata_revision_conflict', 'Book metadata changed. Reload before saving.'),
                 (LifecycleConflict, 409, 'lifecycle_revision_conflict', 'Workspace membership changed.'),
                 (WorkspaceArchived, 409, 'workspace_archived', 'Restore this workspace first.'),
                 (AnalysisMembershipLocked, 409, 'analysis_membership_locked', 'P1 membership is frozen.'),

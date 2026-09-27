@@ -27,7 +27,7 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces/{id}/publication/selection` | Revisioned groups of source sections that share XHTML files, omitted section IDs, and a safe section-level diagnostic for the last markup failure |
 | PATCH | `/api/workspaces/{id}/publication/selection` | `{revision,excluded_section_ids}`; saves which whole source-document groups to omit from the final EPUB without deleting P1–P5 results |
 | GET | `/api/profiles` | Sanitized installed defaults/profiles, including before the first import |
-| GET | `/api/import-sources` | `{sources:[{source_id}]}` immediate source folders and packed EPUB files |
+| GET | `/api/import-sources` | `{sources:[{source_id}]}` recursively discovered book roots and packed EPUB files |
 | GET | `/api/library` | Legacy complete `{configured,sources}` response |
 | GET | `/api/library?limit=12&after={cursor}&links=false` | Bounded source page `{configured,sources,next_cursor}`; `limit` is 1–40; omit `after` for the first page. `links=false` skips imported-project linkage scans for Work, which derives links from its workspace list; the default retains full linkage. |
 | GET | `/api/library/sources/{source_id}/preflight` | Read-only selected-source fingerprint, metadata and local language sample for setup |
@@ -273,11 +273,19 @@ source fingerprint does not identify a workspace.
 ## Confined import
 
 Without `--import-root`, capabilities report `import_enabled:false` and both
-import routes return `import_disabled`. Discovery lists immediate folder and packed
-EPUB identifiers. A supplied source ID may identify a nested folder, always under
+import routes return `import_disabled`. Discovery traverses grouping folders and lists
+nested book roots and packed EPUB identifiers. A supplied source ID may identify a nested folder, always under
 import-root. The existing importer accepts HTML/XHTML folders, including extracted
 EPUB folders. A packed EPUB is safely unpacked into the project at Prepare and then
 uses the same importer; no archive upload endpoint is introduced.
+
+Library items include `groups`, the ordered ancestor descriptors
+`{group_id,name,kind,warning?}`. `kind` is null unless declared in `library.yaml`.
+`GET /api/library?sort=author|title|language&limit=24&links=false` sorts the whole
+hierarchy before pagination. The optional `after` cursor is a relative source ID,
+including encoded slashes for nested books. Without `sort`, existing path ordering
+is retained. Source routes require an encoded source ID as one URL component.
+See [Library groups](library-groups.md) for declaration and ordering semantics.
 
 Required input: `{workspace_id,source_id}`. Optional fields:
 
@@ -326,7 +334,7 @@ original imported fingerprint before switching plans.
 `POST /api/workspaces/{id}/analysis-reset` is a separate explicit operation. It
 requires the revision returned by its GET status and an idle unarchived workspace.
 It archives the current P1 plan, attempts, analysis inputs, terminology/Review files
-and a SQLite backup under `history/p1_resets/<version>/`, then clears active P1
+and a JSON state backup under `history/p1_resets/<version>/`, then clears active P1
 rows. Prepare and section configuration stay intact. Any P2–P5 checkpoint, approved
 work or inherited series state blocks reset with `analysis_reset_locked`; stale
 revision returns `config_revision_conflict`. An interrupted reset is left for local

@@ -98,6 +98,23 @@ def review_summary(review: dict) -> dict:
     }
 
 
+def review_impact(store, review):
+    """Preview the same lexical dependency decision used by commit_approval."""
+    stored = {term['id']: term for term in store.terms()}
+    changed = []
+    for entry in review.get('terms', []):
+        choice = str(entry.get('custom', '')).strip() or next(
+            (c['text'] for c in entry.get('candidates', []) if c.get('number') == entry.get('select')), None)
+        old = stored.get(entry.get('id'))
+        if old and old.get('choice') and old['choice'] != choice:
+            changed.append(old['id'])
+    changed_set = set(changed)
+    affected = [{'chunk_id': row['id'], 'term_ids': sorted(changed_set & set(row['deps']))}
+                for row in store.translated_dependencies()
+                if changed_set & set(row['deps'])]
+    return {'changed_term_ids': changed, 'affected_chunks': affected}
+
+
 class ReviewConflict(PipelineError):
     """The draft changed since the caller loaded it."""
 
@@ -331,12 +348,15 @@ class ReviewService:
     def query(self, project: Path, term_id=None):
         """Detached atomic-file/read-only evidence query; never takes a writer lock."""
         root = project.resolve()
-        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
         review = self.dependencies.files.read_json(root / 'terms.review.json')
         if not isinstance(review.get('terms'), list):
             raise PipelineError('Invalid review terms.')
         if term_id is None:
-            return {**review, '_revision': digest(review)}
+            from .sessions import ProjectReadScope
+            with ProjectReadScope(self.dependencies, root) as scope:
+                impact = review_impact(scope.store, review)
+            return {**review, '_revision': digest(review), 'impact': impact}
         term = next((t for t in review['terms'] if t.get('id') == term_id), None)
         if term is None:
             raise KeyError(term_id)
@@ -345,7 +365,7 @@ class ReviewService:
     def repository(self, project: Path) -> ReviewRepository:
         """Detached facade: each call locks, checks revision and releases resources."""
         root = project.resolve()
-        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
         if not self.dependencies.files.is_file(root / "terms.review.json"):
             raise PipelineError("Prepare review first.")
         return ReviewRepository(root / "terms.review.json", self.dependencies.files,

@@ -64,7 +64,7 @@ test('bulk acceptance stays distinct from individual review through glossary app
   assert.equal(await page.locator('.review-term-row').count(), 0)
   await page.getByRole('button', { name: 'All', exact: true }).first().click()
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
   await page.screenshot({ path: '/tmp/intelitex-review-methods-evidence/bulk-light-390.png', fullPage: true, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   await page.getByRole('button', { name: 'Review individually & next', exact: true }).click()

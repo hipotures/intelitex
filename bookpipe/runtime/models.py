@@ -27,6 +27,7 @@ class JobSpec:
     pass_no: int | None = None
     rerun: bool = False
     target_language: str = "pl"
+    import_root: str | None = None
 
     def __post_init__(self):
         if self.operation not in {"analyze", "translate", "publish"}:
@@ -49,6 +50,13 @@ class JobSpec:
             raise ValueError('Rerun applies only to a targeted translation pass.')
         if not isinstance(self.target_language, str) or not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", self.target_language):
             raise ValueError("Invalid target_language.")
+        if self.import_root is not None:
+            if self.operation not in {'translate', 'publish'} or not isinstance(self.import_root, str):
+                raise ValueError('Library export applies only to translate or publish.')
+            library_root = Path(self.import_root).resolve(strict=True)
+            if not library_root.is_dir():
+                raise ValueError('Library root must be a directory.')
+            object.__setattr__(self, 'import_root', str(library_root))
         root = Path(self.workspace_root).resolve()
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", self.workspace_id) or ".." in self.workspace_id:
             raise ValueError("Invalid workspace ID.")
@@ -143,12 +151,13 @@ class ImportJobSpec:
         if not self.reprepare and self.expected_revision is not None:
             raise ValueError('Revision applies only to reprepare.')
         if self.reprepare:
+            from ..state_files import state_path
             from ..application.workspace_setup import read_workspace_setup
             from ..util import read_json
             if (destination.is_symlink() or not destination.is_dir() or
                     (destination / 'book.json').is_symlink() or
                     not (destination / 'book.json').is_file() or
-                    not (destination / 'state.sqlite3').is_file()):
+                    not state_path(destination).is_file()):
                 raise DestinationConflict('Prepared workspace is unavailable for rebuilding.')
             setup = read_workspace_setup(destination)
             legacy_matches = False

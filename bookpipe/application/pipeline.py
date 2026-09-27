@@ -227,6 +227,14 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             **common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4,
         }, unit_context=unit_context)
         store.finish_chunk(chunk["id"], final_path, dependencies, digest(memory["APPROVED_LEXICON"]))
+        # Completing a revision can invalidate a later context consumer. Include
+        # newly discovered work in this run, while preserving the requested limit.
+        scheduled = {item['id'] for item in todo}
+        for candidate in book['chunks']:
+            if (candidate['number'] > chunk['number'] and candidate['id'] not in scheduled
+                    and store.chunk(candidate['id'])['status'] != 'done' and (not limit or len(todo) < limit)):
+                todo.append(candidate)
+        todo[run_index:] = sorted(todo[run_index:], key=lambda item: item['number'])
         export_text(store, book)
         done += 1
         progress.emit(ProgressEvent(

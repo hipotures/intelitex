@@ -4,6 +4,12 @@ import { extname, resolve } from 'node:path'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
+async function toggleLightDark(page) {
+  const current = await page.locator('html').getAttribute('data-theme')
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+  if (current === 'dark') await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+}
+
 const dist = resolve('dist')
 const output = '/tmp/intelitex-reprepare-evidence'
 const profile = { name: 'local', stable_palette_index: 0, provider: 'llamacpp', model: null, enabled: true }
@@ -238,7 +244,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       }), true, 'Prepare rebuild is right-aligned and separated from its description')
       await page.screenshot({ path: `${output}/prepare-dark-1440.png`, animations: 'disabled' })
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.evaluate(() => {
         const row = document.querySelector('.prepare-structure tbody tr')
         window.scrollTo(0, window.scrollY + row.getBoundingClientRect().top - 140)
@@ -256,7 +262,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       await page.evaluate(() => window.scrollTo(0, 0))
       await page.screenshot({ path: `${output}/prepare-light-390-full.png`, fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.setViewportSize({ width: 1440, height: 1000 })
       await page.getByRole('button', { name: 'Rebuild', exact: true }).click()
       await page.locator('[data-ui-debug-id="RPM"]').waitFor()
@@ -266,7 +272,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       await page.locator('[data-ui-debug-id="RPM"]').waitFor({ state: 'hidden' })
       assert.equal(mutations.length, 2)
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.screenshot({ path: `${output}/prepare-light-390.png`, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.equal(await page.locator('.prepare-structure').evaluate(table =>
@@ -291,11 +297,11 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         return selected.includes('This workspace is not linked to its original Library source')
       }), true, 'the disabled reason is visible page text that can be selected and copied')
       await page.setViewportSize({ width: 1440, height: 1000 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await reason.scrollIntoViewIfNeeded()
       await page.screenshot({ path: `${output}/rebuild-disabled-dark-1440.png`, animations: 'disabled' })
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await reason.scrollIntoViewIfNeeded()
       assert.equal(await reason.isVisible(), true)
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)

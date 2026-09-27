@@ -70,14 +70,15 @@ and input schema.
 
 ## Persistence and queries
 
-Project truth stays in each project's checkpoints, `state.sqlite3`, atomic JSON
+Project truth stays in each project's JSON checkpoint state (`state/HEAD.json`), atomic JSON
 files, and immutable attempt artifacts. No successful pipeline checkpoint is
 recomputed merely because a job is restarted. Job success is a supervision fact;
 project and publication queries determine which domain work is actually complete.
 
-`ProjectReadScope` uses `ReadStore`: SQLite `mode=ro`, `query_only=ON`, a request-local
-read transaction, and no schema creation or migrations. WAL permits these queries
-while another process holds the exclusive project writer lock. Combined project
+`ProjectReadScope` uses `ReadStore`: an immutable JSON revision loaded into a
+request-local, query-only in-memory working set. It never opens the retired
+`state.sqlite3` or migrates on read. These snapshots can be read while another
+process holds the exclusive project writer lock. Combined project
 and publication status uses one database snapshot and existing manifest/artifact
 hash validation. A later writer commit does not invalidate that earlier snapshot.
 Atomic publication JSON may reflect a nearby commit; the query still validates

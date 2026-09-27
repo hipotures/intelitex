@@ -177,7 +177,8 @@ def test_explicit_publish_builds_valid_epub_without_provider_and_preserves_sourc
     result = app.publishing.publish(PublishCommand(project))
     assert result.built is True
     assert result.status.state == "published" and result.status.current is True
-    assert result.status.output_path == project / "published" / "Three Fairy Tales by Hans Christian Andersen — Intelitex Mini Sample [PL].epub"
+    assert result.status.output_path.parent == project / "published"
+    assert result.status.output_path.name.startswith("Three Fairy Tales by Hans Christian Andersen — Intelitex Mini Sample [PL] - ")
     assert CountingOfflinePool.constructions == 0
 
     with zipfile.ZipFile(result.status.output_path) as epub:
@@ -210,6 +211,26 @@ def test_explicit_publish_builds_valid_epub_without_provider_and_preserves_sourc
     assert status.publication.state == "published" and status.publication.current is True
 
 
+def test_explicit_publish_exposes_verified_epub_in_library_without_overwriting(tmp_path):
+    app, project, _ = _import_project(tmp_path)
+    _complete_translations(project)
+    published = app.publishing.publish(PublishCommand(project))
+    library = tmp_path / 'library'
+    library.mkdir()
+
+    name = app.publishing.export_to_library(project, library, 'my-book')
+    exported = library / name
+    assert exported.read_bytes() == published.status.output_path.read_bytes()
+    assert name.endswith('.epub') and 'my-book' in name
+    assert app.publishing.export_to_library(project, library, 'my-book') == name
+    assert list(library.iterdir()) == [exported]
+
+    exported.write_bytes(b'changed outside Intelitex')
+    with pytest.raises(PipelineError, match='differs'):
+        app.publishing.export_to_library(project, library, 'my-book')
+    assert exported.read_bytes() == b'changed outside Intelitex'
+
+
 def test_publish_is_idempotent_and_failure_preserves_prior_epub_and_checkpoints(tmp_path):
     app, project, _ = _import_project(tmp_path)
     _complete_translations(project)
@@ -222,7 +243,7 @@ def test_publish_is_idempotent_and_failure_preserves_prior_epub_and_checkpoints(
     assert again.status.output_path.read_bytes() == epub_bytes
 
     _change_first_final(project)
-    database_before = (project / "state.sqlite3").read_bytes()
+    database_before = (project / 'state' / 'HEAD.json').read_bytes()
     failing = FailingBuilder(EpubPublicationBuilder())
     broken_app = create_application(
         provider_factory=CountingOfflinePool, publication_builder=failing,
@@ -231,7 +252,7 @@ def test_publish_is_idempotent_and_failure_preserves_prior_epub_and_checkpoints(
         broken_app.publishing.publish(PublishCommand(project))
     assert failing.build_calls == 1
     assert first.status.output_path.read_bytes() == epub_bytes
-    assert (project / "state.sqlite3").read_bytes() == database_before
+    assert (project / 'state' / 'HEAD.json').read_bytes() == database_before
     failed_status = broken_app.publishing.status(PublicationStatusCommand(project))
     assert failed_status.state == "failed" and failed_status.current is False
     assert failed_status.output_path == first.status.output_path

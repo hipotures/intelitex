@@ -10,6 +10,8 @@ import { announce } from '../../app/notifications'
 import { Action } from '../pipeline/Action'
 import { debugTag } from '../../debug/regions'
 import { SourceDetails, SetupWorkspace } from './LibrarySource'
+import { LibraryGroups } from './LibraryGroups'
+import { preference, savePreference } from '../../app/preferences'
 
 function libraryPageLimit(grid: HTMLDivElement | null, loaded = 0) {
   const tracks = grid && getComputedStyle(grid).gridTemplateColumns.match(/\d+(?:\.\d+)?px/g)
@@ -32,9 +34,13 @@ export function Home() {
   const workspaces = useApi('/api/workspaces?archived=false', workspacesSchema)
   const command = useCommand()
   const scope = useContext(Scope)
+  const [sort, setSort] = useState(() => {
+    const saved = preference(scope, 'library.sort', 'author')
+    return ['author', 'title', 'language'].includes(saved) ? saved : 'author'
+  })
   const libraryGrid = useRef<HTMLDivElement>(null)
-  const library = useInfiniteQuery({ queryKey: [scope, '/api/library'],
-    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.childElementCount : 0)}&links=false${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
+  const library = useInfiniteQuery({ queryKey: [scope, '/api/library', sort],
+    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.querySelectorAll('.book-card').length : 0)}&links=false&sort=${sort}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
     initialPageParam: null as string | null, getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: false, staleTime: Infinity })
   const [archive, setArchive] = useState(false)
@@ -69,8 +75,8 @@ export function Home() {
     setRefreshError(null)
     announce('Refreshing Library…')
     try {
-      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false`, libraryPageSchema)
-      queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library'], { pages: [first], pageParams: [null] })
+      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false&sort=${sort}`, libraryPageSchema)
+      queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library', sort], { pages: [first], pageParams: [null] })
       announce('Library refreshed.')
     } catch (error) { setRefreshError(error) }
     finally { setRefreshingLibrary(false) }
@@ -79,9 +85,9 @@ export function Home() {
     <ErrorNote error={workspaces.error ?? command.error} retry={() => void reconcile()} />
     <section className="section" {...debugTag('ACT')}><div className="section-header"><div className="section-title"><h2>Active workspaces</h2><span className="count-badge">{workspaces.data ? active.length : '—'}</span></div><Button variant="ghost" className="compact" onClick={() => setArchive(true)}>Archive →</Button></div>
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
-    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions"><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
+    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="library-view-label">All</span><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions"><label className="library-sort">Sort by<select aria-label="Sort Library" value={sort} disabled={refreshingLibrary} onChange={event => { const value = event.target.value; setSort(value); savePreference(scope, 'library.sort', value); setRefreshError(null) }}><option value="author">Author</option><option value="title">Title</option><option value="language">Language</option></select></label><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
       {libraryError && <div className="notice error" role="alert"><span>{libraryError instanceof Error ? libraryError.message : 'Unable to load Library.'} {libraryData && 'Showing the last successful Library contents.'}</span><Button onClick={() => { if (libraryFailed && libraryData && hasNextPage) void fetchNextPage(); else void refreshLibrary() }} disabled={refreshingLibrary || loadingLibrary}>Retry Library refresh</Button></div>}
-      <div className="library-grid" ref={libraryGrid}>{sources.map(source => { const linked = workspaces.data?.workspaces.filter(workspace => workspace.source_id === source.source_id).length ?? 0; return <button className="book-card" data-source-id={source.source_id} {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => setSourceDetails(source)} aria-label={`Open ${source.title}`}><Cover title={source.title} large /><div className="book-meta"><div className="book-name">{source.title}</div><div className="book-detail"><span>{source.creators.join(', ') || '—'}</span>{linked > 0 && <span className="workspace-chip">{linked} active {linked === 1 ? 'workspace' : 'workspaces'}</span>}</div></div></button> })}</div>
+      <div className="library-grid" ref={libraryGrid}><LibraryGroups sources={sources} workspaces={active} open={setSourceDetails} /></div>
       <div ref={moreSources} className="library-load-more" aria-hidden="true" />
       {!sources.length && !libraryData && !loadingLibrary && !refreshingLibrary && !libraryError && <Empty>Scroll here to discover source books, or select Refresh.</Empty>}
       {!sources.length && libraryData && !libraryError && <Empty>{!configured ? 'Source library is not configured' : 'No source books found'}</Empty>}</section>

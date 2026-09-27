@@ -681,7 +681,7 @@ def test_analysis_reset_is_revisioned_and_keeps_versioned_evidence(api):
     assert code == 200 and not cleared['has_data']
     assert not (root / 'analysis_plan.json').exists() and not attempt.exists()
     versions = list((root / 'history' / 'p1_resets').iterdir())
-    assert len(versions) == 1 and (versions[0] / 'state.sqlite3').is_file()
+    assert len(versions) == 1 and (versions[0] / 'state.json').is_file()
     assert (versions[0] / 'analysis_plan.json').is_file()
     assert (versions[0] / attempt.relative_to(root)).is_file()
     assert service.pipeline('book')['analysis']['membership_locked'] is False
@@ -733,7 +733,7 @@ def test_analysis_reset_clears_completed_p1_but_keeps_its_snapshot(api):
         store.close()
     version = next((root / 'history' / 'p1_resets').iterdir())
     assert (version / 'analysis_plan.json').is_file()
-    assert (version / 'state.sqlite3').is_file()
+    assert (version / 'state.json').is_file()
 
 
 def test_interrupted_p1_reset_blocks_other_project_mutations(api):

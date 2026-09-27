@@ -21,7 +21,7 @@ export function phaseStatus(p: Pipeline, phase: string) {
   if (phase === 'analyse') return p.analysis.complete ? 'done' : p.active_job?.operation === 'analyze' ? 'active' : 'ready'
   if (phase === 'review') return !p.analysis.complete ? 'blocked' : p.approved ? 'done' : 'active'
   if (phase === 'translate') return !p.approved ? 'blocked' : p.translation_complete ? 'done' : 'active'
-  return !p.translation_complete ? 'blocked' : p.publication.current ? 'done' : 'active'
+  return !p.translation_complete ? 'blocked' : p.publication.current && p.publication.library_current !== false ? 'done' : 'active'
 }
 export function PassMark({ section, number }: { section: Section; number: number }) {
   const cell = section.passes[String(number)]
@@ -56,7 +56,7 @@ export function Activity({ id, expanded = false, publicationOnly = false, title 
 }
 export function WorkspacePage() {
   const { workspaceId: id = '' } = useParams({ strict: false })
-  const all = useApi('/api/workspaces', workspacesSchema)
+  const all = useApi(`/api/workspaces?workspace_id=${encodeURIComponent(id)}`, workspacesSchema)
   const workspace = all.data?.workspaces.find(w => w.workspace_id === id)
   const query = useApi(endpoint(id, 'pipeline'), pipelineSchema, !!workspace?.prepared)
   const profiles = useApi(endpoint(id, 'profiles'), profilesSchema, !!workspace)
@@ -157,7 +157,7 @@ export function WorkspacePage() {
       const state = p ? phaseStatus({ ...p, last_job: latestJob }, phase) : phase === 'prepare' && !workspace.prepared ? draftFailed ? 'error' : 'active' : 'blocked'
       const subtitle = !p ? phase === 'prepare' ? draftFailed ? 'Failed' : draftPreparing ? 'Preparing source…' : 'Ready to prepare' : 'Blocked' : phase === 'prepare' ? p.active_job?.operation === 'import' ? 'Rebuilding source…' : 'Source structure frozen' : phase === 'analyse' ? p.active_job?.operation === 'analyze' ? 'Running P1 analysis…' : p.progress.analysis.completed ? `Ready to continue · ${p.progress.analysis.completed}/${p.progress.analysis.required}` : p.analysis.membership_locked ? 'Ready to retry P1' : 'Start P1 with Run' : phase === 'review' ? p.approved ? 'Confirmed' : 'Human gate' : phase === 'translate' ? `${p.progress.translation.completed}/${p.progress.translation.required} complete` : p.publication.state.replaceAll('_', ' ')
       const p1HasDetails = !!p && (p.analysis.planned || p.analysis.membership_locked || p.analysis.complete || p.active_job?.operation === 'analyze')
-      const canOpen = state !== 'blocked' && workspace.prepared && (phase !== 'analyse' || p1HasDetails)
+      const canOpen = workspace.prepared && (phase !== 'analyse' || p1HasDetails) && (phase !== 'review' || p?.analysis.complete)
       const title = phase === 'analyse' && !p1HasDetails ? 'Start P1 with Run to view analysis details.' : !workspace.prepared && phase === 'prepare' ? subtitle : !canOpen ? 'Complete the preceding phase first.' : `Open ${phase} details`
       return <button key={phase} className={`phase ${state} ${(draftPreparing || p?.active_job?.operation === 'import') && phase === 'prepare' ? 'preparing' : ''} ${phase === 'analyse' && !p1HasDetails ? 'unopened' : ''} ${canOpen ? 'clickable' : ''}`} disabled={!canOpen} title={title} onClick={() => void navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: id, phase } })}><span className="phase-top"><span className="phase-icon">{state === 'done' ? '✓' : state === 'error' ? '×' : ''}</span><span className="phase-name">{phase === 'analyse' ? 'Analyse · P1' : phase[0]!.toUpperCase() + phase.slice(1)}</span></span><span className="phase-sub">{state === 'blocked' ? 'Blocked' : subtitle}</span></button>
     })}</div>

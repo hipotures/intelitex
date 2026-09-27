@@ -36,6 +36,8 @@ def dispatch(service, method, parts, body=None, query=None):
         return response(200, service.source_reader(parts[3], parts[6]))
     if len(parts) >= 4 and parts[:2] == ['api', 'workspaces']:
         ident, tail = parts[2], parts[3:]
+        if tail == ['metadata'] and method in {'GET', 'PATCH'}:
+            return response(200, service.book_metadata(ident, body, edit=method == 'PATCH'))
         if method == 'POST':
             if tail == ['analysis-reset']:
                 return response(200, service.reset_analysis(ident, body))
@@ -135,10 +137,11 @@ def dispatch(service, method, parts, body=None, query=None):
         if parts == ["api", "health"]:
             return response(200, {"status": "ok"})
         if parts == ["api", "workspaces"]:
-            if query is not None and (set(query) != {'archived'} or query['archived'] not in {'true', 'false'}):
+            filters = query or {}
+            if set(filters) - {'archived', 'workspace_id'} or ('archived' in filters and filters['archived'] not in {'true', 'false'}):
                 raise ValueError('Invalid workspace filter.')
-            archived = None if query is None else query['archived'] == 'true'
-            return response(200, {"workspaces": service.list_workspaces(archived)})
+            archived = None if 'archived' not in filters else filters['archived'] == 'true'
+            return response(200, {"workspaces": service.list_workspaces(archived, filters.get('workspace_id'))})
         if len(parts) == 3 and parts[:2] == ["api", "workspaces"]:
             return response(200, service.workspace(parts[2]))
         if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "usage":

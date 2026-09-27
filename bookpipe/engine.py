@@ -495,6 +495,8 @@ class Runner:
             cached = self.store.job(key, fingerprint)
             if cached:
                 validate_result(pass_no, cached["value"], inputs)
+                if pass_no > 1:
+                    self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs)
                 return cached["value"], cached["path"], fingerprint
         if not allow_generate:
             raise PipelineError(f'P{pass_no} has no current saved result for this chunk. Run P{pass_no} first.')
@@ -562,6 +564,8 @@ class Runner:
                     "task_key": key, "repair_count": len(repairs),
                     "recovery_path": str(work / "recovery.json"),
                 }))
+            if pass_no > 1:
+                self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             return value, str(path.relative_to(self.store.root)), fingerprint
         last_error = ""
         attempts = max(1, int(self.settings.get("json_retries", 1)) + 1)
@@ -726,6 +730,8 @@ class Runner:
                 with self.store.db:
                     self.store.set("observability_hold", {"attempt": str(attempt.relative_to(self.store.root)),
                                                           "reason": "Provider completed without expected usage telemetry."})
+            if pass_no > 1:
+                self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             return value, str(path.relative_to(self.store.root)), fingerprint
         raise PipelineError("No completed result.")
 

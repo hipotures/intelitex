@@ -16,6 +16,12 @@ const source = { source_id: 'book.epub', title: 'Relay Book', creators: ['Test A
 const preflight = { source_id: source.source_id, title: source.title, creators: source.creators, declared_language: 'en',
   detected_language: 'en', detection_confidence: .8, source_language: 'en', source_fingerprint: 'a'.repeat(64), language_warning: null }
 
+async function toggleLightDark(page) {
+  const current = await page.locator('html').getAttribute('data-theme')
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+  if (current === 'dark') await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+}
+
 test('Library card is read-only, setup Save creates distinct drafts, and Prepare remains explicit', { timeout: 60000 }, async () => {
   await mkdir(output, { recursive: true })
   const browser = await chromium.launch()
@@ -150,9 +156,9 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.setViewportSize({ width: 390, height: 844 })
       await page.screenshot({ path: `${output}/draft-prepare-dark-390.png`, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.screenshot({ path: `${output}/draft-prepare-light-390.png`, animations: 'disabled' })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.setViewportSize({ width: 1440, height: 1000 })
       assert.equal(await page.locator('.phase').first().isDisabled(), true)
       await page.getByText('Ready to prepare').waitFor()
@@ -175,10 +181,10 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Retry Prepare' && !button.disabled))
       await page.screenshot({ path: `${output}/draft-prepare-failed-dark-1440.png`, animations: 'disabled' })
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.screenshot({ path: `${output}/draft-prepare-failed-light-390.png`, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.setViewportSize({ width: 1440, height: 1000 })
       const retryResponse = page.waitForResponse(response => response.url().endsWith('/prepare'))
       await page.getByRole('button', { name: 'Retry Prepare' }).click()
@@ -212,7 +218,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       await page.screenshot({ path: `${output}/setup-dark-390.png`, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       await page.keyboard.press('Escape')
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await toggleLightDark(page)
       await page.locator('[data-source-id="book.epub"]').click()
       await page.getByRole('button', { name: 'Add to workspace' }).click()
       await page.screenshot({ path: `${output}/setup-light-390.png`, animations: 'disabled' })

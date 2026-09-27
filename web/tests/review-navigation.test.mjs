@@ -9,8 +9,15 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   const server = spawn('uv', ['run', '--group', 'dev', 'python', 'tests/web_fixture_server.py'],
     { cwd: '..', stdio: ['pipe', 'pipe', 'pipe'] })
   let serverError = ''
+  let browser
   server.stderr.on('data', chunk => { serverError += chunk })
   t.after(async () => {
+    if (browser) {
+      for (const context of browser.contexts()) for (const page of context.pages()) {
+        await page.unrouteAll({ behavior: 'ignoreErrors' })
+      }
+      await browser.close()
+    }
     server.stdin.end('quit\n')
     await new Promise(resolve => {
       server.once('exit', resolve)
@@ -22,8 +29,7 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
     lines.on('line', line => { try { const value = JSON.parse(line); if (value.url) resolve(value) } catch {} })
     server.once('exit', () => reject(new Error(serverError)))
   })
-  const browser = await chromium.launch()
-  t.after(() => browser.close())
+  browser = await chromium.launch()
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
   page.setDefaultTimeout(10000)
   const errors = [], failures = []
@@ -76,6 +82,7 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   await page.getByRole('button', { name: 'Open Review', exact: true }).click()
   await page.getByRole('heading', { name: 'Terminology Review' }).waitFor()
   assert.equal(await page.title(), 'Intelitex')
+  await page.locator('.review-term-row').nth(2).waitFor()
   assert.equal(await page.locator('.review-term-row').count(), 3)
   const custom = page.getByRole('textbox', { name: 'Custom Polish form' })
   await custom.fill('Relay custom')
@@ -133,7 +140,7 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   assert.deepEqual(bulkBodies.map(body => body.term_ids), [['T_TEST_SECOND']])
   assert.equal(await page.getByRole('button', { name: 'Bulk accept remaining in this view (0)' }).isDisabled(), true)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
   await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/draft-light-390.png', fullPage: true, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   assert.equal(await page.locator('.review-detail-footer').evaluate(footer =>

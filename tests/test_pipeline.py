@@ -633,7 +633,8 @@ def test_final_translation_unit_auto_publishes_and_stale_retranslation_republish
     assert status.translation_complete is True
     assert status.publication.state == "published" and status.publication.current is True
     published = status.publication.output_path
-    assert published == root / "published" / "Relay Book [PL].epub"
+    assert published.parent == root / "published"
+    assert published.name.startswith("Relay Book [PL] - ")
     with zipfile.ZipFile(published) as epub:
         assert epub.read("EPUB/styles/book.css") == b"p { color: #123456; }\n"
         assert epub.read("EPUB/images/cover.bin") == b"fixture-cover-bytes\x00\x01"
@@ -756,7 +757,7 @@ def test_custom_choice_marks_affected_chunks_stale(project):
     assert (root / "translation.txt").read_text() == before
     assert main(["translate", *args, "--continue", "1"]) == 0
     assert "My-Relay" in (root / "translation.txt").read_text()
-    assert list((root / "history").glob("before_approval_*.sqlite3"))
+    assert list((root / "history").glob("before_approval_*.json"))
 
 
 def test_no_cross_story_continuity(project):

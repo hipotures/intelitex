@@ -72,6 +72,7 @@ class PublicationRequest:
     blocks: tuple[PublicationBlock, ...]
     excluded_source_files: tuple[str, ...] = ()
     format_version: int = 1
+    metadata_corrections: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)

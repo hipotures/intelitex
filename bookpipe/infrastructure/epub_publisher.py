@@ -236,7 +236,8 @@ class EpubPublicationBuilder:
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         rendered[package_relative] = self._rewrite_package(
             package_path.read_bytes(), request.target_language,
-            request.source_fingerprint, source_info.source_language, generated_at,
+            request.source_fingerprint, (request.metadata_corrections or {}).get('language', source_info.source_language), generated_at,
+            corrections=request.metadata_corrections,
             excluded_files=excluded_files, package_relative=package_relative,
         )
         if excluded_files:
@@ -264,7 +265,8 @@ class EpubPublicationBuilder:
             )
             if flattened_spans:
                 validation = (*validation, f"{flattened_spans} source span styles rendered as plain translated text")
-            os.replace(temporary, request.output_path)
+            # Publication destinations are immutable. Refuse even a racing writer.
+            os.link(temporary, request.output_path)
             if hasattr(os, "O_DIRECTORY"):
                 directory = os.open(request.output_path.parent, os.O_DIRECTORY)
                 try:
@@ -275,9 +277,9 @@ class EpubPublicationBuilder:
             temporary.unlink(missing_ok=True)
         return PublicationBuildResult(
             output_path=request.output_path,
-            title=source_info.title or request.title,
-            creators=source_info.creators,
-            source_language=source_info.source_language,
+            title=request.title,
+            creators=tuple((request.metadata_corrections or {}).get('creators', source_info.creators)),
+            source_language=(request.metadata_corrections or {}).get('language', source_info.source_language),
             target_language=request.target_language,
             validation=validation,
             generated_at=generated_at,
@@ -388,7 +390,8 @@ class EpubPublicationBuilder:
     @staticmethod
     def _rewrite_package(raw: bytes, target_language: str, source_fingerprint: str,
                          source_language: str | None, generated_at: str, *,
-                         excluded_files: set[str] | None = None, package_relative: str = '') -> bytes:
+                         excluded_files: set[str] | None = None, package_relative: str = '',
+                         corrections: dict | None = None) -> bytes:
         try:
             root = ET.fromstring(raw)
         except Exception as exc:
@@ -424,6 +427,23 @@ class EpubPublicationBuilder:
         metadata = root.find(".//{*}metadata")
         if metadata is None:
             raise PipelineError("EPUB package document has no metadata element.")
+        corrections = corrections or {}
+        removed_ids = set()
+        for field, tag in [('title', 'title'), ('creators', 'creator')]:
+            if field not in corrections:
+                continue
+            for child in list(metadata):
+                if child.tag == f'{{{DC_NAMESPACE}}}{tag}':
+                    if child.get('id'):
+                        removed_ids.add('#' + child.get('id'))
+                    metadata.remove(child)
+            values = corrections[field] if field == 'creators' else [corrections[field]]
+            for value in values:
+                XmlTree.SubElement(metadata, f'{{{DC_NAMESPACE}}}{tag}').text = value
+        for child in list(metadata):
+            if child.get('refines') in removed_ids or (
+                'title' in corrections and child.get('name') == 'calibre:title_sort'):
+                metadata.remove(child)
         language = metadata.find("{*}language")
         if language is None:
             language = XmlTree.SubElement(metadata, f"{{{DC_NAMESPACE}}}language")

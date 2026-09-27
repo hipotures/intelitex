@@ -5,6 +5,12 @@ import { cp, mkdir, writeFile } from 'node:fs/promises'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
+async function toggleLightDark(page) {
+  const current = await page.locator('html').getAttribute('data-theme')
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+  if (current === 'dark') await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
+}
+
 test('Library refresh discovers new sources locally and retains its last good contents on failure', { timeout: 90000 }, async t => {
   const server = spawn('uv', ['run', '--group', 'dev', 'python', 'tests/web_fixture_server.py'], { cwd: '..', stdio: ['pipe', 'pipe', 'pipe'] })
   let serverError = ''
@@ -46,6 +52,8 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
         if path.is_file(): archive.write(path,path.relative_to(source).as_posix())`, config.root], { cwd: '..', encoding: 'utf8' })
   assert.equal(packed.status, 0, packed.stderr)
   await page.getByRole('button', { name: 'Refresh Library' }).scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Refresh Library' }).hover()
+  await page.waitForTimeout(200) // Let the previously hovered card finish its 2px transform.
   const before = await page.evaluate(() => scrollY)
   const cardTop = await page.locator('[data-source-id="second-book"]').evaluate(node => node.getBoundingClientRect().top)
   await page.route('**/api/library?*', async route => { await new Promise(resolve => setTimeout(resolve, 1000)); await route.continue() })
@@ -112,7 +120,7 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
 
   await mkdir('/tmp/intelitex-browser-evidence', { recursive: true })
   await page.screenshot({ path: '/tmp/intelitex-browser-evidence/library-refresh-dark-390.png', fullPage: false, animations: 'disabled' })
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  await toggleLightDark(page)
   await page.screenshot({ path: '/tmp/intelitex-browser-evidence/library-refresh-light-390.png', fullPage: false, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   assert.deepEqual(pageErrors, [])

@@ -19,6 +19,8 @@ export function SourceDetails({ source, close, add }: { source: Source; close: (
   return <Overlay drawer title={source.title} eyebrow="Library source" debugId="LSD" close={close}>
     <div className="drawer-body source-details"><div className="source-detail-head"><Cover title={source.title} large /><div><div className="source-detail-title">{source.title}</div><div className="subtitle">{source.creators.join(', ') || 'Unknown author'}</div><div className="subtitle">{source.language ? `Declared language: ${source.language}` : 'Language not declared'}</div></div></div>
       <p className="subtitle">This source stays in Library when you create a workspace.</p>
+      <p className="source-location"><span>Library location</span><code>{source.source_id}</code></p>
+      {source.groups.filter(group => group.warning).map(group => <p className="notice error" role="alert" key={group.group_id}>{group.warning}</p>)}
       <div className="source-detail-actions"><Button onClick={() => { if (inspecting) void inspect.refetch(); else setInspecting(true) }} disabled={inspect.isFetching}>Inspect source</Button><Button variant="primary" onClick={add}>Add to workspace</Button></div>
       {inspecting && <section className="source-inspect" {...debugTag('LSI')}><h3>Source inspection</h3><ErrorNote error={inspect.error} retry={() => void inspect.refetch()} />{inspect.isPending ? <Empty>Inspecting source locally…</Empty> : inspect.data && <>
         <div className="source-inspect-facts"><div><strong>{inspect.data.document_count ?? '—'}</strong><span>reading-order files, not necessarily chapters</span></div><div><strong>{inspect.data.sampled_documents ?? '—'}</strong><span>files sampled</span></div></div>

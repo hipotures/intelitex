@@ -34,6 +34,11 @@ def parser() -> argparse.ArgumentParser:
     server.add_argument("--port", type=int, default=8780)
     reload_command = sub.add_parser("reload", help="Reload the running server after active translation passes checkpoint.")
     reload_command.add_argument("--workspace-root", type=Path, help="Require the running server to use this workspace root.")
+    migration = sub.add_parser('migrate-state', help='Explicitly migrate all legacy checkpoint state to JSON; retain old databases.')
+    migration_scope = migration.add_mutually_exclusive_group(required=True)
+    migration_scope.add_argument('--project', type=Path)
+    migration_scope.add_argument('--workspace-root', type=Path)
+    migration.add_argument('--verify', action='store_true', help='Read-only JSON validation and retired-database drift check.')
     pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
@@ -181,6 +186,18 @@ def _render_status(result, ui: Display) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == 'migrate-state':
+        from .infrastructure.state_migration import migrate_state, migrate_workspaces, verify_state, verify_workspaces
+        try:
+            if args.verify:
+                result = verify_workspaces(args.workspace_root) if args.workspace_root else [verify_state(args.project)]
+            else:
+                result = migrate_workspaces(args.workspace_root) if args.workspace_root else [migrate_state(args.project)]
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if all(item['verified'] for item in result) else 1
+        except (PipelineError, OSError, ValueError, sqlite3.Error) as exc:
+            print(f'ERROR: {exc}', file=sys.stderr)
+            return 1
     if args.command == "serve":
         from .server import serve
         try:

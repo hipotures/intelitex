@@ -3,15 +3,21 @@
 Data: 2026-09-26. Przejrzany commit: `063ca1d770dde06745e56c31ecc7bb59a6818bd0`.
 Podstawa wymagań: [issue #1](https://github.com/hipotures/intelitex/issues/1), wraz z trzema komentarzami, odczytane podczas przeglądu; ostatnia aktualizacja issue: 2026-09-24.
 
+**Aktualizacja decyzji architektonicznej: 2026-09-27.** Docelowy cache obejmuje **pełną zawartość JSON-ów**, odwzorowaną na dedykowane tabele, typowane pola, relacje i indeksy. Dotyczy to również tekstu książki, wejść i wyników P1–P5 oraz historii prób. Zastępuje to wcześniejsze zalecenie ograniczenia cache do małych projekcji. Sekcje „Proponowana architektura cache”, „Kolejność prac” i „Kryteria gotowości i pomiary” określają nowy kierunek; ustalenia F01–F12 i końcowa „Wykonana weryfikacja” są zapisem audytu z 2026-09-26, a nie ponownym audytem obecnego kodu. Późniejsze poprawki opisuje [workflow-revisions.md](../workflow-revisions.md).
+
+**Doprecyzowanie źródła prawdy:** obecny podział trwałego stanu między JSON-y i `state.sqlite3` jest stanem przejściowym. Docelowo wszystkie trwałe dane i decyzje mają reprezentację plikową, wystarczającą do odbudowy baz SQLite bez uruchamiania modeli. Wycofujemy wcześniejszą propozycję zachowania `state.sqlite3` jako drugiego, niezależnego właściciela stanu obok nowego cache. Wymaga to migracji istniejących projektów, opisanej poniżej; dzisiejszej bazy nie wolno jeszcze usuwać.
+
 ## Ocena
 
-**Osobny, odbudowywalny cache SQLite ma uzasadnienie, ale samo dodanie tabel nie rozwiąże obecnych problemów.** Największe koszty wynikają z budowania projekcji od początku: parsowania i hashowania manifestów, sprawdzania artefaktów, ponownego składania informacji o publikacji oraz wielokrotnego odczytywania całej historii zadań. Frontend dodatkowo uruchamia osobne podsumowanie dla każdego workspace’u.
+Pierwszy etap implementacji opisuje [migracja checkpointów do JSON](../state-json-migration.md): pełny eksport Store, atomowy HEAD, przełączenie jego odczytów/zapisów i kontrola pozostawionych baz. SQL działa w tym etapie wyłącznie w pamięci procesu jako mechanizm zapytań. Trwały cache obejmujący wszystkie JSON-y książki oraz migracja rejestru runtime są kolejnymi etapami. Architektura poniżej opisuje pełny cel; szczegóły wdrożonego etapu i jego granice podaje wskazany dokument.
 
-Przed wykorzystaniem nowego cache jako źródła strony Work należy rozdzielić dane trwałe od pochodnych, poprawić identyfikację źródeł i zapewnić izolację błędów pojedynczych workspace’ów. Osobno wymaga naprawy potwierdzona niezgodność starszych checkpointów P3/P5. Nie zalecam szerokiego przepisywania pipeline’u ani przenoszenia dokumentów i artefaktów do SQLite.
+**Osobny, odbudowywalny cache SQLite ma uzasadnienie, ale samo dodanie tabel nie rozwiąże problemów z odczytem.** Audyt z 2026-09-26 wskazał koszty budowania projekcji od początku: parsowania i hashowania manifestów, sprawdzania artefaktów, ponownego składania informacji o publikacji oraz wielokrotnego odczytywania całej historii zadań. Frontend dodatkowo uruchamiał osobne podsumowanie dla każdego workspace’u. Część tych ścieżek została później poprawiona; projekt cache nadal wymaga aktualnych pomiarów.
 
-Przegląd nie zmienia kodu aplikacji. Zalecenia poniżej są propozycją kolejnych prac, a nie opisem już wdrożonego cache.
+Przed wykorzystaniem nowego cache jako źródła strony Work należy rozdzielić dane trwałe od pochodnych, poprawić identyfikację źródeł i zapewnić izolację błędów pojedynczych workspace’ów. Pełna treść dokumentów i artefaktów JSON ma znaleźć się w relacyjnym cache SQLite. Docelowym źródłem prawdy są zatwierdzone wersje plików wraz z plikowym rejestrem decyzji; istniejący stan zapisany wyłącznie w SQLite trzeba najpierw bezstratnie wyeksportować. Nie zmieniamy przy tym historycznej tożsamości checkpointów ani reguł pipeline’u.
 
-## Zakres i ograniczenia
+Ten dokument nie wdraża cache ani migracji. Zaktualizowana architektura jest wymaganiem dla kolejnych prac, a nie opisem istniejącej implementacji.
+
+## Zakres i ograniczenia audytu z 2026-09-26
 
 Przejrzano przepływy CLI → application → Store, import i Inspect, katalog źródeł i draftów, odczyty Work/pipeline, publikację, registry/supervisor/SSE oraz frontendowe zapytania i ich odświeżanie. Transporty i Reader/Review objęto analizą wybranych ścieżek i istniejącą regresją; nie jest to audyt każdego wiersza ani ocena jakości tłumaczeń.
 
@@ -193,38 +199,139 @@ Utrzymaniowo warto ograniczyć zagęszczone, wielozadaniowe funkcje w `server/se
 
 ## Proponowana architektura cache
 
+### Pełne odwzorowanie JSON-ów
+
+**Wszystkie dokumenty JSON należące do danych workspace’u i aplikacyjnego katalogu mają mieć pełne odwzorowanie w SQLite.** Obejmuje to `book.json`, konfigurację, plany, Review, zatwierdzony leksykon, pamięć, publikacje, `analysis_inputs/*.json`, wszystkie JSON-y w `artifacts/` i zachowaną historię. Nie wybieramy tylko pól używanych dzisiaj przez Work. Pełne pokrycie jest kontraktem importera; odczyt API nadal wybiera tylko potrzebne kolumny i rekordy.
+
+Nie zapisujemy całego dokumentu ani jego zagnieżdżonych obiektów jako JSON w kolumnie TEXT/BLOB. Obiekty otrzymują dedykowane pola i tabele, tablice — rekordy z pozycją, a mapy o dynamicznych kluczach — typowane tabele klucz/wartość odpowiednie dla danej struktury. Tekst akapitu pozostaje zwykłym polem tekstowym. Indeksy wynikają z rzeczywistych filtrów, relacji i sortowania; nie indeksujemy automatycznie każdego pola ani pełnego tekstu akapitów.
+
+Importer musi zachować wartości, typy, kolejność tablic, puste kolekcje oraz różnicę między brakiem pola i `null`. Deduplikacja identycznych bloków jest dozwolona tylko z zachowaniem wszystkich wystąpień i historycznych wersji. Zmiana dzisiejszego tekstu nie może zmienić rekonstrukcji wcześniejszego wejścia modelu. Semantyczny eksport cache → JSON musi być równoważny źródłu; nie wymaga identycznych wcięć ani kolejności kluczy obiektu. Oryginalny hash bajtów artefaktu pozostaje oddzielny od hasha semantycznego i nadal służy do sprawdzania receipts.
+
+Pełne pokrycie nie eliminuje różnych schematów P1–P5. Potrzebny jest jeden rejestr wersjonowanych mapowań dokument → tabele, wykorzystywany przez import, update, eksport kontrolny i walidację. Nowe pole lub nieobsługiwany typ nie może zostać po cichu pominięty: oznacza niepełną projekcję i wymaga rozszerzenia mapowania/migracji. CI sprawdza pokrycie każdego pola wspieranych schematów i równoważność po odtworzeniu. Nie stosujemy uniwersalnego magazynu JSON-path/wartość jako zamiennika dedykowanego modelu relacyjnego.
+
 ### Własność danych
+
+Poniższa tabela określa **stan docelowy po migracji**. Obecnie część wymienionych decyzji istnieje wyłącznie w `state.sqlite3`.
 
 | Dane | Właściciel | Rola nowego cache |
 | --- | --- | --- |
-| Checkpointy, approvals, chunks, selected passes | Workspace `state.sqlite3` i powiązane artefakty | Wyłącznie pochodne liczniki/statusy |
-| Źródło, języki, etykieta, modele, lifecycle | `workspace.json`, `settings.json`, `web.config.json`, lifecycle i zachowany trwały katalog legacy | Indeks do wyszukiwania i prezentacji |
-| Praca aktywna, własność workera, receipts i replay | Supervisor oraz runtime `jobs.sqlite3` | Bieżący overlay; cache nie przyznaje prawa do mutacji |
-| Metadane źródeł, Inspect, okładki, Work summary | Nowy indeks SQLite + pliki cache | Dane odbudowywalne |
+| Źródło książki i segmentacja | `book.json` oraz oryginalne źródła | Pełna reprezentacja rozdziałów, bloków, segmentów i pozostałych pól |
+| Plany, draft Review, leksykon, pamięć, konfiguracja, lifecycle, publikacje | Odpowiednie trwałe JSON-y; dla lifecycle również zachowany trwały katalog legacy | Pełne odwzorowanie, relacje i indeksy |
+| Wejścia, wyniki, requests, usage i pozostałe JSON-y prób | Zachowane pliki artefaktów | Pełna treść każdej wersji oraz indeks historii |
+| Checkpointy, approvals, status chunks, selected passes, fakty, historia Store | Wersjonowane snapshoty i rejestr zatwierdzonych zmian w JSON, powiązane z artefaktami | Pełny odtwarzalny model, zależności i liczniki; bez wyłącznych danych w SQL |
+| Trwałe receipts poleceń, idempotencja i historia runtime | Plikowy rejestr poleceń/zdarzeń we właściwym scope aplikacji | Odtwarzalny indeks runtime i replay |
+| Bieżąca własność procesu i blokady | Supervisor, rzeczywiste procesy i blokady systemowe | Informacja ulotna, uzgadniana po restarcie; zapis historii nie wznawia procesu |
+| Metadane źródeł, Inspect, okładki, Work summary | Źródła oraz wersjonowane algorytmy ekstrakcji/application | Odbudowywalne dane i agregaty |
 
-Docelowa lokalizacja: jeden katalog aplikacyjny pod absolutnym `XDG_CACHE_HOME`, z fallbackiem do `~/.cache/intelitex`, np. `web.sqlite3` i `covers/`. Jest to propozycja układu, nie istniejąca konfiguracja. Runtime pod XDG state pozostaje oddzielny. Nie tworzyć po jednej kopii tego samego cache dla każdego endpointu.
+Cache nie jest miejscem pierwszego trwałego zapisu edycji. Warstwa Store może nadal obsługiwać komendy i zapytania, ale jej komendy zatwierdzają stan plikowy, a SQL przechowuje jego projekcję. Żadne pole trwałe nie może istnieć wyłącznie w bazie. Odbudowa ma zachować również to, który z kilku wyników wybrano i dlaczego segment jest stale — nie zgadywać na podstawie dat plików.
 
-### Minimalny model
+### Jedno źródło prawdy: zatwierdzone wersje plików
 
-| Projekcja | Minimalne pola / uwagi |
+Trwały model obejmuje wersjonowane dokumenty JSON oraz niewielkie rekordy zatwierdzonych zmian, również w JSON. Rekord zmiany określa wersję schematu, generację workspace’u, numer rewizji, poprzednią rewizję/hash, identyfikator operacji, jej wynik i kompletną listę zmienionych dokumentów z hashami oraz jawnych usunięć. Wszystkie decyzje domenowe mają wartości w dokumentach lub typowanych danych rekordu; samo zdarzenie „coś się zmieniło” nie wystarcza do odbudowy.
+
+Rekord zatwierdzenia jest rozstrzygający: wskazuje obowiązujące wersje i odróżnia przygotowane pliki od zakończonej operacji. Snapshot stanu przy określonej rewizji przyspiesza replay; musi być kompletny i zweryfikowany. Rekordy późniejsze od snapshotu pozwalają odtworzyć każdą zatwierdzoną zmianę. Nie jest to okresowy eksport z autorytatywnej bazy — potwierdzenie zapisu następuje dopiero po utrwaleniu plikowego stanu.
+
+Stan rozdzielamy na małe dokumenty domenowe, np. wybory i unieważnienia danego segmentu, decyzje Review, rejestr checkpointów i wpisy historii. Zmiana wyboru jednego segmentu nie wymaga przepisywania całego `book.json` ani jednego wielkiego `state.json`. Wersjonowane snapshoty, rekordy i ich pola również podlegają pełnemu odwzorowaniu w dedykowanych tabelach SQL.
+
+Dotychczasowe pliki o stałych nazwach mogą po migracji pozostać widokami zgodności aktualnych dokumentów. Gdy różnią się od wersji wskazanej zatwierdzonym rekordem, zgłaszamy rozbieżność; nie wybieramy automatycznie „nowszego mtime”. Edycja zewnętrzna takiego pliku wymaga walidacji i zarejestrowania jako nowej zmiany pod blokadą. Dzięki temu JSON, rejestr i SQL nie stają się trzema konkurencyjnymi właścicielami stanu.
+
+### Podział baz: katalog ogólny i cache poszczególnych książek
+
+Rekomendowany układ pod absolutnym `XDG_CACHE_HOME`, z fallbackiem do `~/.cache/intelitex`:
+
+```text
+catalog.sqlite3                         # katalog Books i workspace’ów, małe podsumowania
+workspaces/<workspace-cache-id>.sqlite3 # pełne JSON-y i odczytowy model jednego workspace’u
+sources/<source-cache-id>.sqlite3       # treść źródła Reader bez workspace’u, gdy jest indeksowana
+covers/                                # odtworzone zasoby binarne
+```
+
+Jedna baza cache na workspace oznacza izolację książek, możliwość przebudowy jednej z nich i brak wspólnego writer locka dla ich szczegółów. Tytuł książki nie jest kluczem: dwa workspace’y tej samej książki muszą być niezależne. Identyfikator cache uwzględnia kanoniczny root, tożsamość workspace’u/źródła i jego generację, aby ponowne użycie ścieżki nie podpięło starej zawartości. Wydania z `books/` mają odrębne tożsamości; powiązanie z workspace’em nie zastępuje zachowania poprzednich wydań.
+
+Baza ogólna zawiera metadane źródeł i wydań, lokalizacje, powiązania source → workspace, lifecycle, wyniki Inspect, referencje okładek, małe podsumowania Work i rewizję, z której je zbudowano. Nie zawiera tekstów wszystkich książek ani całej historii prób. Work/Books korzystają z niej bez otwierania każdej bazy książki. Dla źródła EPUB bez workspace’u treść Readera można indeksować we własnej bazie źródła; nie tworzymy fikcyjnych checkpointów tłumaczenia. W każdym przypadku brakujące ekstrakcje wykonuje ograniczona kolejka w tle.
+
+**Docelowo jedna baza SQLite na workspace obejmuje zarówno projekcję dzisiejszego Store, jak i pełny relacyjny model dokumentów.** Nie utrzymujemy dwóch odrębnych baz książki o konkurencyjnych rolach. Obecna `state.sqlite3` jest potrzebna do migracji; po zweryfikowanym przełączeniu zostaje zachowana jako archiwalna kopia, poza mechanizmem prune cache. Nowa baza nie jest od niej zależna przy rebuild. Runtime może nadal używać osobnego indeksu `jobs.sqlite3`, lecz jego trwałe receipts i historia również muszą być odtwarzalne z plików. Ulotne statusy procesów wymagają ponownego uzgodnienia, nie bezwarunkowego replay.
+
+Aktualizacja bazy książki i katalogu globalnego jest uzgadniana po rewizji, a nie traktowana jako jedna transakcja. SQLite w trybie WAL nie zapewnia atomowości całego zestawu baz podłączonych przez `ATTACH`. Krótkie transakcje i osobne kolejki ograniczają blokowanie; WAL nadal dopuszcza jednego piszącego naraz w danej bazie. [Dokumentacja SQLite WAL](https://www.sqlite.org/wal.html).
+
+### Migracja obecnej `state.sqlite3`
+
+1. Pod blokadą workspace’u, bez aktywnego writera, utworzyć spójną kopię bazy przez SQLite backup API i zinwentaryzować powiązane pliki. Nie kopiować samego pliku DB z pominięciem aktywnego WAL. Oryginał i backup zachować.
+2. Wyeksportować kompletny snapshot: `kv`, `jobs`, `merged`, `terms`, `facts`, `chunks`, `history`, identyfikatory i stan alokacji ID. Zachować wszystkie klucze, approvals, wybrane fingerprinty, receipt/hash/path, zależności, unieważnienia i historię; nie rekonstruować ich heurystycznie z najnowszego wyniku.
+3. Ze snapshotu i zachowanych dokumentów zbudować nową bazę bez dostępu do oryginalnej `state.sqlite3`. Porównać wszystkie eksportowane wartości i zachowanie odczytów: Review, P1–P5, stale, wybory wyników, gotowość publikacji oraz historię wydań. Nie wywoływać modeli i nie zmieniać artefaktów książki.
+4. Przetestować na kopii utratę wszystkich baz cache, odbudowę i wznowienie pracy. Dopiero potem atomowym znacznikiem wersji formatu przełączyć workspace na nowy protokół zapisu. Starszy kod musi odmówić mutacji nowego formatu, zamiast dalej zapisywać starą bazę.
+5. Po przełączeniu wszystkie ścieżki CLI/HTTP/worker zapisują wyłącznie przez nowy kontrakt plikowy; nie dopuszczać niezależnego dual-write starego i nowego źródła. Rollback po nowych edycjach wymaga ich eksportu/migracji, nie prostego podłożenia starej kopii DB. Analogicznie przenieść trwałe dane katalogu i runtime przed uznaniem ich indeksów SQL za usuwalne.
+
+Do zakończenia tej migracji obecna `state.sqlite3` pozostaje źródłem niezbędnych danych i wymaga ochrony. Utrata już istniejącej bazy przed eksportem może wymagać odzyskiwania z backupu oraz ręcznego rozstrzygnięcia wyborów; nowy cache nie odtworzy informacji, których wcześniej nigdzie poza bazą nie zapisano. Po migracji warunek odbioru jest jednoznaczny: usunięcie baz SQLite na kopii projektu nie powoduje utraty zatwierdzonego stanu ani ponownego tłumaczenia. Odtwarzalność zakłada zachowane trwałe pliki; nie zastępuje ich backupu.
+
+### Model relacyjny i indeksy
+
+Poniżej rodziny tabel do rozwinięcia według kompletnych schematów dokumentów, nie zamknięta lista pól:
+
+| Rodzina tabel | Zawartość i przykładowe klucze/indeksy |
 | --- | --- |
-| `sources` | Scope import-root, source ID i lokalizacja, typ, stat-signature, hash zawartości i jego wersja, tytuł/autor/język deklarowany, status odczytu, czas weryfikacji |
-| `source_inspections` | Tożsamość źródła + wersja parsera/detektora, język i źródło rozpoznania, wynik heurystyki, liczby dokumentów/próbek i ograniczone fragmenty |
-| `cover_assets` | Klucz źródła, status `available/missing/not_found/error`, względna ścieżka, wersja ekstraktora, sygnatura zależności |
-| `workspace_summaries` | Scope workspace-root + workspace ID, metadane, stage, liczniki/procent z podstawą, wynik ostatniej weryfikacji publikacji, sygnatura zależności, świeżość i błąd |
-| Metadane schematu | Wersja DB oraz osobne wersje projekcji/parserów; możliwość przebudowy tylko dotkniętej części |
+| `documents`, `document_versions` | Ścieżka względna, typ/schemat, rozmiar, stat-signature, hash bajtów, hash semantyczny, generacja importu, stan i błąd; unikalność ścieżki i wersji |
+| `books`, `source_files`, `sections`, `scenes` | Wszystkie metadane i struktura `book.json`; indeks kolejności sekcji i powiązań źródłowych |
+| `block_versions`, `section_blocks`, `chunks`, `chunk_blocks`, `sentences`, `pieces` | Pełny tekst, struktura i zakresy; wersjonowane powiązania, indeksy `(section_id, position)` i `(chunk_id, position)` |
+| Tabele konfiguracji, polityk, modeli, tokenizerów i ostrzeżeń | Wszystkie pozostałe pola manifestów; kolekcje i dynamiczne mapy w tabelach zależnych |
+| Tabele planów, terminów, wariantów, decyzji, pamięci i zależności | Draft i approval jako odrębne stany; indeksy term → segment i segment → zależność |
+| `passes`, `attempts`, tabele inputs/results/request/response/usage/pricing/recovery | Pełne JSON-y P1–P5 wraz z podstrukturami właściwymi dla ich schematów; indeks `(chunk_id, pass_number, version)`, powiązania receipt/hash, agregaty usage |
+| Tabele historii i wydań publikacji | Wszystkie zachowane wersje, selection, fingerprinty, ścieżki i status dostarczenia; indeksy workspace/edition |
+| Tabele synchronizacji | Wersja schematu/mapowania, generacja źródła, zastosowany numer zmiany, aktywna generacja cache, postęp rebuild, świeżość i błędy |
 
-Nie kopiować całych `book.json`, planów, tekstów tłumaczeń ani attempt evidence. Brak danych to `unknown`, nie zero lub „nie rozpoczęto”. W przypadku okładki błąd I/O nie jest tym samym co potwierdzony brak okładki.
+Duże przebudowy zapisują kandydacką generację partiami, a następnie krótką transakcją przełączają aktywną generację. Odczyt jednego DTO używa jednej generacji; nie miesza starego planu z nowymi segmentami. Przyrostowy update zmienia tylko dotknięte rekordy i zależne agregaty, w jednej transakcji wraz ze znacznikiem synchronizacji. Hash per dokument pozwala pominąć niezmienione pliki; porównanie rekordów pozwala ograniczyć SQL po zmianie dużego dokumentu. Historyczny wynik pozostaje oddzielną wersją.
 
-Klucze muszą uwzględniać kanoniczny root: `book.epub` i `w-123` mogą występować w wielu konfiguracjach serwera. Sama nazwa pliku, tytuł lub routing ID nie jest globalną tożsamością. Nowego hasha deduplikacyjnego nie używać do zmiany historycznych fingerprintów pipeline’u.
+Pełny import historii może być kosztowny i odbywa się w tle, z widocznym pokryciem. Aktywny dokument/segment ma pierwszeństwo, ale historia nie jest wyłączona z kontraktu. Dla `salvation-02` odczyt inwentarza 2026-09-27 wykazał 5234 pliki JSON o łącznym rozmiarze 210 720 952 bajtów: 10 w katalogu głównym, 35 w `analysis_inputs/` i 5189 w `artifacts/`. Nie wystarczy więc benchmark samego `book.json`.
+
+### Czy `analysis_inputs/ch0011_a001.json` również trafia do cache?
+
+**Tak, w całości.** Sprawdzony plik ma 175 798 bajtów i pola `SECTION_ID`, `SOURCE_BLOCKS` (181 bloków) oraz `EXISTING_MEMORY` (`matched`, `catalogue`, `catalogue_incomplete`). Zapisujemy sekcję, wszystkie bloki z ich kolejnością i pełną historyczną pamięć wejściową. Wspólne, identyczne wersje bloków mogą być współdzielone przez referencje; snapshot wejścia nie może wskazywać po prostu na „najnowszy blok”. Ta sama zasada obejmuje `inputs.json`, `result.json`, `request.semantic.json`, `request.json`, `response_meta.json`, `usage.json` i pozostałe dokumenty prób. Nazwa lub duży rozmiar pliku nie jest powodem wykluczenia.
+
+Pliki binarne EPUB/okładek i surowe logi, które nie są JSON-em, pozostają plikami. Cache przechowuje ich tożsamość, referencje, metadane i wynik ostatniej kontroli; odczyt/ekstrakcja brakujących treści odbywa się asynchronicznie. Nie wywołujemy modelu do odbudowy cache.
+
+### Zapis: zatwierdzone pliki → jedna baza cache książki → katalog
+
+1. Warstwa application/Store sprawdza revision token i blokadę workspace’u. Aktualny stan wynika z ostatniej zatwierdzonej rewizji plikowej. SQL może przyspieszyć sprawdzenie tylko wtedy, gdy potwierdzono zgodność jego rewizji; przy zaległym cache trzeba odczytać/replay właściwy zakres albo zaczekać na synchronizację. Samo pole `current` w cache nie uprawnia do zapisu.
+2. Przygotowuje nowe wersje zmienionych JSON-ów pod unikalnymi ścieżkami: plik tymczasowy, flush/fsync, atomowa podmiana, fsync katalogu. Poprzednie zatwierdzone wersje pozostają dostępne. Zmiana terminu zapisuje właściwe dokumenty Review/leksykonu i zależności, nie przepisuje automatycznie `book.json`. Dane operacji wieloplikowej są na tym etapie kandydatem, nie nowym aktywnym stanem.
+3. Po utrwaleniu wszystkich potrzebnych dokumentów atomowo zapisuje pojedynczy rekord zatwierdzenia w plikowym rejestrze rewizji, wraz z hashami, poprzednią rewizją, identyfikatorem i wynikiem operacji. Ten zapis jest punktem zatwierdzenia. Rekord jest również trwałym zleceniem synchronizacji; nie potrzebujemy kolejki istniejącej wyłącznie w SQL. Pomocniczy wskaźnik ostatniej rewizji musi dać się odbudować z rejestru. Po fsync rekordu i katalogu można zwrócić potwierdzenie zapisu z rewizją i stanem cache.
+4. Worker importuje dokumenty wskazane przez zatwierdzony rekord i aktualizuje jedną bazę cache workspace’u. Zapis danych, zależnych agregatów i zastosowanej rewizji odbywa się w jednej transakcji. Replay jest idempotentny według generacji, numeru zmiany i identyfikatora operacji. Awaria cache nie cofa zatwierdzonej edycji.
+5. Po aktualizacji cache książki worker odświeża małe podsumowanie katalogu globalnego z tą samą rewizją. Niepowodzenie oznacza zaległą projekcję do ponowienia. Widoki zgodności pod dawnymi stałymi nazwami również można odtworzyć z zatwierdzonych wersji.
+
+Nie istnieje wspólna transakcja obejmująca pliki JSON i SQLite; nie jest potrzebna do zatwierdzenia stanu domenowego, bo ten następuje w warstwie plikowej. Awaria przed rekordem zatwierdzenia pozostawia nieaktywne kandydaty. Awaria po rekordzie, ale przed odpowiedzią klientowi lub commit cache, pozostawia zatwierdzoną operację: ponowienie z tym samym identyfikatorem zwraca jej wynik, a synchronizacja nadrabia zaległość. Niekompletny/uszkodzony łańcuch rewizji blokuje potwierdzenie aktualności i wymaga diagnostyki; nie zgadujemy brakujących decyzji. To nowy protokół do implementacji i testów, a nie gwarancja istniejącego `atomic_json`.
+
+Zachowane dokumenty nieudanych lub przerwanych prób również podlegają importowi jako historia z właściwym statusem. Zakończony zapis dokumentu nie oznacza akceptacji wyniku modelu. Niekompletny zapis wieloplikowej operacji może być widoczny w diagnostyce, ale nie może zmienić aktywnego checkpointu ani otrzymać stanu `completed`.
+
+Normalna odpowiedź edycji nie czeka na pełną przebudowę cache. UI pokazuje zwróconą wartość i rewizję; starszy odczyt nie może jej cofnąć. Zapytanie wymagające tej rewizji dostaje zgodne dane albo jawny stan `syncing`, z ograniczonym oczekiwaniem i ponowieniem asynchronicznym. Nie potwierdzamy „zapisano” przed trwałym zatwierdzeniem plików i nie blokujemy interfejsu na odczycie wszystkich artefaktów.
+
+### Synchronizacja i wykrywanie rozbieżności
+
+- Każdy writer CLI/HTTP/worker korzysta ze wspólnego protokołu plikowego. SSE jest powiadomieniem, nie gwarancją synchronizacji. Po restarcie porównujemy ostatnią zatwierdzoną rewizję rejestru z zastosowanym numerem cache i wznawiamy replay; utrata cache uruchamia import snapshotu i późniejszych zmian.
+- Zewnętrzne edycje wykrywa skaner inwentarza plików: dodanie/usunięcie, tożsamość, rozmiar, mtime/ctime, następnie hash zmienionych plików. Okresowa i ręczna głęboka kontrola hashuje również pliki o niezmienionych atrybutach. Zmiana zatwierdzonej wersji jest naruszeniem integralności; zmiana widoku zgodności jest kandydatem do walidacji i jawnego importu jako nowej rewizji. Skaner nie zatwierdza automatycznie dowolnego pliku z dysku.
+- Trwałą rewizją jest rewizja plikowa; zmiana samej bazy cache nie jest zmianą domenową. Pełna kontrola porównuje odtworzone wartości z plikami również wtedy, gdy numer rewizji w SQL wygląda poprawnie. Przy migracji legacy trzeba odczytać spójny snapshot Store z uwzględnieniem WAL. `PRAGMA data_version` nie zastępuje trwałego numeru rewizji. [Dokumentacja PRAGMA data_version](https://www.sqlite.org/pragma.html#pragma_data_version).
+- Builder pobiera spójne wejście pod blokadą/snapshotem, przygotowuje mapowanie poza transakcją zapisu cache, a przed publikacją pod tą samą blokadą protokołu writerów sprawdza rewizję i podpisy źródeł. Nowy zapis unieważnia starszego kandydata. Edycje zewnętrzne poza protokołem wykrywa ponowna kontrola i reconciliation; nie obiecujemy atomowości wobec dowolnych bezpośrednich zapisów na dysku.
+- Uszkodzony lub brakujący dokument ma stan `error`/`missing`; można zachować ostatnią poprawną wersję do czytania z oznaczeniem nieaktualności. Nie traktujemy błędu parsowania jako pustej książki ani zgody na usunięcie historii. Nie naprawiamy automatycznie źródłowego JSON-a treścią cache.
+- Po migracji `rebuild` odtwarza pełny model z zatwierdzonych JSON-ów, snapshotów, plikowego rejestru zmian i źródeł binarnych, bez dostępu do dawnej `state.sqlite3` i bez generacji modeli. `prune` usuwa wyłącznie osierocone dane cache; zachowane źródłowe wersje dokumentów nadal muszą mieć odwzorowanie. Żadna z tych operacji nie usuwa trwałego rejestru, JSON-ów, checkpointów lub wydań.
+
+### Debug/Config: kontrola spójności
+
+Planowany panel „Cache — spójność” oraz równoważne polecenia CLI mają udostępniać:
+
+| Operacja | Wynik |
+| --- | --- |
+| Szybka kontrola | Schemat/mapowanie, rewizja źródła i cache, opóźnienie, pokrycie dokumentów, długość kolejki, ostatni błąd, zmienione/brakujące pliki |
+| Pełna kontrola | Hash każdego JSON-a, ciągłość zatwierdzonych rewizji, rekonstrukcja semantyczna z dedykowanych tabel i porównanie wszystkich pól; kompletność decyzji, zależności i receiptów |
+| Kontrola SQLite | `PRAGMA integrity_check` oraz osobno `foreign_key_check`; nie zastępują porównania z JSON-ami |
+| Napraw cache | Ponowny import wskazanego dokumentu/książki lub pełny rebuild; źródła pozostają nietknięte |
+
+Raport podaje dokument, ścieżkę pola, rodzaj różnicy, rewizję i czas weryfikacji. Nie musi ujawniać pełnej treści książki lub requestów. Kontrola działa w tle, ma postęp i możliwość anulowania; podczas zmian raport oznacza zmienioną rewizję i ponawia dotknięty zakres, zamiast zgłaszać fałszywą zgodność. `integrity_check` nie sprawdza błędów kluczy obcych — potrzebne jest osobne sprawdzenie. [Dokumentacja SQLite integrity_check](https://www.sqlite.org/pragma.html#pragma_integrity_check).
 
 ### Odczyt i przebudowa
 
-1. Pierwszy odczyt Work zwraca dostępne małe projekcje; brakujące/uszkodzone wpisy mają jawny stan oczekiwania/błędu. Nie czeka na pełną odbudowę wszystkich projektów.
-2. Jedna ograniczona kolejka w procesie serwera odbudowuje tylko brakujące/zmienione wpisy. Powtarzane zlecenia dla tego samego klucza są scalane; liczba równoległych odczytów jest ograniczona.
-3. Odczyt autorytatywnych danych i ciężkie obliczenia odbywają się poza transakcją zapisu cache. Następuje krótki upsert z kontrolą, czy zależności nie zmieniły się podczas budowania.
-4. Przestarzały builder nie nadpisuje nowszej projekcji: porównanie generacji/rewizji albo ponowna kontrola podpisu przed publikacją wyniku.
-5. Aktualny supervisor dokłada status runtime i busy niezależnie od projekcji. Mutacja zawsze ponownie sprawdza stan, rewizję i blokadę w application.
+1. Zwykły odczyt danych już odwzorowanych w aktualnym cache używa SQLite. Nie odczytuje ponownie dużych JSON-ów ani nie składa całego `book.json`, aby pobrać jeden rozdział. Brakujący import JSON-a jest zadaniem kolejki, a nie stałym wyjątkiem omijającym cache.
+2. Work/Books czytają mały katalog globalny, a ekran książki jej bazę. Paginacja obejmuje sekcje, segmenty i historię. Brak danych to `unknown`/`syncing`/`error`, nie zero lub „nie rozpoczęto”.
+3. Dane spoza JSON-ów, np. bieżący runtime, ekstrakcja EPUB, dostępność plików i nowe pomiary weryfikacyjne, są dołączane asynchronicznie przez właściwe adaptery. Wszystkie trwałe decyzje dawnego Store są już częścią plikowego modelu i tej samej bazy cache książki. Nie odtwarzamy definicji ukończenia tłumaczenia z samego statusu procesu.
+4. Kolejka scala zadania dla dokumentu/workspace’u, ogranicza równoległe I/O i priorytetyzuje bieżący ekran oraz edycje przed pełnym importem historii. Postęp i niepełne pokrycie są widoczne. Pierwszy odczyt nie czeka na pełną odbudowę wszystkich książek.
+5. Mutacje, akceptacja checkpointów i publikacja nadal sprawdzają autorytatywny stan, blokady i potrzebne artefakty. Asynchroniczne odświeżanie UI nie znosi walidacji przed wykonaniem operacji.
 
 Implementacyjnie: mały port repozytorium projekcji oraz adapter SQLite; builder korzystający ze wspólnej logiki application. Nie wkładać SQL i skanowania filesystemu do handlerów HTTP ani nie budować drugiej definicji progressu w cache. Połączenia SQLite powinny mieć określoną własność wątkową i krótkie transakcje; nie współdzielić połączenia między workerami przez dziedziczenie procesu.
 
@@ -232,50 +339,70 @@ Implementacyjnie: mały port repozytorium projekcji oraz adapter SQLite; builder
 
 | Zdarzenie | Projekcje do sprawdzenia |
 | --- | --- |
-| Discovery/Refresh lub zmiana źródła | Metadane źródła, hash, Inspect, okładka/negative cache |
-| Setup Save, archive/restore | Lista i metadane jednego workspace’u |
-| Prepare/reprepare, F/T/E, zmiana planu | Metadata, liczniki, workflow, Inspect tylko gdy zmieniło się źródło |
-| Review edit/confirm/approve | Approval, stage/progress, gotowość publikacji |
-| Checkpoint P1/P5, zmiana selected pass, stale chunk | Liczniki i zależne statusy; P2–P4 nie stają się automatycznie „current completed” |
+| Discovery/Refresh lub zmiana źródła | Pełne zmienione dokumenty, metadane źródła, hash, Inspect, okładka/negative cache |
+| Setup Save, archive/restore | Pełne manifesty/config/lifecycle, lista i metadane jednego workspace’u |
+| Prepare/reprepare, F/T/E, zmiana planu | Pełny manifest i plan, relacje, liczniki, workflow, Inspect tylko gdy zmieniło się źródło |
+| Review edit/confirm/approve | Pełny Review/leksykon/pamięć, zależności, approval, stage/progress, gotowość publikacji |
+| Dowolny zapis wejścia/wyniku/próby P1–P5 | Pełne JSON-y i historia, usage oraz powiązania z checkpointami |
+| Checkpoint P1/P5, zmiana selected pass, stale chunk | Projekcja Store, liczniki i zależne statusy; P2–P4 nie stają się automatycznie „current completed” |
 | Zakończenie/failure/cancel joba | Uzgodnienie całego workspace’u z trwałym stanem |
 | Publikacja lub zmiana selection | Projekcja publikacji i końcowego workflow |
 | Reset P1 | Plan, Review/approval, liczniki oraz historia widoczna na karcie |
 | CLI/zewnętrzny zapis/restart | Ponowna kontrola zależności niezależnie od SSE |
 
-Hooki serwera są przyspieszeniem, nie jedynym mechanizmem poprawności. SQLite pracuje w WAL: samo mtime `state.sqlite3` nie wystarcza do rozpoznawania zmian. `PRAGMA data_version` nie jest trwałą rewizją do porównywania między dowolnymi nowymi połączeniami. Należy wybrać i przetestować mechanizm: trwałą rewizję projekcji aktualizowaną przez wszystkie ścieżki Store albo kontrolowaną obserwację DB/WAL i plików, wspartą okresową weryfikacją. Zewnętrzne zmiany artefaktów też muszą zostać wykryte; receipt w DB nie dowodzi, że plik nadal istnieje.
-
-Awaria zapisu cache po udanej mutacji nie może zmieniać jej wyniku na „nieudana” i prowokować ponowienia operacji. Wpis oznacza się do odbudowy. Uszkodzenie/niedostępność cache nie może prowadzić do kasowania źródeł, draftów, receipts ani checkpointów.
-
-`rebuild` powinien deterministycznie odbudować wspierane projekcje z trwałego stanu; `prune` usuwać tylko osierocone wpisy i zasoby wewnątrz cache. Wynik domenowy rebuild musi być równoważny przebudowie przyrostowej, po pominięciu technicznych czasów i identyfikatorów przebudowy.
+Nowego hasha cache nie używać do zmiany historycznych fingerprintów pipeline’u. Wynik domenowy rebuild musi być równoważny przebudowie przyrostowej, po pominięciu technicznych czasów i identyfikatorów przebudowy. Receipt w DB nie dowodzi sam w sobie, że powiązany plik nadal istnieje.
 
 ## Kolejność prac
 
-1. **Poprawność i punkt odniesienia:** F01–F04, testy migracji fingerprintu i trwałości draftów; aktualizacja kontraktów po ponownym audycie. Poprawki F09/F10 można wykonać niezależnie, bez SQLite.
-2. **Tanie uproszczenia:** jeden snapshot registry/katalogu na request, wspólny parser EPUB, ograniczenie ponownego liczenia metadanych w ramach tego samego odczytu. Mały cleanup z F12 jako osobny commit.
-3. **Cache źródeł:** stat/hash, wersjonowane Inspect i negative cover cache, odbudowa/prune. Przepiąć Work oraz Reader na wspólny indeks.
-4. **Cache Work:** czysty builder summary, indeksowane odczyty zbiorcze, asynchroniczne uzupełnianie braków, jawna świeżość, runtime overlay, pełna macierz invalidacji.
-5. **Optymalizacja detali po pomiarze:** usage i sekcje. `usage_by_unit_report` skanuje attempt history i kilka plików na attempt; reset-status hashuje dane P1. Nie przenosić tych skanów do Work i nie rozszerzać pierwszego etapu na cały evidence store.
+1. **Aktualny punkt odniesienia:** ponownie ocenić F01–F12 po już wprowadzonych poprawkach, zinwentaryzować wszystkie rodziny JSON-ów i ich schematy oraz pola trwałego Store. Zmierzyć zapis, pełny import i odczyt na dużej książce z historią; zachować testy starych checkpointów i trwałości draftów.
+2. **Pełny model i importer:** wersjonowane mapowania wszystkich JSON-ów, tabele/relacje/indeksy per workspace, semantyczna rekonstrukcja i kontrola pokrycia. Wdrożyć pełny rebuild oraz update przez ten sam importer, bez wyjątków wyłączających duże dokumenty lub historię.
+3. **Jedno trwałe źródło i migracja:** protokół zatwierdzania wersji plików, kompletny eksport legacy Store, przełączenie wszystkich writerów, replay i uzgadnianie zmian zewnętrznych. Sprawdzić odbudowę na kopii po usunięciu wszystkich baz SQLite, zanim przełączymy produkcyjny workspace. Obecna baza pozostaje chroniona do końca migracji.
+4. **Odczyty SQL i katalog globalny:** przepiąć Work/Books, szczegóły, Reader, Review, Translate, Publish i usage na właściwe projekcje. Zapewnić paginację, asynchroniczne uzupełnianie braków, runtime i walidację operacji przez application.
+5. **Debug/Config i pomiary:** szybka/pełna kontrola, naprawa tylko cache, postęp i anulowanie; porównać wyniki z autorytatywnymi odczytami, zmierzyć rozmiar bazy, p50/p95 i opóźnienie synchronizacji. Historia może być importowana z niższym priorytetem, ale nie jest pomijana.
 
-Drugorzędnie: rozważyć lazy loading ekranów Review/Reader/Phase. Obecny build generuje jeden JS około 600,33 kB (gzip 177,50 kB) i ostrzeżenie o chunku >500 kB. To osobna optymalizacja transferu/startu UI, nie rozwiązanie kosztów odczytu backendu. Hashowane assety otrzymują obecnie wspólne `Cache-Control: no-store`; można osobno zaprojektować politykę cache assetów, zachowując właściwe zasady dla API i HTML.
+Optymalizacje bundla frontendu są osobnym zadaniem. Historyczny pomiar i polityka assetów z audytu 2026-09-26 nie stanowią opisu aktualnego wdrożenia; późniejsze zmiany opisuje [workflow-revisions.md](../workflow-revisions.md).
+
+## Pomiar zapisu JSON — 2026-09-27
+
+Wykonano odczyt rzeczywistego `salvation-02/book.json` (12 785 694 bajty, około 12,8 MB), a wszystkie zapisy wyłącznie na tymczasowej kopii pod `/home/user/DEV`, na tym samym systemie plików. Użyto `.venv/bin/python`, istniejących funkcji `atomic_json`, `atomic_text` i `plan_fingerprint`. Każdy wariant wykonano 21 razy; pierwszy pomiar odrzucono, poniżej 20 próbek i p95 metodą nearest-rank. Nie czyszczono cache systemu operacyjnego. SHA-256 źródłowego pliku przed i po eksperymencie był identyczny; tymczasowe pliki usunięto.
+
+| Operacja | p50 | p95 | Maksimum |
+| --- | ---: | ---: | ---: |
+| Odczyt pliku i parsowanie JSON | 58,58 ms | 731,73 ms | 743,39 ms |
+| Obliczenie `plan_fingerprint` | 56,19 ms | 603,96 ms | 618,45 ms |
+| Serializacja `json.dumps(ensure_ascii=False, indent=2)` | 55,68 ms | 583,24 ms | 688,62 ms |
+| Zapis gotowego tekstu + fsync pliku + replace + fsync katalogu | 17,62 ms | 142,98 ms | 164,80 ms |
+| Pełne `atomic_json` z serializacją | 65,51 ms | 599,94 ms | 784,94 ms |
+| Odczyt → zmiana tytułu sekcji → fingerprint → `atomic_json` | 217,35 ms | 2115,46 ms | 2205,24 ms |
+| SQLite: UPDATE jednego tytułu po PK + commit, WAL, synchronous=FULL | 1,42 ms | 11,51 ms | 14,89 ms |
+
+Pomiar SQLite używał osobnej tymczasowej tabeli `sections(id TEXT PRIMARY KEY, title TEXT NOT NULL, position INTEGER NOT NULL)` z 35 rekordami. To **koszt małej transakcji**, nie benchmark pełnego relacyjnego importera, wszystkich indeksów, zależnych agregatów lub synchronizacji. Cały cykl JSON mierzył konserwatywnie również fingerprint, choć zmiana samego tytułu nie zmienia jego wartości. p95 poszczególnych etapów nie należy sumować. Mała liczba próbek i duża zmienność środowiska nie pozwalają obiecać stałej latencji.
+
+Wniosek z pomiaru: sam zapis tej wielkości JSON-a nie musi trwać sekund, ale pełna ścieżka edycji osiągnęła tutaj ponad dwie sekundy. Szybki UPDATE cache nie usuwa kosztu wcześniejszego zapisu źródła. Nie zapisujemy dużego manifestu przy każdej zmianie małego Review/config ani przy każdym naciśnięciu klawisza; zapisujemy właściwy dokument na zatwierdzenie edycji. Serializacja i I/O odbywają się poza event loop HTTP. Docelowe małe dokumenty stanu i rejestr zatwierdzeń wymagają osobnego benchmarku liczby zapisów i fsync; powyższy pomiar dotyczy obecnego `atomic_json`, nie nowego protokołu. Nie zastępujemy potwierdzonego zapisu samą aktualizacją usuwalnego cache.
 
 ## Kryteria gotowości i pomiary
 
 Wymagane testy backendu nie potrzebują przeglądarki ani modeli:
 
 - Utrata, uszkodzenie i pełna odbudowa cache nie zmieniają workspace’ów, archiwizacji, wyborów Review ani receipts.
+- Na kopii zmigrowanego projektu usuwa się wszystkie bazy SQLite, także indeks runtime. Odbudowa wyłącznie z trwałych plików zachowuje approvals, selected passes, stale, zależności, receipts/idempotencję i historię; nie uruchamia modeli ani nie wznawia procesów na podstawie starego statusu. Odtworzone odczyty i dalsze mutacje są równoważne stanowi sprzed usunięcia.
+- Import → rekonstrukcja zachowuje wszystkie pola każdej rodziny JSON-ów, również `analysis_inputs`, wszystkie passy i historię prób; test obejmuje tablice, puste kolekcje, `null`, brak pola, liczby i historyczne wersje bloków. Nieobsługiwane pole nie przechodzi jako kompletna projekcja.
 - Wynik rebuild jest równoważny aktualnej projekcji autorytatywnej dla draftu, Prepare, częściowego P1, Review, approval, częściowego/stale P5 i publikacji.
-- Zmiana przez CLI podczas pracy serwera, WAL-only commit, reset P1 i konkurencyjna przebudowa nie pozostawiają „wiecznie aktualnego” starego wiersza.
+- Awaria podczas przygotowania wersji JSON, przed/po zapisie rekordu zatwierdzenia, przed odpowiedzią klientowi, przed/po commit cache i przed odświeżeniem katalogu globalnego zostaje rozpoznana po restarcie. Replay nie duplikuje wersji, a recovery nie akceptuje częściowo zapisanej operacji.
+- Edycja zwraca rewizję trwałego zapisu; starszy odczyt cache nie cofa widocznej wartości. Konkurencyjny rebuild nie miesza generacji ani nie nadpisuje nowszego update.
+- Zmiana przez CLI podczas pracy serwera, reset P1 i konkurencyjna przebudowa nie pozostawiają „wiecznie aktualnego” starego wiersza. Migracja uwzględnia stan legacy zapisany tylko w WAL oraz blokuje starych writerów po przełączeniu formatu.
+- Debug/Config wykrywa brak dokumentu, uszkodzenie SQL, naruszenie relacji i różnicę wartości pola nawet przy poprawnych metadanych cache. Naprawa zmienia tylko cache. Pełna kontrola rozpoznaje również zewnętrzny zapis omijający rejestr zatwierdzeń.
 - Pojedynczy błędny/usunięty projekt nie blokuje listy; brak źródła nie usuwa jego workspace’ów.
 - Przy niezmienionym źródle Refresh nie odczytuje jego pełnej zawartości; dodanie/zmiana/usunięcie pliku odświeża odpowiednie wpisy. Test katalogu uwzględnia pliki zagnieżdżone i atomową podmianę.
 - Zmiana parsera/detektora/ekstraktora unieważnia właściwy zakres; negative cache okładki nie trwa po zmianie źródła.
 - Replay SSE ani ukończenie starego buildera nie cofają nowszego stanu. Niepewna świeżość nie umożliwia ominięcia blokady mutacji.
 - Stare checkpointy P3/P5 są używane zgodnie z jawnie ustaloną polityką kompatybilności.
 
-Pomiar przed/po powinien objąć 1, 10 i 100 workspace’ów, drafty i książki opublikowane, duże manifesty oraz rosnącą historię zadań/attemptów. Osobno mierzyć pusty cache, zapisany cache po restarcie procesu i rozgrzany proces; nie mylić restartu z zimnym cache systemu operacyjnego.
+Pomiar przed/po powinien objąć 1, 10 i 100 workspace’ów, drafty i książki opublikowane, duże manifesty oraz rosnącą historię zadań/attemptów. Osobno mierzyć pusty cache, zapisany cache po restarcie procesu i rozgrzany proces; nie mylić restartu z zimnym cache systemu operacyjnego. Zmierzyć pełny import wszystkich JSON-ów, przyrostowy update małego/dużego dokumentu, rozmiar indeksów i WAL, czas pełnej kontroli spójności oraz opóźnienie od trwałej edycji do zgodnego odczytu UI. Trafienie cache szczegółów/Readera nie może powodować odczytu całego `book.json` lub historii prób.
 
 Rejestrować p50/p95 endpointów, liczbę/bajty odczytanych plików, SQL, rozmiar odpowiedzi, liczbę odświeżeń i czas kolejki rebuild. Proponowane wstępne cele do zatwierdzenia na reprezentatywnym lokalnym sprzęcie: zapisany indeks Work dla 100 workspace’ów p95 ≤250 ms, pierwsza strona Library p95 ≤150 ms, zero odczytów dużych manifestów/attemptów na trafieniu cache Work. To **cele**, nie uzyskane wyniki. Budżet opóźnienia uzgodnienia z CLI/SSE musi być jawny; nie wolno osiągnąć szybkiej odpowiedzi przez bezterminowe serwowanie nieaktualnego stanu.
 
-## Wykonana weryfikacja
+## Wykonana weryfikacja audytu z 2026-09-26
 
 Środowisko: Python 3.14.4, Node 22.22.1, npm 11.19.1; Ruff 0.16.9 i Vulture 2.16 uruchomione przez `uvx`. Nie zmieniano zależności projektu.
 

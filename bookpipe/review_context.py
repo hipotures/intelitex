@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from .state_files import connect_state, state_path
 from pathlib import Path
 
 from .util import PipelineError, digest, inside, read_json
@@ -50,17 +51,15 @@ class EvidenceReader:
 
     def for_term(self, term: dict) -> dict:
         self._index()
-        database = self.root / "state.sqlite3"
         connection = None
         warnings: list[str] = []
         choice_pending = False
         finals: dict[str, dict] = {}
         try:
-            if database.is_file():
+            if state_path(self.root).exists() or (self.root / 'state.sqlite3').exists():
                 # Each request owns a read-only connection; never use a Store
                 # connection created in another HTTP thread.
-                connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
-                connection.row_factory = sqlite3.Row
+                connection = connect_state(self.root, readonly=True)
                 tid = term.get("id", "")
                 if tid.startswith("T") and tid[1:].isdigit():
                     row = connection.execute("SELECT choice FROM terms WHERE id=?", (int(tid[1:]),)).fetchone()

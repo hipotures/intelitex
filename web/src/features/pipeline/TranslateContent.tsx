@@ -101,10 +101,11 @@ export function completedPassesInLiveEvents(events: Envelope[] | undefined, jobI
 
 export function passDisplay(pass: ChunkPass | undefined, chunkStatus: string, retrying = false, completedInLive = false) {
   const state = pass?.checkpoint_state ?? 'pending'
-  if (state === 'completed') return { tone: 'completed', symbol: '✓', label: 'verified final result' }
+  if (state === 'completed') return { tone: 'completed', symbol: '✓', label: 'verified saved result' }
   if (state === 'stale' || chunkStatus === 'stale' && !!pass?.retained_count)
     return { tone: 'stale', symbol: '↻', label: 'saved result needs revalidation' }
-  if (pass?.retained_count) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
+  if (state === 'error') return { tone: 'error', symbol: '×', label: 'checkpoint verification failed' }
+  if (pass?.retained_count) return { tone: 'retained', symbol: '◐', label: 'historical result; current inputs unverified' }
   if (completedInLive) return { tone: 'completed', symbol: '✓', label: 'saved successful result' }
   if (state === 'error' || !retrying && !pass?.retained_count && (pass?.failed_attempt_count || pass?.attempt_result === 'not_checkpointed'))
     return { tone: 'error', symbol: '×', label: 'failed attempt' }
@@ -260,6 +261,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   }
 
   return <div className="translate-content">
+    {pipeline.units.some(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')) && <div className="notice" role="status">Segments requiring regeneration: {pipeline.units.filter(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')).map(item => item.id).join(', ')}. Earlier readable results remain available. Run continues the affected work in order.</div>}
     {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : failureDetail ? 'This older job did not record a detailed reason.' : 'Checking failure details…'} Saved passes remain available.</div>}
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <div className="phase-detail-grid translate-detail-grid"><div className="phase-detail-stack">
@@ -275,7 +277,8 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           const retrying = activeTarget?.chunkId === item.id && number <= activeTarget.passNo && !completedInLive
           const display = passDisplay(pass, item.status, retrying, completedInLive)
           const hasSaved = !!pass?.retained_count
-          const previous = number === 2 || !!item.passes[String(number - 1)]?.retained_count
+          const previousPass = item.passes[String(number - 1)]
+          const previous = number === 2 || !!previousPass?.retained_count && !['stale', 'error'].includes(previousPass.checkpoint_state)
           const isWorking = working?.chunkId === item.id && working.passNo === number && !completedInLive
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
           const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'

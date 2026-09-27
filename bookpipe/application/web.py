@@ -1,8 +1,10 @@
 """Small web read models and reversible membership; checkpoints stay in Store."""
+from .. import book_metadata
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ..util import PipelineError, digest
+from ..languages import language_code
 from .projects import load_valid_book
 
 
@@ -44,18 +46,18 @@ class WebWorkspaceService:
             return self.lifecycle(root)
 
     def book(self, root):
-        return load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+        return load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
 
     def metadata(self, root, *, book=None):
         from .workspace_setup import read_workspace_setup
         book = book if book is not None else self.book(root)
-        metadata = book.get('metadata', {})
+        metadata = {**book.get('metadata', {}), **book_metadata.effective(root, book)}
         sections = self.sections(book)
         setup = read_workspace_setup(root)
-        return {'title': metadata.get('title') or root.name,
-                'creators': metadata.get('creators', []), 'language': metadata.get('language'),
-                'label': setup.get('label'), 'source_language': setup.get('source_language'),
-                'target_language': setup.get('target_language'),
+        return {'book_id': book_metadata.book_id(book), 'title': metadata.get('title') or root.name,
+                'creators': metadata.get('creators', []), 'language': language_code(metadata.get('language')),
+                'label': setup.get('label'), 'source_language': language_code(metadata.get('language') or setup.get('source_language')),
+                'target_language': language_code(setup.get('target_language')),
                 'format': 'EPUB' if metadata.get('opf') else 'HTML',
                 'word_count': sum(len(b['text'].split()) for s in sections for b in s.get('blocks', [])),
                 'lifecycle': self.lifecycle(root)}

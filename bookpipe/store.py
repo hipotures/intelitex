@@ -2,37 +2,17 @@ from __future__ import annotations
 
 import copy
 import json
-import sqlite3
 from pathlib import Path
 from typing import Any
 
 from .util import PipelineError, atomic_json, atomic_text, digest, dumps, normalized, occurs, read_json, unique
+from .state_files import backup_state, connect_state
 
 
 class Store:
     def __init__(self, root: Path):
         self.root = root
-        self.db = sqlite3.connect(root / "state.sqlite3")
-        self.db.row_factory = sqlite3.Row
-        self.db.executescript("""
-        PRAGMA journal_mode=WAL;
-        PRAGMA synchronous=FULL;
-        PRAGMA foreign_keys=ON;
-        CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS jobs (
-            key TEXT NOT NULL, fingerprint TEXT NOT NULL, result_path TEXT NOT NULL,
-            result_hash TEXT NOT NULL, metadata TEXT NOT NULL,
-            PRIMARY KEY(key,fingerprint));
-        CREATE TABLE IF NOT EXISTS merged (key TEXT NOT NULL, fingerprint TEXT NOT NULL,
-            PRIMARY KEY(key,fingerprint));
-        CREATE TABLE IF NOT EXISTS terms (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL,
-            choice TEXT, approved INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
-            final_path TEXT, deps TEXT NOT NULL DEFAULT '[]', lexical_hash TEXT);
-        CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, data TEXT);
-        """)
-        self.db.commit()
+        self.db = connect_state(root)
 
     def close(self):
         self.db.close()
@@ -52,7 +32,30 @@ class Store:
 
     def mark_chunks_stale(self, identifiers):
         with self.db:
-            self.db.executemany("UPDATE chunks SET status='stale' WHERE id=? AND status='done'", [(i,) for i in identifiers])
+            for ident in identifiers:
+                self.invalidate_passes(ident, 2, 'context_changed')
+
+    def invalidate_passes(self, chunk_id, from_pass, reason, term_ids=()):
+        """Invalidate current selections, retaining every checkpoint and readable final."""
+        self.db.execute("UPDATE chunks SET status='stale' WHERE id=? AND final_path IS NOT NULL", (chunk_id,))
+        for number in range(from_pass, 6):
+            self.set(f'invalidated:pass{number}/{chunk_id}',
+                     {'reason': reason, 'term_ids': sorted(term_ids), 'from_pass': from_pass})
+
+    def record_translation_pass(self, key, base_fingerprint, fingerprint, inputs, *, generated=False):
+        """One receipt for the chosen result, shared by full and single-pass runs."""
+        number = int(key[4])
+        cid = key.split('/', 1)[1]
+        selected = self.get('selected_pass:' + key)
+        with self.db:
+            if (selected is not None and selected.get('fingerprint') != fingerprint) or (selected is None and generated):
+                # A new upstream result makes retained downstream outputs historical.
+                if number < 5 and any(self.has_job(f'pass{n}/{cid}') for n in range(number + 1, 6)):
+                    self.invalidate_passes(cid, number + 1, f'pass{number}_changed')
+            self.set('selected_pass:' + key, {'base_fingerprint': base_fingerprint, 'fingerprint': fingerprint})
+            self.db.execute('DELETE FROM kv WHERE key=?', ('invalidated:' + key,))
+            dependencies = [item['id'] for item in inputs.get('APPROVED_LEXICON', [])]
+            self.db.execute('UPDATE chunks SET deps=? WHERE id=?', (dumps(dependencies), cid))
 
     def accept_target_pass(self, key: str, base_fingerprint: str, fingerprint: str,
                            chunk_id: str, *, final_path: str | None = None,
@@ -68,6 +71,7 @@ class Store:
                 self.db.execute("UPDATE chunks SET status=?,final_path=?,deps=?,lexical_hash=? WHERE id=?",
                                 ('done' if final_current else 'stale', final_path,
                                  dumps(deps or []), lexical_hash, chunk_id))
+                self.invalidate_context_dependents(chunk_id, final_path)
 
     def has_job(self, key: str) -> bool:
         return self.db.execute('SELECT 1 FROM jobs WHERE key=? LIMIT 1', (key,)).fetchone() is not None
@@ -99,11 +103,7 @@ class Store:
         return self.get('series_seed') is not None or self.get('approved') is True
 
     def backup_to(self, path: Path):
-        backup = sqlite3.connect(path)
-        try:
-            self.db.backup(backup)
-        finally:
-            backup.close()
+        backup_state(self.db, path)
 
     def clear_p1(self):
         """Clear current P1 rows after application guards and versioned backup."""
@@ -249,10 +249,44 @@ class Store:
         row = self.db.execute("SELECT * FROM chunks WHERE id=?", (cid,)).fetchone()
         return dict(row) if row else {"id": cid, "status": "pending", "final_path": None, "deps": "[]"}
 
+    def translated_dependencies(self):
+        return [{'id': row['id'], 'deps': json.loads(row['deps'])}
+                for row in self.db.execute("SELECT id,deps FROM chunks WHERE final_path IS NOT NULL OR deps!='[]' ORDER BY id")]
+
     def finish_chunk(self, cid: str, path: str, deps: list[str], lexical_hash: str):
         with self.db:
             self.db.execute("UPDATE chunks SET status='done',final_path=?,deps=?,lexical_hash=? WHERE id=?",
                             (path, dumps(deps), lexical_hash, cid))
+            self.db.execute('DELETE FROM kv WHERE key=?', (f'invalidated:pass5/{cid}',))
+            self.invalidate_context_dependents(cid, path)
+
+    def invalidate_context_dependents(self, cid: str, path: str):
+        """Invalidate only consumers whose saved Polish context actually changed.
+
+        Unrelated chunks, and consumers of an unchanged suffix, keep their finals.
+        Cascades proceed when a regenerated consumer changes its own output.
+        """
+        final = self.checked_result(path)
+        text = '\n\n'.join(item['text'] for item in final['translations'])
+        for row in self.db.execute("SELECT id,final_path FROM chunks WHERE id!=?", (cid,)).fetchall():
+            # A partially translated consumer already depends on continuity.
+            # Prefer its selected P2 over an older, retained final after a rerun.
+            key = f"pass2/{row['id']}"
+            selected = self.get('selected_pass:' + key)
+            if self.get('invalidated:' + key):
+                continue
+            receipt = (self.db.execute('SELECT result_path FROM jobs WHERE key=? AND fingerprint=?',
+                                      (key, selected['fingerprint'])).fetchone()
+                       if isinstance(selected, dict) else None)
+            relative = receipt['result_path'] if receipt else row['final_path']
+            if not relative:
+                continue
+            inputs_path = (self.root / relative).parent / 'inputs.json'
+            if not inputs_path.is_file():
+                continue
+            context = read_json(inputs_path).get('PREVIOUS_CONTEXT', {})
+            if context.get('source_chunk_id') == cid and not text.endswith(context.get('polish', '')):
+                self.invalidate_passes(row['id'], 2, 'context_changed')
 
     def merge_analysis(self, key: str, fingerprint: str, delta: dict, blocks: list[dict], chapter_id: str):
         """Idempotent: replaying a completed Pass 1 cannot duplicate candidates."""
@@ -405,13 +439,9 @@ class Store:
         return result.approved_terms, result.stale_chunks
 
     def backup_approval(self, review: dict) -> Path:
-        target = self.root / "history" / f"before_approval_{digest(review)[:16]}.sqlite3"
+        target = self.root / "history" / f"before_approval_{digest(review)[:16]}.json"
         target.parent.mkdir(exist_ok=True)
-        backup = sqlite3.connect(target)
-        try:
-            self.db.backup(backup)
-        finally:
-            backup.close()
+        self.backup_to(target)
         return target
 
     def commit_approval(self, decisions: list[tuple[dict, str]], changed: set[str]) -> int:
@@ -421,10 +451,11 @@ class Store:
                 self.db.execute("UPDATE terms SET choice=?,approved=1 WHERE id=?", (chosen, int(old["id"][1:])))
                 if old["choice"] != chosen or not old["approved"]:
                     self.note("human_choice", {"id": old["id"], "old": old["choice"], "new": chosen})
-            for row in self.db.execute("SELECT id,deps FROM chunks WHERE status='done'").fetchall():
-                if changed & set(json.loads(row["deps"])):
-                    self.db.execute("UPDATE chunks SET status='stale' WHERE id=?", (row["id"],))
-                    stale += 1
+            for row in self.db.execute("SELECT id,deps,status FROM chunks").fetchall():
+                affected = changed & set(json.loads(row['deps']))
+                if affected:
+                    self.invalidate_passes(row['id'], 2, 'terminology_changed', affected)
+                    stale += row['status'] == 'done'
             self.set("approved", True)
         return stale
 

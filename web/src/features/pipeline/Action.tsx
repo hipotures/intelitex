@@ -19,6 +19,8 @@ export function primaryAction(p: Pipeline | PipelineSummary) {
   if (p.actions.analyze?.allowed) return { label: p.last_job?.state === 'failed' ? 'Retry' : 'Run', allowed: true, operation: 'analyze' }
   if (p.analysis.complete && !p.approved) return { label: 'Review', allowed: p.actions.prepare_review?.allowed, operation: 'review' }
   if (p.actions.translate?.allowed) return { label: p.last_job?.state === 'failed' ? 'Retry' : 'Run', allowed: true, operation: 'translate' }
+  if (p.publication.current && p.publication.library_current === true) return { label: 'Finished', allowed: false }
+  if (p.publication.current && p.publication.library_current === false && p.actions.publish?.allowed) return { label: 'Add to Books', allowed: true, operation: 'publish' }
   if (p.actions.publish?.allowed) return { label: p.publication.last_failure ? 'Retry publish' : 'Publish', allowed: true, operation: 'publish' }
   return { label: p.publication.current ? 'Finished' : 'Unavailable', allowed: false }
 }
@@ -59,6 +61,8 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
         const latest = await request('/api/workspaces', workspacesSchema)
         queryClient.setQueryData([scope, '/api/workspaces'], latest)
         const current = latest.workspaces.find(item => item.workspace_id === workspace.workspace_id)
+        queryClient.setQueryData([scope, `/api/workspaces?workspace_id=${encodeURIComponent(workspace.workspace_id)}`],
+          { workspaces: current ? [current] : [] })
         if (!current) { setLocalError(new Error('Workspace is no longer available.')); return }
         if (current.prepared || current.active_job || current.metadata.lifecycle.archived) return
       } catch (error) { setLocalError(error); return }

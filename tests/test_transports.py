@@ -538,7 +538,7 @@ def test_catalog_import_failure_preserves_active_catalog(tmp_path):
     assert (project / "catalog" / "models.json").read_bytes() == before
 
 
-def test_legacy_profile_migration_creates_sqlite_backup(tmp_path):
+def test_legacy_profile_migration_creates_json_state_backup(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     store = Store(project)
@@ -553,6 +553,7 @@ def test_legacy_profile_migration_creates_sqlite_backup(tmp_path):
     atomic_json(project / "settings.json", legacy)
     migrated, backup = migrate_settings_file(project, legacy)
     assert backup and backup.is_file()
+    assert backup.suffix == '.json'
     assert migrated["profiles"]["local"]["model"] == "local-model"
     reopened = Store(project)
     assert reopened.get("approved") is True

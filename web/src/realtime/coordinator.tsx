@@ -1,5 +1,5 @@
 import { useContext, useEffect, useSyncExternalStore } from 'react'
-import { Scope, queryClient, request } from '../api/client'
+import { Scope, queryClient, request, matchesWorkspaceResource, isWorkspaceList } from '../api/client'
 import { eventSchema, jobsSchema } from '../api/schema'
 import { emptyStream, progress, snapshot } from './state'
 import type { Connection } from './state'
@@ -16,11 +16,20 @@ export function Realtime() {
     let closed = false, refreshing = false, dirty = false, connected = false, hasSnapshot = false, ticks = 0
     let flushTimer: ReturnType<typeof setTimeout> | undefined
     let renderTimer: ReturnType<typeof setTimeout> | undefined
+    let refreshAll = true
+    const changedWorkspaces = new Set<string>()
     async function refresh() {
       if (closed) return
       if (refreshing) { dirty = true; return }
       refreshing = true
-      const predicate = (q: { queryKey: readonly unknown[]; getObserversCount(): number }) => q.queryKey[0] === scope && q.getObserversCount() > 0 && !String(q.queryKey[1]).startsWith('/api/library') && !String(q.queryKey[1]).includes('/reader/chapters/')
+      const all = refreshAll, changed = [...changedWorkspaces]
+      refreshAll = false; changedWorkspaces.clear()
+      const predicate = (q: { queryKey: readonly unknown[]; getObserversCount(): number }) => {
+        const path = String(q.queryKey[1])
+        return q.queryKey[0] === scope && q.getObserversCount() > 0 && !path.startsWith('/api/library') && !path.includes('/reader/chapters/') &&
+          (all || isWorkspaceList(path) || changed.some(id => matchesWorkspaceResource(path, id) &&
+            /\/(pipeline|summary|usage|activity|analysis-reset|translation\/|analysis\/|reader\/progress)/.test(path)))
+      }
       // Revalidating large Reader/Review queries must not hold the connection in
       // "Reconnecting" or prevent read-only navigation while their responses load.
       void queryClient.invalidateQueries({ predicate }, { cancelRefetch: false })
@@ -32,9 +41,11 @@ export function Realtime() {
       const failed = jobs[0].status === 'rejected'
       view = { ...view, connection: navigator.onLine ? connected && !failed ? 'Live' : 'Reconnecting…' : 'Offline' }; emit()
       refreshing = false
-      if (dirty) { dirty = false; schedule() }
+      if (dirty) { dirty = false; void refresh() }
     }
-    function schedule(immediate = false) {
+    function schedule(immediate = false, workspace?: string) {
+      if (workspace) changedWorkspaces.add(workspace)
+      else refreshAll = true
       if (immediate) { clearTimeout(flushTimer); flushTimer = undefined; void refresh(); return }
       if (!flushTimer) flushTimer = setTimeout(() => { flushTimer = undefined; void refresh() }, 900)
     }
@@ -52,11 +63,17 @@ export function Realtime() {
         const value = eventSchema.parse(JSON.parse(event.data))
         const next = progress(view.state, value)
         view = { ...view, state: next.state }
+        if (value.event.kind === 'publication_library_added') {
+          queryClient.removeQueries({ queryKey: [scope, '/api/library'], exact: true })
+          void queryClient.invalidateQueries({ predicate: query => query.queryKey[0] === scope &&
+            String(query.queryKey[1]).startsWith('/api/library') })
+        }
         const terminal = value.event.kind === 'job_state' && ['succeeded','failed','cancelled','abandoned'].includes(String(value.event.values.state))
         if (terminal) { clearTimeout(renderTimer); renderTimer = undefined; emit() }
         else if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = undefined; emit() }, 100)
-        if (next.gap || terminal) schedule(true)
-        else if (!/waiting|delta|received|generation_progress/.test(value.event.kind)) schedule()
+        if (next.gap) schedule(true)
+        else if (terminal) schedule(true, value.workspace_id)
+        else if (!/waiting|delta|received|generation_progress/.test(value.event.kind)) schedule(false, value.workspace_id)
       } catch { connected = false; view = { ...view, connection: 'Reconnecting…' }; emit(); schedule(true) }
     })
     source.onerror = () => { connected = false; view = { ...view, connection: navigator.onLine ? 'Reconnecting…' : 'Offline' }; emit() }

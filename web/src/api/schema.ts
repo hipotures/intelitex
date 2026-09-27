@@ -13,13 +13,14 @@ export const jobsSchema = z.object({ jobs: z.array(jobSchema), cursor: count })
 export const capabilitiesSchema = z.object({ scope_id: text, import_enabled: z.boolean(), review: z.boolean(), reader: z.boolean(),
   sse: z.boolean(), multi_workspace: z.boolean(), drafts: z.boolean(), archive: z.boolean(), section_configuration: z.boolean(), diagnostics: z.boolean() })
 const lifecycle = z.object({ archived: z.boolean(), revision: nullableText, updated_at: text.optional() })
-const metadata = z.object({ title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(),
+const metadata = z.object({ book_id: text.optional(), title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(),
   label: nullableText.optional(), source_language: nullableText.optional(), target_language: nullableText.optional(), format: text.optional(), lifecycle })
 const progressCount = z.object({ completed: count, required: count, denominator: text })
 const workflowProgress = z.object({ percent: count.nullable(), basis: text, analysis: progressCount, translation: progressCount })
 export const workspaceSchema = z.object({ workspace_id: text, prepared: z.boolean(), metadata, progress: workflowProgress.optional(), active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), source_id: text.optional() })
 export const workspacesSchema = z.object({ workspaces: z.array(workspaceSchema) })
-export const librarySchema = z.object({ configured: z.boolean(), sources: z.array(z.object({ source_id: text, title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(), workspace_id: nullableText })) })
+const libraryGroupSchema = z.object({ group_id: text, name: text, kind: z.enum(['author', 'series', 'category']).nullable(), warning: text.optional() })
+export const librarySchema = z.object({ configured: z.boolean(), sources: z.array(z.object({ source_id: text, title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(), workspace_id: nullableText, groups: z.array(libraryGroupSchema).default([]) })) })
 export const libraryPageSchema = librarySchema.extend({ next_cursor: nullableText })
 export type LibraryPage = z.infer<typeof libraryPageSchema>
 const action = z.object({ allowed: z.boolean(), reason: nullableText })
@@ -28,24 +29,26 @@ export const sectionSchema = z.object({ id: text, ordinal: count, title: nullabl
   content_type: text, processing: z.enum(['full','translate','excluded']), profiles: z.record(text, nullableText), passes: z.record(text, pass) })
 export const configSchema = z.object({ revision: text, sections: z.record(text, z.unknown()), pass_profiles: z.record(text, nullableText) })
 export const publicationSchema = z.object({ state: text, current: z.boolean(), translation_complete: z.boolean(), target_language: text,
+  library_current: z.boolean().nullable().optional(), library_filename: nullableText.optional(),
   title: nullableText, creators: z.array(text), source_language: nullableText, generated_at: nullableText, generated_by: nullableText,
   last_error: nullableText, last_failure: nullableText, filename: nullableText, size_bytes: count.nullable(), checks: z.array(text) })
 export const publicationSelectionSchema = z.object({ revision: text, excluded_section_ids: z.array(text),
   groups: z.array(z.object({ id: text, section_ids: z.array(text), titles: z.array(text) })),
   diagnostic: z.object({ section_ids: z.array(text), message: text }).nullable().optional() })
 const summary = z.object({ total: count, reviewed: count, unreviewed: count, uncertain: count, confirmed: z.boolean(), categories: z.record(text, count) })
+const reviewImpact = z.object({ changed_term_ids: z.array(text), affected_chunks: z.array(z.object({ chunk_id: text, term_ids: z.array(text) })) })
 export const pipelineSchema = z.object({ workspace_id: text, stage: text, active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), publishing: z.boolean(), busy: z.boolean(), metadata,
   artifacts: z.object({ terminology: z.boolean(), book_memory: z.boolean() }), preparation: z.object({ source_id: text, checks: z.array(text) }),
   progress: workflowProgress,
   analysis: z.object({ complete: z.boolean(), membership_locked: z.boolean(), planned: z.boolean(), units: z.array(z.object({ id: text, chapter_id: text, state: text,
     attempt_result: nullableText, failed_attempt_count: count })) }),
-  review: z.object({ prepared: z.boolean(), current: z.boolean(), revision: nullableText, summary: summary.nullable() }),
+  review: z.object({ prepared: z.boolean(), current: z.boolean(), revision: nullableText, summary: summary.nullable(), impact: reviewImpact.nullable().optional() }),
   approved: z.boolean(), translation_complete: z.boolean(), sections: z.array(sectionSchema), config: configSchema,
   units: z.array(z.object({ id: text, chapter_id: text, source_words: count.nullable().optional(), status: text, passes: z.record(text, z.object({ checkpoint_state: text, retained_count: count,
     attempt_result: nullableText, failed_attempt_count: count })) })), publication: publicationSchema, actions: z.record(text, action) })
 export const pipelineSummarySchema = z.object({ workspace_id: text, stage: text, progress: workflowProgress,
   analysis: z.object({ complete: z.boolean() }), approved: z.boolean(),
-  publication: z.object({ current: z.boolean(), last_failure: nullableText }),
+  publication: z.object({ current: z.boolean(), last_failure: nullableText, library_current: z.boolean().nullable().optional(), library_filename: nullableText.optional() }),
   actions: z.record(text, action), metadata: z.object({ lifecycle }), publishing: z.boolean(),
   active_job: jobSchema.nullable(), last_job: jobSchema.nullable() })
 const note = z.object({ text, confidence: text.optional(), evidence: z.array(text).optional() })
@@ -123,3 +126,6 @@ export type Usage = z.infer<typeof usageSchema>
 export const preparationSchema = z.object({checks:z.array(text),unavailable:nullableText,reading_order:nullableText,source_id:text})
 export const analysisResetSchema = z.object({ revision: text, has_data: z.boolean(), can_reset: z.boolean(),
   reason: nullableText, history_available: z.boolean() })
+
+const bibliographicMetadata = z.object({ title: text, creators: z.array(text), language: nullableText })
+export const bookMetadataSchema = z.object({ book_id: text, source_fingerprint: text, original: bibliographicMetadata, effective: bibliographicMetadata, corrections: bibliographicMetadata.partial(), revision: text, updated_at: nullableText })

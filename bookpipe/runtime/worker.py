@@ -10,6 +10,7 @@ import httpx
 from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand
 from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
+from ..progress import ProgressEvent
 from .models import JobSpec, ImportJobSpec, parse_spec
 from .protocol import JsonlProgressSink, MAX_FRAME
 
@@ -55,10 +56,16 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
         elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile, unit_id=spec.unit_id))
         elif spec.operation == "translate":
-            app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit,
+            result = app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit,
                                                     chunk_id=spec.chunk_id, pass_no=spec.pass_no, rerun=spec.rerun))
+            if spec.import_root is not None and result.publication and result.publication.current:
+                source_id = app.publishing.export_to_library(project, Path(spec.import_root), spec.workspace_id)
+                sink.emit(ProgressEvent(kind='publication_library_added', values={'filename': source_id}))
         elif spec.operation == "publish":
             app.publishing.publish(PublishCommand(project, spec.target_language))
+            if spec.import_root is not None:
+                source_id = app.publishing.export_to_library(project, Path(spec.import_root), spec.workspace_id)
+                sink.emit(ProgressEvent(kind='publication_library_added', values={'filename': source_id}))
         sink.send({"type": "result", "status": "succeeded"})
         return 0
     except KeyboardInterrupt:

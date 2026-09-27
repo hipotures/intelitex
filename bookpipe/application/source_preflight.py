@@ -13,6 +13,7 @@ from defusedxml.common import DefusedXmlException
 from .epub_sources import _member_name, _small_member, packed_epub_metadata
 from .imports import confined_source, validate_source_tree
 from ..util import PipelineError
+from ..languages import language_code
 
 LANGUAGES = {
     'en': {'the', 'and', 'that', 'with', 'from', 'this', 'was', 'were', 'for', 'not'},
@@ -152,11 +153,11 @@ def inspect_source(root: Path, source_id: str, *, detailed: bool = False) -> dic
     prose = [text for text, _ in samples]
     detected, confidence = detect_language(prose)
     declared = metadata.get('language')
-    language = detected or (declared if isinstance(declared, str) and re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', declared) else None)
+    language = detected or language_code(declared)
     result = {'source_id': source_id, 'title': metadata['title'], 'creators': metadata.get('creators', []),
               'declared_language': declared, 'detected_language': detected, 'detection_confidence': confidence,
               'source_language': language, 'source_fingerprint': source_signature(root, source_id),
-              'language_warning': 'Metadata and prose disagree; verify source language.' if detected and declared and detected != declared.lower().split('-')[0] else None}
+              'language_warning': 'Metadata and prose disagree; verify source language.' if detected and language_code(declared) and detected != language_code(declared) else None}
     if detailed:
         result['sample_word_count'] = sum(len(re.findall(r"[^\W\d_]+", sample)) for sample in prose)
         result['sampled_documents'] = len(samples)

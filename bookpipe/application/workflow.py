@@ -5,9 +5,10 @@ from ..profiles import resolve_profile, with_builtin_profiles, with_profiles
 from ..util import PipelineError, digest
 from ..usage import usage_by_unit_report
 from .projects import load_valid_book
-from .review import review_summary, approval_current
+from .review import review_summary, approval_current, review_impact
 from ..processing import effective_book, configuration
 from .sessions import ProjectReadScope
+from .checkpoints import translation_checkpoints
 
 
 class WorkflowQueries:
@@ -60,7 +61,7 @@ class WorkflowQueries:
         files = self.dependencies.files
         with ProjectReadScope(self.dependencies, root) as scope:
             store = scope.store
-            source_book = load_valid_book(root, self.dependencies.plan_fingerprint, files)
+            source_book = load_valid_book(root, self.dependencies.plan_fingerprint, files, readonly=True)
             config = configuration(root)
             book = effective_book(source_book, root, config=config)
             analyzed, approved = bool(store.get('analysis_done')), approval_current(store, files)
@@ -81,22 +82,18 @@ class WorkflowQueries:
                                  'attempt_result': attempt.result_status if attempt else None,
                                  'failed_attempt_count': attempt.failed_attempt_count if attempt else 0})
             checkpoints = store.checkpoint_inventory()
+            choices = {term['id']: term['choice'] for term in store.terms()}
             chunks = []
             for chunk in book['chunks']:
                 saved = store.chunk(chunk['id'])
+                verified_passes = translation_checkpoints(root, store, chunk, choices)
                 passes = {}
                 historical = {p.pass_no: p for p in usage[chunk['id']].passes} if chunk['id'] in usage else {}
                 for number in range(2, 6):
                     retained = checkpoints.get(f"pass{number}/{chunk['id']}", [])
                     # A retained checkpoint may have a prior input fingerprint.
                     # Only P5's registered final path authoritatively identifies current output.
-                    state = 'retained' if retained else 'pending'
-                    if number == 5 and saved['final_path']:
-                        try:
-                            store.checked_result(saved['final_path'])
-                            state = 'completed' if saved['status'] == 'done' else 'stale'
-                        except (PipelineError, OSError, ValueError):
-                            state = 'error'
+                    state = verified_passes[str(number)]
                     attempt = historical.get(number)
                     passes[str(number)] = {'checkpoint_state': state, 'retained_count': len(retained),
                                            'attempt_result': attempt.result_status if attempt else None,
@@ -125,8 +122,7 @@ class WorkflowQueries:
                                   else 'review_not_confirmed' if not confirmed else None),
                 'translate': action('analysis_required' if not analyzed else 'approval_required' if not approved
                                     else 'translation_complete' if complete else None),
-                'publish': action('translation_required' if not complete else 'publication_current' if publication.current
-                                  else 'publication_check_required' if publication.state == 'unchecked' and approved
+                'publish': action('translation_required' if not complete else 'publication_check_required' if publication.state == 'unchecked' and approved
                                   else 'publication_not_ready' if publication.state == 'not_ready' or not approved else None),
             }
             analysis_done = sum(u['state'] == 'completed' for u in analysis)
@@ -143,6 +139,7 @@ class WorkflowQueries:
                                  'membership_locked': any(k.startswith('pass1/') for k in checkpoints) or
                                  any(p.pass_no == 1 for u in usage.values() for p in u.passes)},
                     'review': {'prepared': review is not None, 'current': review_current,
+                               'impact': review_impact(store, review) if review is not None else None,
                                'revision': digest(review) if review is not None else None,
                                'summary': review_summary(review) if review is not None else None},
                     'approved': approved, 'translation_complete': complete, 'units': chunks,

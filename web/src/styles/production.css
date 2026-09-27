@@ -217,7 +217,19 @@ h1,h2,h3 { font-weight:700; }
 .profile-swatch { background:var(--model-color,var(--text-dim));vertical-align:middle; }
 
 .section-header > .subtitle { margin:0; }
-.library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;height:20px; }
+.library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
+.library-sort { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim); }
+.library-sort select { width:auto;min-width:100px;padding:5px 8px; }
+.library-view-label,.library-kind,.library-language { font-size:11px;border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--text-dim); }
+.library-kind { text-transform:uppercase;letter-spacing:.05em; }
+.book-card[data-library-group] { box-shadow:inset 3px 0 var(--library-group-color);background:color-mix(in srgb,var(--library-group-color) 6%,var(--panel)); }
+.library-group-path { margin-top:9px;font-size:11px;line-height:1.7;color:var(--text-dim);overflow-wrap:anywhere;text-align:left; }
+.library-group-path .library-kind { font-size:9px;padding:1px 3px; }
+.library-group-warning { display:block;margin-top:6px;font-size:11px;color:var(--text-dim); }
+.source-location { display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-dim);overflow-wrap:anywhere; }
+@media (max-width:600px) {
+  [data-ui-debug-id="LIB"] > .section-header { flex-wrap:wrap;gap:12px; }
+}
 .library-refresh { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
 .library-refresh-icon.busy { animation:library-refresh-spin 1s linear infinite; }
 .library-load-more { height:1px; }
@@ -256,6 +268,7 @@ body::before,body::after { content:"";position:fixed;top:0;right:0;height:100vh;
 body:has(dialog.drawer[open])::before { display:none; }
 .usage-table { min-width:820px; }.usage-table th:first-child { width:26%; }.usage-table th:nth-child(2) { width:18%; }.usage-table th:nth-child(3) { width:14%; }
 .p1-metrics,.translate-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.publish-command-row { display:flex;justify-content:flex-end;margin:0 0 16px; }
 .p1-metrics .phase-metric-value,.translate-metrics .phase-metric-value { font-variant-numeric:tabular-nums; }
 .main.workspace-page,.main.prepare-detail-page,.main.analyse-detail-page,.main.review-page,.main.phase-detail-page { max-width:1520px; }
 .analyse-content { display:flex;flex-direction:column;gap:14px; }
@@ -501,3 +514,11 @@ html[data-ui-debug="on"] [data-ui-debug-id]::after {
 html[data-ui-debug="on"] [data-ui-debug-id="WRC"]::after { right:40px; }
 /* The Review heading's right edge contains approval controls; place its badge in the gap above. */
 html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
+
+.book-identity { overflow-wrap: anywhere; font-family: monospace; font-size: 0.8em; }
+.book-metadata-editor { padding: 20px; }
+.book-metadata-field { display: grid; gap: 8px; margin: 20px 0; }
+.book-metadata-field input, .book-metadata-field textarea { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+.book-metadata-original { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.book-metadata-original span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.book-metadata-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }

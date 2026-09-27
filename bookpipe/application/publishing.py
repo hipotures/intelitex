@@ -1,8 +1,14 @@
 """Application orchestration for final EPUB publication."""
 from __future__ import annotations
 
+from .. import book_metadata
+
 import re
 import unicodedata
+import os
+import tempfile
+from dataclasses import replace
+from uuid import uuid4
 from pathlib import Path
 
 from ..engine import source_blocks, validate_result
@@ -126,7 +132,7 @@ class PublishingService:
 
     def selection(self, root: Path) -> dict:
         with ProjectReadScope(self.dependencies, root):
-            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             record = self._read_record(root)
             selected, _, groups = self._selected_sections(book, record)
             diagnostic = self._selection_diagnostic(book, record, selected)
@@ -177,11 +183,69 @@ class PublishingService:
             raise PipelineError('Publication changed while reading.')
         return data
 
-    def _prepare(self, root: Path, book: dict, store, target_language: str):
+    def export_to_library(self, root: Path, library_root: Path, workspace_id: str) -> str:
+        """Deliver a verified edition after either automatic or explicit publication."""
+        with OperationScope(self.dependencies, root):
+            return self._export_to_library(root, library_root, workspace_id)
+
+    def _export_to_library(self, root: Path, library_root: Path, workspace_id: str) -> str:
+        data = self.download(root)
+        success = self._read_record(root).get('last_success') or {}
+        fingerprint = success.get('publication_fingerprint')
+        if not isinstance(fingerprint, str) or not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
+            raise PipelineError('Publication fingerprint is unavailable.')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', workspace_id) or '..' in workspace_id:
+            raise PipelineError('Invalid workspace for Library publication.')
+        library = library_root.resolve(strict=True)
+        if not library.is_dir():
+            raise PipelineError('Library is unavailable.')
+        title = _safe_title(success.get('title') or 'book')[:40]
+        language = _target_language(success.get('target_language'))
+        name = f'{title} [{language.upper()}] - {workspace_id[:48]}-{fingerprint[:12]}-{success["output_sha256"][:12]}.epub'
+        destination = library / name
+        if destination.is_symlink():
+            raise PipelineError('Library publication path is unsafe.')
+        if destination.exists():
+            if digest(destination.read_bytes()) != digest(data):
+                raise PipelineError('Library publication differs from the saved EPUB.')
+            return name
+        descriptor, temporary = tempfile.mkstemp(prefix='.intelitex-publish-', suffix='.tmp', dir=library)
+        staging = Path(temporary)
+        try:
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(staging, destination, follow_symlinks=False)
+            except FileExistsError:
+                if destination.is_symlink() or digest(destination.read_bytes()) != digest(data):
+                    raise PipelineError('Library publication path was changed.')
+        finally:
+            staging.unlink(missing_ok=True)
+        return name
+
+    def library_snapshot(self, root: Path, library_root: Path | None, workspace_id: str) -> dict:
+        """Library delivery is independent of building a workspace EPUB."""
+        if library_root is None:
+            return {'library_current': None, 'library_filename': None}
+        success = self._read_record(root).get('last_success') or {}
+        fingerprint = success.get('publication_fingerprint')
+        if not fingerprint:
+            return {'library_current': False, 'library_filename': None}
+        title = _safe_title(success.get('title') or 'book')[:40]
+        language = _target_language(success.get('target_language'))
+        name = f'{title} [{language.upper()}] - {workspace_id[:48]}-{fingerprint[:12]}-{success["output_sha256"][:12]}.epub'
+        path = library_root / name
+        valid = (not path.is_symlink() and path.is_file()
+                 and digest(path.read_bytes()) == success.get('output_sha256'))
+        return {'library_current': valid, 'library_filename': name if valid else None}
+
+    def _prepare(self, root: Path, book: dict, store, target_language: str, *, approval_verified=False):
         excluded_sections, excluded_files, _ = self._selected_sections(book, self._read_record(root))
         if not store.get("analysis_done"):
             raise PipelineError("Publishing requires completed P1 analysis.")
-        if not approval_current(store, self.dependencies.files):
+        if not approval_verified and not approval_current(store, self.dependencies.files):
             raise PipelineError("Publishing requires approved terminology.")
         states = [(chunk, store.chunk(chunk["id"])) for chunk in book["chunks"]]
         stale = [chunk["id"] for chunk, state in states if state["status"] == "stale"]
@@ -279,9 +343,12 @@ class PublishingService:
         ) for item in book["files"])
         source_root = Path(book["source_root"])
         source_info = self.builder.inspect(source_root, package_document, source_files)
-        title = source_info.title or metadata.get("title") or source_root.name
+        metadata_state = book_metadata.snapshot(root, book)
+        corrections = metadata_state['corrections']
+        title = corrections.get('title') or source_info.title or metadata.get("title") or source_root.name
         publication_fingerprint = digest({
             "format": PUBLICATION_FORMAT,
+            **({"metadata_corrections": corrections} if corrections else {}),
             "source_fingerprint": book["source_fingerprint"],
             "content_fingerprint": book["content_fingerprint"],
             "source_package_fingerprint": source_info.package_fingerprint,
@@ -298,6 +365,7 @@ class PublishingService:
             target_language=target_language, title=title,
             source_files=source_files, blocks=tuple(bindings),
             excluded_source_files=tuple(sorted(excluded_files)),
+            metadata_corrections=corrections,
         )
         return publication_fingerprint, request
 
@@ -321,6 +389,10 @@ class PublishingService:
                 ):
                     status = self._status_from(root, book, scope.store, target, record, prepared=(fingerprint, request))
                     return PublishResult(root, status, built=False)
+                # Every built edition gets a new destination, including recovery
+                # from an interrupted build or a damaged previous edition.
+                request = replace(request, output_path=request.output_path.with_name(
+                    f'{request.output_path.stem} - {fingerprint[:12]}-{uuid4().hex[:12]}.epub'))
                 self.progress.emit(ProgressEvent(kind="publication_started", values={
                     "project": str(root), "target_language": target,
                     "output_path": str(request.output_path),
@@ -339,10 +411,16 @@ class PublishingService:
                     "generated_at": result.generated_at,
                     "validation": list(result.validation),
                 }
+                editions = list(record.get('editions', []))
+                previous = record.get('last_success')
+                if previous and not any(item.get('output_path') == previous.get('output_path') for item in editions):
+                    editions.append(previous)
+                editions.append(success)
                 record = {
                     "format_version": PUBLICATION_RECORD_VERSION,
                     "excluded_section_ids": sorted(self._selected_sections(book, record)[0]),
                     "last_success": success,
+                    "editions": editions,
                     "last_attempt": {
                         "status": "published", "publication_fingerprint": fingerprint,
                         "target_language": target,
@@ -371,7 +449,7 @@ class PublishingService:
         root = command.project.resolve()
         target = _target_language(command.target_language)
         with ProjectReadScope(self.dependencies, root) as scope:
-            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             return self.query_snapshot(root, book, scope.store, target)
 
     def query_snapshot(self, root: Path, book: dict, store, target: str = "pl",
@@ -411,7 +489,7 @@ class PublishingService:
         readiness_error = None
         if translation_complete and store.get("analysis_done") and approval_current(store, self.dependencies.files):
             try:
-                current_fingerprint, _ = prepared or self._prepare(root, book, store, target)
+                current_fingerprint, _ = prepared or self._prepare(root, book, store, target, approval_verified=True)
             except PipelineError as exc:
                 readiness_error = str(exc)
         else:

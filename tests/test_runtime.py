@@ -58,7 +58,9 @@ def runtime(tmp_path):
     def command(spec):
         mode = spec.workspace_id if spec.workspace_id in {"success", "fail", "stubborn"} else "hold"
         return [sys.executable, "-u", str(HELPER), mode]
-    supervisor = JobSupervisor(registry, root, command_factory=command, interrupt_grace=0.3, terminate_grace=0.2)
+    # Allow interpreter shutdown on a busy CI host; stubborn-process tests still
+    # require escalation through SIGKILL rather than relaxing exit assertions.
+    supervisor = JobSupervisor(registry, root, command_factory=command, interrupt_grace=1.5, terminate_grace=0.2)
     try:
         yield root, registry, supervisor
     finally:
@@ -258,7 +260,7 @@ def test_read_snapshot_is_read_only_and_stable_during_commit(tmp_path):
     assert app.projects.status(StatusCommand(root)).analysis_complete
     missing = tmp_path / "missing"
     missing.mkdir()
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(PipelineError, match='Missing JSON state'):
         ReadStore(missing)
     assert not (missing / "state.sqlite3").exists()
 

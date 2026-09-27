@@ -53,6 +53,7 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto(`${config.url}/work/workspaces/prepared/translate`)
   await page.getByRole('heading', { name: 'Translate', exact: true }).waitFor()
+  await page.locator('.translate-detail-grid').waitFor()
   const layout = await page.evaluate(() => {
     const grid = document.querySelector('.translate-detail-grid').getBoundingClientRect()
     const chunks = document.querySelector('[data-ui-debug-id="PSC"]').getBoundingClientRect()
@@ -84,7 +85,7 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   }
   await page.reload()
   await page.getByRole('button', { name: `Run again ${chunkId} P2` }).waitFor()
-  await page.getByRole('button', { name: `${chunkId} P2: saved successful result; preview` }).click()
+  await page.getByRole('button', { name: `${chunkId} P2: verified saved result; preview` }).click()
   await page.getByText('Semantic checks', { exact: true }).waitFor()
   await mkdir('/tmp/intelitex-translate-evidence', { recursive: true })
   await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-dark-1440.png', animations: 'disabled' })
@@ -134,7 +135,7 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await rerun.getByText('Earlier artifacts remain saved.', { exact: false }).waitFor()
   await rerun.getByRole('button', { name: 'Cancel' }).click()
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   await page.locator('.translate-preview-segment.risk-medium').waitFor()
   await page.locator('.translate-preview-segment.risk-high').waitFor()

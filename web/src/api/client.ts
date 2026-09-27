@@ -40,5 +40,10 @@ export function useApi<T>(path: string, schema: z.ZodType<T>, enabled = true) {
   return useQuery({ queryKey: [scope, path], queryFn: ({ signal }) => request(path, schema, { signal }), enabled })
 }
 export async function reconcile(workspace?: string) {
-  await queryClient.invalidateQueries({ predicate: q => !String(q.queryKey[1]).includes('/reader/chapters/') && (!workspace || matchesWorkspaceResource(String(q.queryKey[1]), workspace) || isWorkspaceList(String(q.queryKey[1])) || String(q.queryKey[1]) === '/api/jobs') })
+  const relevant = (path: string) => !path.includes('/reader/chapters/') && (!workspace || matchesWorkspaceResource(path, workspace) || isWorkspaceList(path) || path === '/api/jobs')
+  const detail = (path: string) => path.endsWith('/usage') || path.endsWith('/evidence') || path.endsWith('/activity')
+  // Evidence refreshes independently. Revision-bearing workflow queries still
+  // finish before a second write is allowed, without waiting for accounting.
+  void queryClient.invalidateQueries({ predicate: q => relevant(String(q.queryKey[1])) && detail(String(q.queryKey[1])) }, { cancelRefetch: false })
+  await queryClient.invalidateQueries({ predicate: q => relevant(String(q.queryKey[1])) && !detail(String(q.queryKey[1])) }, { cancelRefetch: false })
 }

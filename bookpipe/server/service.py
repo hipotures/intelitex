@@ -1,10 +1,12 @@
 """HTTP-independent control/query adapter; no pipeline execution in this process."""
+from .. import book_metadata
 from ..application.commands import ApproveCommand, UsageByUnitCommand
 from ..application.catalog import WebCatalog
 from ..application.source_preflight import inspect_source
 from ..application.web import WorkspaceArchived
 from ..runtime.supervisor import JobConflict
 from ..util import digest
+from ..languages import language_code
 from pathlib import Path
 from contextlib import contextmanager
 from datetime import datetime
@@ -51,16 +53,28 @@ class ServerService:
                 metadata = self.application.web.metadata(root, book=book)
                 static = {key: metadata[key] for key in ('title', 'creators', 'language', 'format', 'word_count')}
                 source = Path(book.get('source_archive', book['source_root'])).resolve()
-                self._summary_cache[root] = (stamp, static, source)
+                identity = {key: book[key] for key in ('metadata', 'source_root', 'source_fingerprint')}
+                self._summary_cache[root] = (stamp, static, source, identity)
             else:
-                _, static, source = cached
+                _, static, source, identity = cached
         from ..application.workspace_setup import read_workspace_setup
         setup = read_workspace_setup(root)
+        current = book_metadata.effective(root, identity)
+        static = {**static, **current, 'book_id': book_metadata.book_id(identity), 'language': language_code(current.get('language'))}
         metadata = {**static, 'label': setup.get('label'),
-                    'source_language': setup.get('source_language'),
-                    'target_language': setup.get('target_language'),
+                    'source_language': language_code(current.get('language') or setup.get('source_language')),
+                    'target_language': language_code(setup.get('target_language')),
                     'lifecycle': self.application.web.lifecycle(root)}
         return metadata, source, setup
+
+    def book_metadata(self, ident, payload=None, *, edit=False):
+        root = self.workspaces.resolve(ident)
+        if not edit:
+            return book_metadata.snapshot(root, self.application.web.book(root))
+        fields(payload, {'revision', 'corrections'}, {'revision', 'corrections'})
+        with self.mutable(ident), self.application.web.dependencies.project_lock(root):
+            return book_metadata.update(root, self.application.web.book(root),
+                                        revision(payload), payload['corrections'])
 
     def last_job(self, ident):
         resets = self.workspaces.root / ident / 'history' / 'p1_resets'
@@ -88,10 +102,14 @@ class ServerService:
         return {'workspace_id': workspace_id, 'metadata': self.application.web.metadata(workspace.status.project), 'status': dto.status(workspace.status),
                 'active_job': active.public() if active else None}
 
-    def list_workspaces(self, archived: bool | None = None) -> list[dict]:
+    def list_workspaces(self, archived: bool | None = None, workspace_id: str | None = None) -> list[dict]:
+        if workspace_id is not None:
+            workspace_destination(self.workspaces.root, workspace_id)
         result = []
         imported = self.workspaces.list()
         for ident in imported:
+            if workspace_id is not None and ident != workspace_id:
+                continue
             root = self.workspaces.resolve(ident)
             if archived is not None and self.application.web.lifecycle(root)['archived'] != archived:
                 continue
@@ -99,13 +117,15 @@ class ServerService:
             metadata, path, setup = self._book_summary(root)
             source_id = setup.get('source_id')
             if source_id is None and self.imports.root is not None:
-                if path.parent == self.imports.root:
-                    source_id = path.name
+                if path.is_relative_to(self.imports.root) and path != self.imports.root:
+                    source_id = path.relative_to(self.imports.root).as_posix()
             result.append({'workspace_id': ident, 'prepared': True,
                            **({'source_id': source_id} if source_id else {}),
                            'metadata': metadata,
                            'active_job': active.public() if active else None, 'last_job': self.last_job(ident)})
         for entry in self.catalog.entries():
+            if workspace_id is not None and entry['workspace_id'] != workspace_id:
+                continue
             if entry['workspace_id'] not in imported:
                 if archived is not None and entry.get('archived', False) != archived:
                     continue
@@ -113,8 +133,8 @@ class ServerService:
                 manifest = self.catalog.setup_metadata(entry['workspace_id'])
                 result.append({'workspace_id': entry['workspace_id'], 'source_id': entry['source_id'],
                                'prepared': False, 'metadata': {**self.catalog.source_metadata(entry['source_id']),
-                               'label': manifest.get('label'), 'source_language': manifest.get('source_language'),
-                               'target_language': manifest.get('target_language'),
+                               'label': manifest.get('label'), 'source_language': language_code(manifest.get('source_language')),
+                               'target_language': language_code(manifest.get('target_language')),
                                'lifecycle': self.catalog.draft_lifecycle(entry['workspace_id'])},
                                'progress': {'percent': None, 'basis': 'Workflow progress — not an ETA',
                                             'analysis': {'completed': 0, 'required': 0,
@@ -209,7 +229,13 @@ class ServerService:
     def inspect_source(self, ident, *, detailed=False):
         if self.imports.root is None:
             raise ImportDisabled('Import disabled.')
-        return inspect_source(self.imports.root, ident, detailed=detailed)
+        result = inspect_source(self.imports.root, ident, detailed=detailed)
+        current = book_metadata.source_metadata(self.workspaces.root, confined_source(self.imports.root, ident))
+        if current:
+            result.update({key: current['effective'][key] for key in ('title', 'creators')})
+            if 'language' in current['corrections']:
+                result['source_language'] = current['effective']['language']
+        return result
 
     def compatibility(self, payload):
         fields(payload, {'source_language', 'target_language', 'pass_profiles'},
@@ -273,8 +299,11 @@ class ServerService:
         return {'sources': sources, 'configured': self.imports.root is not None}
 
     def library_page(self, query):
-        if set(query) - {'after', 'limit', 'links'}:
+        if set(query) - {'after', 'limit', 'links', 'sort'}:
             raise ValueError('Invalid Library query.')
+        sort = query.get('sort')
+        if sort not in {None, 'author', 'title', 'language'}:
+            raise ValueError('Invalid Library sort order.')
         links = query.get('links', 'true')
         if links not in {'true', 'false'}:
             raise ValueError('Invalid Library link mode.')
@@ -285,10 +314,11 @@ class ServerService:
         if not 1 <= limit <= 40:
             raise ValueError('Invalid Library page size.')
         after = query.get('after')
-        if after is not None and (not isinstance(after, str) or not after or len(after) > 255
-                                  or '/' in after or '\\' in after or '\x00' in after):
+        if after is not None and (not isinstance(after, str) or not after or len(after) > 4096
+                                  or any(part in {'', '.', '..'} for part in after.split('/'))
+                                  or ':' in after or '\\' in after or '\x00' in after):
             raise ValueError('Invalid Library cursor.')
-        sources, next_cursor = self.catalog.library_page(after, limit)
+        sources, next_cursor = self.catalog.library_page(after, limit, sort)
         imported = ({str(self._book_summary(self.workspaces.resolve(i))[1]): i for i in self.workspaces.list()}
                     if links == 'true' else {})
         if self.imports.root and links == 'true':
@@ -330,9 +360,9 @@ class ServerService:
             else:
                 book = self.application.web.book(root)
                 recorded = Path(book.get('source_archive', book['source_root'])).resolve()
-                if recorded.parent != self.imports.root:
+                if not recorded.is_relative_to(self.imports.root) or recorded == self.imports.root:
                     raise ValueError('This workspace has no matching Library source.')
-                source_id = recorded.name
+                source_id = recorded.relative_to(self.imports.root).as_posix()
             self.application.projects.check_reprepare(
                 root, confined_source(self.imports.root, source_id), payload['revision'])
             spec = ImportJobSpec(workspace_root=str(self.workspaces.root), workspace_id=ident,
@@ -372,7 +402,8 @@ class ServerService:
         if operation == 'publish' and 'profile' in payload:
             raise ValueError('profile does not apply to publish.')
         spec = JobSpec(str(self.workspaces.root), workspace_id,
-                       str(self.workspaces.resolve(workspace_id)), **payload)
+                       str(self.workspaces.resolve(workspace_id)), **payload,
+                       import_root=str(self.imports.root) if operation in {'translate', 'publish'} and self.imports.root else None)
         with self.mutable(workspace_id):
             return self.supervisor.start(spec, request_key=key, request_fingerprint=fingerprint).public()
 
@@ -407,6 +438,10 @@ class ServerService:
         busy = active is not None or self.supervisor.owns_project(root)
         result, book, usage, config_snapshot = self.application.workflow.pipeline_with_evidence(root, busy=busy)
         result['publication'] = dto.publication(result['publication'])
+        result['publication'].update(self.application.publishing.library_snapshot(root, self.imports.root, workspace_id))
+        if result['publication']['current'] and result['publication']['library_current'] is False:
+            result['stage'] = 'publication'
+            result['progress']['percent'] = 98
         config = self.application.web.config(root, config=config_snapshot)
         result['sections'] = self.application.web.section_summaries(root, result, book=book, config=config)
         colors = self.catalog.read().get('profile_colors', {})
@@ -461,9 +496,13 @@ class ServerService:
         publishing = bool(active and (active.operation == 'publish' or
                           publication_events and publication_events[-1]['event']['kind'] == 'publication_started'))
         publication = dto.publication(result['publication'])
+        delivery = self.application.publishing.library_snapshot(root, self.imports.root, workspace_id)
+        if publication['current'] and delivery['library_current'] is False:
+            result['stage'] = 'publication'
+            result['progress']['percent'] = 98
         return {'workspace_id': workspace_id, 'stage': result['stage'], 'progress': result['progress'],
                 'analysis': {'complete': result['analysis']['complete']}, 'approved': result['approved'],
-                'publication': {'current': publication['current'], 'last_failure': publication['last_failure']},
+                'publication': {'current': publication['current'], 'last_failure': publication['last_failure'], **delivery},
                 'actions': result['actions'], 'metadata': {'lifecycle': metadata['lifecycle']},
                 'publishing': publishing, 'active_job': active.public() if active else None,
                 'last_job': self.last_job(workspace_id)}
@@ -549,7 +588,10 @@ class ServerService:
 
     def source_reader(self, source_id, chapter_id=None):
         from ..application.source_reader import read_source_epub
-        return read_source_epub(self.imports.root, source_id, chapter_id)
+        value = read_source_epub(self.imports.root, source_id, chapter_id)
+        if chapter_id is None:
+            value = {**value, 'title': self.catalog.source_metadata(source_id)['title']}
+        return value
 
     def publication_resource(self, ident):
         return self.application.publishing.download(self.workspaces.resolve(ident))
