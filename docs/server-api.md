@@ -157,6 +157,10 @@ counts, translation completion and publication status. Publication DTOs expose
 `state`, `translation_complete`, `current`, `target_language`, fingerprint,
 generation metadata, title/creators/source language, and generic nullable
 `last_error`/`last_failure`. They never expose output paths or raw exceptions.
+EPUB validation records when class-only source `<span>` styling could not be
+aligned to translated words and was rendered as plain translated text. The full
+translated prose remains; meaningful links and unsupported attributed markup
+still stop publication instead of being silently discarded.
 
 Usage contains `scope`, `warning`, and `units`. Each unit identifies chapter/chunk
 or analysis unit, carries pass reports and aggregate token/timing coverage. Passes

@@ -193,6 +193,7 @@ class EpubPublicationBuilder:
         for block in request.blocks:
             replacements.setdefault(block.source_file, []).append(block)
         rendered: dict[str, bytes] = {}
+        flattened_spans = 0
         excluded_files = set(request.excluded_source_files)
         if excluded_files & set(replacements):
             raise PipelineError('Publication selection conflicts with translated source bindings.')
@@ -221,7 +222,9 @@ class EpubPublicationBuilder:
                         f"Cannot map translated block {binding.id} to one unique XHTML element in {relative}."
                     )
                 seen_nodes.add(id(node))
-                self._replace_block(node, binding.id, binding.source_text, binding.translated_text)
+                flattened_spans += self._replace_block(
+                    node, binding.id, binding.source_text, binding.translated_text,
+                )
             html = soup.find("html")
             if isinstance(html, Tag):
                 html["lang"] = request.target_language
@@ -259,6 +262,8 @@ class EpubPublicationBuilder:
                 temporary, request.target_language, required_xhtml=tuple(replacements),
                 excluded_files=excluded_files,
             )
+            if flattened_spans:
+                validation = (*validation, f"{flattened_spans} source span styles rendered as plain translated text")
             os.replace(temporary, request.output_path)
             if hasattr(os, "O_DIRECTORY"):
                 directory = os.open(request.output_path.parent, os.O_DIRECTORY)
@@ -279,7 +284,7 @@ class EpubPublicationBuilder:
         )
 
     @staticmethod
-    def _replace_block(node: Tag, block_id: str, source_text: str, translated_text: str) -> None:
+    def _replace_block(node: Tag, block_id: str, source_text: str, translated_text: str) -> int:
         if node.name not in LEAF_BLOCKS:
             raise PipelineError(
                 f"Block {block_id} maps to <{node.name}>, not a safe leaf prose element."
@@ -301,7 +306,7 @@ class EpubPublicationBuilder:
             _append_inline(holder, parts)
             for offset, child in enumerate(list(holder.contents)):
                 parent.insert(position + offset, child.extract())
-            return
+            return 0
         prefix_span = next((child for child in node.contents if isinstance(child, Tag)), None)
         if (prefix_span is not None and node.contents[0] is prefix_span
                 and prefix_span.name == 'span' and set(prefix_span.attrs) == {'class'}
@@ -320,6 +325,7 @@ class EpubPublicationBuilder:
         semantics: list[str] = []
         emphasized: list[Tag] = []
         breaks = 0
+        flattened_spans = 0
         for child in node.find_all(True):
             if child is prefix_span and retained_prefix is not None:
                 continue
@@ -332,6 +338,13 @@ class EpubPublicationBuilder:
             if name == 'span' and child.attrs == {'class': ['char-dcrit']} and not child.find(True):
                 # The imported plain text already contains this diacritic. The
                 # source wrapper only selects a font for that one character.
+                flattened_spans += 1
+                continue
+            if name == 'span' and set(child.attrs) == {'class'} and not child.find(True):
+                # The importer and P5 store prose, not a span-to-translation
+                # alignment. Keep all translated text, but never guess which
+                # Polish words inherit source-only presentation classes.
+                flattened_spans += 1
                 continue
             if name not in SUPPORTED_INLINE:
                 raise PipelineError(
@@ -370,6 +383,7 @@ class EpubPublicationBuilder:
             for source, translated in zip(emphasized, translated_emphasis, strict=True):
                 if source.get('class'):
                     translated['class'] = list(source['class'])
+        return flattened_spans
 
     @staticmethod
     def _rewrite_package(raw: bytes, target_language: str, source_fingerprint: str,

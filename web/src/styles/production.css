@@ -445,6 +445,7 @@ body:has(dialog.drawer[open])::before { display:none; }
 .publish-processing-switch button.active:first-child { background:var(--green-soft);color:var(--green); }
 .publish-processing-switch button.active:last-child { background:var(--panel-3);color:var(--text-soft); }
 .publish-source-preview { flex:1;min-height:0;display:flex;flex-direction:column; }
+.publish-preview-tabs { flex:none;margin-bottom:12px; }
 .publish-preview-heading { display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--text-soft);font-size:12px; }
 .publish-preview-heading span:first-child { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .publish-preview-heading span:last-child { flex:none;color:var(--text-dim);font-size:11px; }

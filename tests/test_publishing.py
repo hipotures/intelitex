@@ -345,6 +345,20 @@ def test_timeline_date_style_survives_translation():
     )
 
 
+def test_class_only_source_span_keeps_all_translated_prose_without_guessing_its_range():
+    soup = BeautifulSoup(
+        '<p>She sent: <span class="char-ccust1 futura-lt-pro">I want to help.</span> He nodded.</p>',
+        'html.parser',
+    )
+    flattened = EpubPublicationBuilder._replace_block(
+        soup.p, 'B0000379', 'She sent: I want to help. He nodded.',
+        'Przesłała: Chcę pomóc. Skinął głową.',
+    )
+    assert flattened == 1
+    assert soup.p.get_text() == 'Przesłała: Chcę pomóc. Skinął głową.'
+    assert soup.p.find('span') is None
+
+
 def test_meaningful_inline_link_fails_instead_of_being_silently_discarded(tmp_path):
     source = _unpack_public_domain_epub(tmp_path)
     chapter = source / "EPUB" / "text" / "the-buckwheat.xhtml"

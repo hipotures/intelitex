@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { endpoint, queryClient, Scope, useApi } from '../../api/client'
-import { previewSchema, publicationSelectionSchema, type Pipeline } from '../../api/schema'
+import { chapterSchema, previewSchema, publicationSelectionSchema, type Pipeline } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Button, Empty, ErrorNote, Panel } from '../../components/ui/common'
 import { sectionTitles } from './sectionTitles'
@@ -12,6 +12,7 @@ export function PublishSelection({ id, pipeline }: { id: string; pipeline: Pipel
   const command = useCommand(id)
   const [intent, setIntent] = useState<{ id: string; excluded: boolean } | null>(null)
   const [selectedId, setSelectedId] = useState(() => pipeline.sections.find(section => section.processing !== 'excluded')?.id ?? pipeline.sections[0]?.id ?? '')
+  const [previewKind, setPreviewKind] = useState<'translated' | 'source'>('translated')
   const [page, setPage] = useState(0)
   const layout = useRef<HTMLDivElement>(null)
   const userSelected = useRef(false)
@@ -19,9 +20,8 @@ export function PublishSelection({ id, pipeline }: { id: string; pipeline: Pipel
   const selected = new Set(query.data?.excluded_section_ids ?? [])
   const groups = new Map(query.data?.groups.flatMap(group => group.section_ids.map(sectionId => [sectionId, group] as const)) ?? [])
   const titles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
-  const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selectedId)}/${page}`), previewSchema, !!selectedSection)
-  const sourceCode = pipeline.metadata.source_language ?? pipeline.metadata.language
-  const language = sourceCode === 'en' ? 'English' : sourceCode === 'pl' ? 'Polish' : sourceCode ?? 'Source language unknown'
+  const preview = useApi(endpoint(id, `sections/${encodeURIComponent(selectedId)}/${page}`), previewSchema, !!selectedSection && previewKind === 'source')
+  const translated = useApi(endpoint(id, `reader/chapters/${encodeURIComponent(selectedId)}`), chapterSchema, !!selectedSection && previewKind === 'translated')
   const diagnosticIds = new Set(query.data?.diagnostic?.section_ids ?? [])
 
   useEffect(() => {
@@ -91,17 +91,24 @@ export function PublishSelection({ id, pipeline }: { id: string; pipeline: Pipel
           })}</tbody>
         </table></div>}
     </Panel>
-    <Panel debugId="PSP" title={`${language} preview`}>
+    <Panel debugId="PSP" title="Book text preview">
       <div id="publish-source-preview" className="publish-source-preview">
         {!selectedSection ? <Empty>Select a section to inspect its content.</Empty> : <>
-          <div className="publish-preview-heading"><span>{selectedSection.id} · {titles.get(selectedSection.id) ?? selectedSection.title ?? 'Untitled section'}</span><span>{groups.get(selectedSection.id)?.section_ids.every(sectionId => selected.has(sectionId)) ? 'Omitted from EPUB' : 'Included in EPUB'}</span></div>
-          <ErrorNote error={preview.error} retry={() => void preview.refetch()} />
-          <div className="publish-preview-scroll">
-            {preview.isPending ? <p className="subtitle" role="status">Loading source text…</p> :
-              preview.data?.blocks.length ? preview.data.blocks.map(block => <div key={block.id} className="publish-preview-block"><span>{block.id}</span><p>{block.text}</p></div>) :
-              !preview.error && <Empty>No source text in this section.</Empty>}
+          <div className="review-filter-row publish-preview-tabs" role="tablist" aria-label="Preview text language">
+            <button className={`review-chip ${previewKind === 'translated' ? 'active' : ''}`} role="tab" aria-selected={previewKind === 'translated'} onClick={() => setPreviewKind('translated')}>Polish translation</button>
+            <button className={`review-chip ${previewKind === 'source' ? 'active' : ''}`} role="tab" aria-selected={previewKind === 'source'} onClick={() => setPreviewKind('source')}>Original source</button>
           </div>
-          <div className="publish-preview-pages"><Button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button><span>Page {page + 1}</span><Button disabled={preview.data?.next_page == null} onClick={() => setPage(preview.data!.next_page!)}>Next</Button></div>
+          <div className="publish-preview-heading"><span>{selectedSection.id} · {titles.get(selectedSection.id) ?? selectedSection.title ?? 'Untitled section'}</span><span>{groups.get(selectedSection.id)?.section_ids.every(sectionId => selected.has(sectionId)) ? 'Omitted from EPUB' : 'Included in EPUB'}</span></div>
+          <ErrorNote error={previewKind === 'source' ? preview.error : translated.error} retry={() => void (previewKind === 'source' ? preview.refetch() : translated.refetch())} />
+          <div className="publish-preview-scroll">
+            {previewKind === 'source' ? preview.isPending ? <p className="subtitle" role="status">Loading original source…</p> :
+              preview.data?.blocks.length ? preview.data.blocks.map(block => <div key={block.id} className="publish-preview-block"><span>{block.id}</span><p>{block.text}</p></div>) :
+              !preview.error && <Empty>No source text in this section.</Empty> :
+              translated.isPending ? <p className="subtitle" role="status">Loading verified translation…</p> :
+              translated.data?.blocks.length ? <>{translated.data.blocks.map(block => <div key={block.id} className="publish-preview-block"><span>{block.id}</span><p>{block.text}</p></div>)}{translated.data.unavailable && <p className="subtitle">Translation ends here: {translated.data.unavailable.reason}</p>}{translated.data.warning && <p className="subtitle">{translated.data.warning}</p>}</> :
+              !translated.error && <Empty>No verified Polish text in this section.</Empty>}
+          </div>
+          {previewKind === 'source' && <div className="publish-preview-pages"><Button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button><span>Page {page + 1}</span><Button disabled={preview.data?.next_page == null} onClick={() => setPage(preview.data!.next_page!)}>Next</Button></div>}
         </>}
       </div>
     </Panel>
