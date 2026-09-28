@@ -64,10 +64,8 @@ The first command performs a read-only rehearsal and records explicit migration
 intent. After the old server drains and releases its registry lock, the new
 process takes a fresh locked snapshot and completes the migration before opening
 the JSON registry. This is an explicit one-time migration, not an automatic
-SQLite fallback. Without an explicit migration request, startup uses the JSON
-registry or creates a new JSON registry when absent. An old SQLite file does not
-block startup and is not read automatically. Recovering its historical jobs is
-an explicit operator action.
+SQLite fallback. A startup with an existing legacy database and no JSON registry
+or explicit migration intent fails with instructions.
 
 Migration validates the exact schema and integrity, including committed WAL
 content. It exports all jobs, request keys and retained events belonging to the

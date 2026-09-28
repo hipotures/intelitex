@@ -13,6 +13,7 @@ HANDOFF_ENV = "INTELITEX_RELOAD_HANDOFF"
 
 
 def _state_dir() -> Path:
+    # Host-local process control only; durable job records live with workspaces.
     configured = os.environ.get('XDG_STATE_HOME')
     base = Path(configured) if configured and Path(configured).is_absolute() else Path.home() / '.local' / 'state'
     return base / 'intelitex'

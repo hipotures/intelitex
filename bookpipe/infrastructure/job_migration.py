@@ -187,6 +187,8 @@ def request_migration_on_reload(root, source=None):
 def complete_requested_migration(root):
     path = root / '.job-migration-request.json'
     if not path.exists():
+        if not registry_path(root).exists() and legacy_registry_path().exists():
+            raise PipelineError('Legacy job registry exists. Run migrate-jobs explicitly before starting this root.')
         return
     if path.is_symlink():
         raise PipelineError('Unsafe migration request.')

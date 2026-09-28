@@ -86,14 +86,21 @@ it against its own checkpoint snapshot. No read snapshot or project lock is held
 for the lifetime of SSE. Usage inspection reads existing artifact reports without
 claiming the writer lock.
 
-The runtime registry lives under `<workspace-root>/.runtime/` as checksummed
-JSON job records selected by an atomic `registry.json` manifest. The lifetime
-`.runtime.lock` prevents two supervisors from owning it. Startup builds in-memory
-indexes once; active/latest-job lookups and bounded SSE snapshots do not scan the
-full job archive. Each job retains up to 120 events and the global SSE replay
-buffer holds up to 1,000 events. Explicit job and request-receipt lookups retain
-access to older records. XDG state contains only local process/reload control.
-See [job migration and guarantees](job-json-migration.md).
+The durable runtime registry is `<workspace-root>/.runtime/`, containing JSON
+job records and request receipts. An atomic `registry.json` manifest selects
+checksummed records; missing committed records are errors, never an empty history.
+There is no SQLite fallback. The lifetime `.runtime.lock` prevents two servers
+from owning the same registry. Durable relations use scope/workspace/job IDs;
+runtime project paths are reconstructed from the current `--workspace-root`.
+Copy the entire root, including hidden files, to retain these records.
+
+Job records and receipts survive restarts. Each record keeps up to 120 recent
+events; SSE has a global in-memory replay buffer of at most 1,000 events. Detailed
+prompts, responses and credentials remain outside the progress protocol. Startup
+rebuilds in-memory indexes once. Normal reads use active jobs and the latest job
+per workspace, not a full history scan. `/api/jobs/{id}` and request receipts can
+still retrieve an older job. XDG state now holds host-local reload/process-control
+files, not the authoritative job registry. See [migration and guarantees](job-json-migration.md).
 
 On startup, earlier `starting`, `running`, and `stopping` records become
 `abandoned`. Version 1 does **not** re-adopt workers or signal historical PIDs.
@@ -204,7 +211,7 @@ disconnected subscribers never cancel jobs or block worker event ingestion.
 
 - `runtime/models.py`, `protocol.py`, `worker.py`: DTOs, metadata protocol, execution.
 - `runtime/supervisor.py`, `processes.py`: lifecycle, exclusion, owned cancellation.
-- `runtime/registry.py`, `events.py`: JSON job/receipt persistence, indexed lookups and bounded event replay.
+- `runtime/registry.py`, `events.py`: JSON job/receipt persistence, bounded replay and wakeups.
 - `application/workspaces.py`, `sessions.py`, `infrastructure/read_store.py`:
   confined workspace discovery and read-only project snapshots.
 - `server/service.py`, `http.py`, `__init__.py`: control/query adaptation, HTTP/SSE,

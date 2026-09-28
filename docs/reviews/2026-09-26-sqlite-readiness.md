@@ -9,7 +9,7 @@ Podstawa wymagań: [issue #1](https://github.com/hipotures/intelitex/issues/1), 
 
 ## Ocena
 
-Pierwszy etap implementacji opisuje [migracja checkpointów do JSON](../state-json-migration.md): pełny eksport Store, atomowy HEAD, przełączenie jego odczytów/zapisów i kontrola pozostawionych baz. SQL działa w tym etapie wyłącznie w pamięci procesu jako mechanizm zapytań. Trwały cache obejmujący wszystkie JSON-y książki oraz migracja rejestru runtime są kolejnymi etapami. Architektura poniżej opisuje pełny cel; szczegóły wdrożonego etapu i jego granice podaje wskazany dokument.
+Pierwszy etap implementacji opisuje [migracja checkpointów do JSON](../state-json-migration.md): pełny eksport Store, atomowy HEAD, przełączenie jego odczytów/zapisów i kontrola pozostawionych baz. SQL działa w tym etapie wyłącznie w pamięci procesu jako mechanizm zapytań. Osobny [etap migracji rejestru zadań](../job-json-migration.md) usuwa runtime SQLite i przenosi zadania/receipts do JSON pod workspace-root. Trwały cache obejmujący wszystkie JSON-y książki pozostaje kolejnym etapem. Architektura poniżej opisuje pełny cel; szczegóły wdrożonych etapów i ich granice podają wskazane dokumenty.
 
 **Osobny, odbudowywalny cache SQLite ma uzasadnienie, ale samo dodanie tabel nie rozwiąże problemów z odczytem.** Audyt z 2026-09-26 wskazał koszty budowania projekcji od początku: parsowania i hashowania manifestów, sprawdzania artefaktów, ponownego składania informacji o publikacji oraz wielokrotnego odczytywania całej historii zadań. Frontend dodatkowo uruchamiał osobne podsumowanie dla każdego workspace’u. Część tych ścieżek została później poprawiona; projekt cache nadal wymaga aktualnych pomiarów.
 
@@ -235,6 +235,20 @@ Stan rozdzielamy na małe dokumenty domenowe, np. wybory i unieważnienia danego
 
 Dotychczasowe pliki o stałych nazwach mogą po migracji pozostać widokami zgodności aktualnych dokumentów. Gdy różnią się od wersji wskazanej zatwierdzonym rekordem, zgłaszamy rozbieżność; nie wybieramy automatycznie „nowszego mtime”. Edycja zewnętrzna takiego pliku wymaga walidacji i zarejestrowania jako nowej zmiany pod blokadą. Dzięki temu JSON, rejestr i SQL nie stają się trzema konkurencyjnymi właścicielami stanu.
 
+### Przenośność: katalogi startowe nie są tożsamością danych
+
+**Doprecyzowanie wymagania użytkownika, 2026-09-27.** `serve --workspace-root … --import-root …` określa lokalizacje na bieżącym serwerze. Zmiana tych katalogów nie zmienia tożsamości książek, workspace’ów, historii zadań ani kluczy idempotencji. Hash absolutnej ścieżki również nie jest przenośną tożsamością.
+
+Trwałe powiązania używają identyfikatorów: `scope_id`, `workspace_id`, `book_id`, identyfikatora źródła opartego na zawartości oraz identyfikatora konkretnego wydania. Dwa workspace’y tej samej książki zachowują różne ID; tytuł i nazwa katalogu Library nie identyfikują książki. Lokalizację źródła przechowuje oddzielny indeks pod aktualnym `import-root`; ścieżka względna jest wskazówką lokalizacji, nie kluczem relacji. Po reorganizacji Library powiązanie odtwarza się przez zweryfikowaną tożsamość zawartości, bez zgadywania po nazwie lub tytule. Niejednoznacznego dopasowania nie rozstrzygamy automatycznie.
+
+Ścieżki wewnętrznych artefaktów rozwiązuje się względem zidentyfikowanego workspace’u. Nie zapisujemy relacji między `workspace-root` i `import-root` jako `../../books/...`: katalogi można przenieść niezależnie. Ścieżki absolutne potrzebne procesowi roboczemu powstają dopiero przy uruchomieniu z aktualnej konfiguracji. Historyczna ścieżka w dowodzie wykonania może pozostać informacją archiwalną, ale nie może służyć do wznowienia operacji, odczytu książki ani wyznaczania aktualnej tożsamości.
+
+Trwały rejestr zadań i powiązań musi należeć do przenoszonego zestawu danych, we właściwym scope pod `workspace-root`. Katalogi XDG mogą zawierać odbudowywalny cache oraz lokalne informacje o procesie. Samo skopiowanie workspace’ów i Library nie może wymagać odzyskiwania autorytatywnego rejestru z katalogu domowego poprzedniego użytkownika. Ustawienia usług zewnętrznych, poświadczenia i adres nasłuchu są konfiguracją nowego serwera, nie tożsamością książek.
+
+**Stan implementacji:** to wymaganie nie jest jeszcze spełnione dla całego projektu. `book.json` przechowuje absolutne lokalizacje źródeł; `.book-metadata.json` używa ich w powiązaniach, starszy katalog webowy hashuje ścieżki. Rejestr zadań został przepisany na przenośne rekordy JSON pod workspace-root, z ID i ścieżkami procesów wyznaczanymi przy odczycie; istniejące dane wymagają jawnego `migrate-jobs`. Migracja `state.sqlite3` sama nie naprawiła zależności źródeł książek. Potrzebna jest osobna migracja tych relacji z zachowaniem metadanych i istniejących fingerprintów. Samo zastąpienie ścieżek absolutnych względnymi jest niewystarczające.
+
+Test odbioru przenośności: na kopii przenieść workspace-root i import-root do niezależnych lokalizacji, zmienić HOME/XDG oraz katalog roboczy, całkowicie usunąć dostęp do starych lokalizacji i uruchomić aplikację z nowymi dwoma katalogami. Sprawdzić Library ↔ workspace, drafty i archiwizację, korekty metadanych, Reader, Review, checkpointy, historię zadań i idempotencję, a następnie metadata-only Publish tworzący osobne wydanie bez wywołania modelu. Osobny test przenosi książkę między podkatalogami Library. Nie wolno zaliczyć testu tylko dlatego, że stare źródła nadal istnieją.
+
 ### Podział baz: katalog ogólny i cache poszczególnych książek
 
 Rekomendowany układ pod absolutnym `XDG_CACHE_HOME`, z fallbackiem do `~/.cache/intelitex`:
@@ -246,7 +260,7 @@ sources/<source-cache-id>.sqlite3       # treść źródła Reader bez workspace
 covers/                                # odtworzone zasoby binarne
 ```
 
-Jedna baza cache na workspace oznacza izolację książek, możliwość przebudowy jednej z nich i brak wspólnego writer locka dla ich szczegółów. Tytuł książki nie jest kluczem: dwa workspace’y tej samej książki muszą być niezależne. Identyfikator cache uwzględnia kanoniczny root, tożsamość workspace’u/źródła i jego generację, aby ponowne użycie ścieżki nie podpięło starej zawartości. Wydania z `books/` mają odrębne tożsamości; powiązanie z workspace’em nie zastępuje zachowania poprzednich wydań.
+Jedna baza cache na workspace oznacza izolację książek, możliwość przebudowy jednej z nich i brak wspólnego writer locka dla ich szczegółów. Tytuł książki nie jest kluczem: dwa workspace’y tej samej książki muszą być niezależne. Identyfikator cache uwzględnia trwały scope_id, tożsamość workspace’u/źródła i jego generację, aby ponowne użycie ścieżki nie podpięło starej zawartości. Absolutny root nie jest częścią tożsamości domenowej. Wydania z `books/` mają odrębne tożsamości; powiązanie z workspace’em nie zastępuje zachowania poprzednich wydań.
 
 Baza ogólna zawiera metadane źródeł i wydań, lokalizacje, powiązania source → workspace, lifecycle, wyniki Inspect, referencje okładek, małe podsumowania Work i rewizję, z której je zbudowano. Nie zawiera tekstów wszystkich książek ani całej historii prób. Work/Books korzystają z niej bez otwierania każdej bazy książki. Dla źródła EPUB bez workspace’u treść Readera można indeksować we własnej bazie źródła; nie tworzymy fikcyjnych checkpointów tłumaczenia. W każdym przypadku brakujące ekstrakcje wykonuje ograniczona kolejka w tle.
 

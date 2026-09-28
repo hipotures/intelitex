@@ -1,4 +1,9 @@
-"""Root-owned JSON job records with in-memory indexes and bounded event replay."""
+"""Root-owned JSON job records, in-memory indexes and bounded event replay.
+
+A checksummed record contains a job, its request receipts and recent activity;
+an atomic manifest switch commits it. No runtime method opens SQLite. Paths are reconstructed
+from the configured root; durable relations use scope/workspace/job IDs.
+"""
 from collections import defaultdict, deque
 from copy import deepcopy
 from dataclasses import asdict, replace
@@ -181,21 +186,26 @@ class JobRegistry:
         ident, checksum = record['job']['job_id'], digest(record)
         metadata = {**self._metadata, 'jobs': {**self._metadata['jobs'], ident: checksum},
                     'cursor_floor': max(self._cursor, (record['job']['last_event'] or {}).get('id', 0))}
-        previous_checksum = self._metadata['jobs'].get(ident)
+        old = self._metadata['jobs'].get(ident)
         try:
             atomic_json(self.path / 'jobs' / (checksum + '.json'), packed_record(record))
+            # Only this switch commits the new record. Interrupted candidates
+            # never become jobs or receipts merely because they exist on disk.
             atomic_json(self.path / 'registry.json', metadata)
         except BaseException:
-            # Do not acknowledge another mutation after a durability failure.
+            # replace may have succeeded before a directory fsync failed. Do not
+            # reuse counters or acknowledge another write until restart/recovery.
             self._failed = True
             raise
         self._metadata = metadata
         self._accept(record)
-        if previous_checksum and previous_checksum != checksum and previous_checksum not in metadata['jobs'].values():
+        if old and old != checksum:
+            # Recent activity is bounded; old unreferenced record versions are
+            # disposable. A cleanup failure cannot undo a committed request.
             try:
-                (self.path / 'jobs' / (previous_checksum + '.json')).unlink(missing_ok=True)
+                (self.path / 'jobs' / (old + '.json')).unlink(missing_ok=True)
             except OSError:
-                pass  # A cleanup failure cannot undo the committed record.
+                pass
 
     def _scope(self, scope):
         return scope == self.scope_id or scope == str(self.root)
