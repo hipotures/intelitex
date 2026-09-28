@@ -16,7 +16,8 @@ SQLite is used solely as an in-memory transactional query engine for the existin
 Store interface. It is reconstructed from JSON, owns no durable state and opens
 no workspace database file. The later persistent, indexed SQLite cache for all
 book documents has **not** been introduced by this stage. Runtime supervision's
-separate `jobs.sqlite3` is outside this checkpoint migration and remains unchanged.
+separate `jobs.sqlite3` was outside this checkpoint migration. The subsequent
+[job registry migration](job-json-migration.md) moves its durable records to JSON too.
 
 ## Transaction boundary
 

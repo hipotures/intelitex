@@ -37,7 +37,7 @@ def api(tmp_path, request):
         (source / f'chapter{index}.html').write_text(f'<h1>Chapter {index + 1}</h1><p>Ada visits the town.</p>')
     app = create_application(provider_factory=LocalImportPool)
     app.projects.import_book(ImportBookCommand(root / 'book', source, chapter_mode='file'))
-    registry = JobRegistry(tmp_path / 'registry' / 'jobs.sqlite3')
+    registry = JobRegistry(root)
     supervisor = JobSupervisor(registry, root, command_factory=lambda spec: [sys.executable, '-u', str(HELPER), 'hold'],
                                interrupt_grace=.3, terminate_grace=.2)
     service = ServerService(app, WorkspaceQueries(app.projects, root), supervisor, import_root=sources)

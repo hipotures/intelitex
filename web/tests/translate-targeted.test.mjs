@@ -9,8 +9,11 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   const server = spawn('uv', ['run', '--group', 'dev', 'python', 'tests/web_fixture_server.py'],
     { cwd: '..', stdio: ['pipe', 'pipe', 'pipe'] })
   let serverError = ''
+  let browser, page
   server.stderr.on('data', chunk => { serverError += chunk })
   t.after(async () => {
+    await page?.unrouteAll({ behavior: 'wait' })
+    await browser?.close()
     server.stdin.end('quit\n')
     await new Promise(resolve => {
       server.once('exit', resolve)
@@ -22,9 +25,8 @@ test('Translate runs one pass, previews output and explains rerun before confirm
     lines.on('line', line => { try { const value = JSON.parse(line); if (value.url) resolve(value) } catch {} })
     server.once('exit', () => reject(new Error(serverError)))
   })
-  const browser = await chromium.launch()
-  t.after(() => browser.close())
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
+  browser = await chromium.launch()
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
   page.setDefaultTimeout(12000)
   const errors = [], failures = []
   page.on('pageerror', error => errors.push(error.message))

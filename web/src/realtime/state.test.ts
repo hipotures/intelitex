@@ -46,3 +46,16 @@ it('replaces an old failed job when a later retry starts or succeeds', () => {
  expect(latestWorkspaceJob('book', failed, { other })?.state).toBe('failed')
  expect(latestWorkspaceJob('book', null, { retry })).toBeNull()
 })
+
+it('drops archived jobs absent from a current bounded snapshot', () => {
+ const initial = snapshot(emptyStream(), {jobs: [job('old'), job('active')], cursor: 50})
+ const next = snapshot(initial, {jobs: [job('active', 6)], cursor: 60}, false)
+ expect(Object.keys(next.jobs)).toEqual(['active'])
+})
+
+it('keeps a newer live job absent from an older in-flight bounded snapshot', () => {
+ const initial = progress(snapshot(emptyStream(), {jobs: [job('new')], cursor: 50}), event(55, 6, 'new')).state
+ const next = snapshot(initial, {jobs: [], cursor: 52}, false)
+ expect(next.jobs.new?.sequence).toBe(6)
+ expect(snapshot(next, {jobs: [], cursor: 56}, false).jobs.new).toBeUndefined()
+})

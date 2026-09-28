@@ -9,7 +9,6 @@ import select
 import shutil
 import signal
 import socket
-import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -255,25 +254,33 @@ def test_ctrl_c_cancels_owned_worker_before_registry_closes(tmp_path):
         readable, _, _ = select.select([process.stdout], [], [], 15)
         assert readable, "Server did not start"
         assert "Intelitex serving" in process.stdout.readline()
-        registry = tmp_path / "state" / "intelitex" / "jobs.sqlite3"
+        registry = workspaces / ".runtime" / "jobs"
+        def current_record():
+            for _ in range(10):
+                header = json.loads((registry.parent / 'registry.json').read_text())
+                if not header['jobs']:
+                    return None
+                checksum = next(iter(header['jobs'].values()))
+                try:
+                    return json.loads((registry / (checksum + '.json')).read_text())['record']
+                except FileNotFoundError:
+                    continue  # The worker committed and retired this version.
+            raise AssertionError('Could not read a stable job record')
         for _ in range(50):
-            with sqlite3.connect(registry) as db:
-                row = db.execute("SELECT data FROM jobs").fetchone()
-                events = db.execute("SELECT data FROM events").fetchall()
-            if (row and json.loads(row[0])["state"] == "running" and
-                    any(json.loads(event[0])["event"]["kind"] == "provider_waiting" for event in events)):
+            record = current_record()
+            if (record and record['job']['state'] == 'running' and
+                    any(event['event']['kind'] == 'provider_waiting' for event in record['events'])):
                 break
             time.sleep(.1)
         else:
             raise AssertionError("Fixture worker did not start")
-        worker_pid = json.loads(row[0])["pid"]
+        worker_pid = record["job"]["pid"]
         process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=15)
         assert process.returncode == 0, stderr
         assert stdout.count("Intelitex stopped.") == 1
         assert not stderr, stderr
-        with sqlite3.connect(registry) as db:
-            final = json.loads(db.execute("SELECT data FROM jobs").fetchone()[0])
+        final = current_record()['job']
         assert final["state"] == "cancelled"
         try:
             os.kill(worker_pid, 0)

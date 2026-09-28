@@ -54,7 +54,7 @@ def runtime(tmp_path):
     for ident in ("a", "b", "c", "success", "fail", "stubborn"):
         (root / ident).mkdir()
         (root / ident / "book.json").write_text("{}")
-    registry = JobRegistry(tmp_path / "runtime" / "jobs.sqlite3", event_limit=30)
+    registry = JobRegistry(root, event_limit=1000)
     def command(spec):
         mode = spec.workspace_id if spec.workspace_id in {"success", "fail", "stubborn"} else "hold"
         return [sys.executable, "-u", str(HELPER), mode]
@@ -193,7 +193,7 @@ def test_shutdown_stops_all_owned_workers_and_escalates(runtime):
 
 
 def test_stale_jobs_abandoned_registry_exclusive_and_events_bounded(tmp_path):
-    path = tmp_path / "registry.sqlite3"
+    path = tmp_path
     registry = JobRegistry(path, event_limit=3)
     with pytest.raises(PipelineError, match="Another Intelitex server"):
         JobRegistry(path)
@@ -450,7 +450,7 @@ def test_explicit_publish_uses_real_worker_and_application(tmp_path):
 
 def test_broker_after_shutdown_does_not_touch_closed_registry(tmp_path):
     from bookpipe.runtime.events import EventBroker
-    registry = JobRegistry(tmp_path / "jobs.sqlite3")
+    registry = JobRegistry(tmp_path)
     broker = EventBroker(registry)
     broker.close()
     registry.close()
@@ -566,7 +566,7 @@ def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, s
     root = tmp_path / "book"
     args = ["--project", str(root), "--quiet"]
     assert main(["import", str(source), *args, "--host", "127.0.0.1", "--port", str(port)]) == 0
-    registry = JobRegistry(tmp_path / "runtime" / "jobs.sqlite3")
+    registry = JobRegistry(tmp_path)
     supervisor = JobSupervisor(registry, tmp_path)
     try:
         def start(operation, limit=0):

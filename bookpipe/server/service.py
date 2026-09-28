@@ -79,17 +79,15 @@ class ServerService:
     def last_job(self, ident):
         resets = self.workspaces.root / ident / 'history' / 'p1_resets'
         reset_time = max((item.stat().st_mtime for item in resets.glob('*/completed.json')), default=None)
-        for job in reversed(self.supervisor.list()):
-            if job.workspace_id != ident:
-                continue
+        def excluded(job):
             if job.operation == 'analyze' and reset_time is not None and job.started_at:
                 try:
-                    if datetime.fromisoformat(job.started_at).timestamp() <= reset_time:
-                        continue
+                    return datetime.fromisoformat(job.started_at).timestamp() <= reset_time
                 except ValueError:
                     pass
-            return job.public()
-        return None
+            return False
+        job = self.supervisor.registry.latest(ident, exclude=excluded)
+        return job.public() if job else None
 
     def capabilities(self):
         return {'import_enabled': self.imports.root is not None, 'review': True, 'reader': True,

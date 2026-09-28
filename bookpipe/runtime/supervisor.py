@@ -40,6 +40,8 @@ class JobSupervisor:
         enable_child_reaping()
         self.registry = registry
         self.workspace_root = str(workspace_root.resolve())
+        if registry.root != workspace_root.resolve():
+            raise ValueError('Registry belongs to another workspace root.')
         self.broker = EventBroker(registry)
         self.command_factory = command_factory
         self.interrupt_grace, self.terminate_grace = interrupt_grace, terminate_grace
@@ -59,7 +61,8 @@ class JobSupervisor:
 
     def active_for_project(self, project: Path) -> Job | None:
         with self.lock:
-            return next((j for j in self.list() if j.project == str(project.resolve()) and j.state in ACTIVE), None)
+            project = project.resolve()
+            return self.registry.active(project.name) if project.parent == Path(self.workspace_root) else None
 
     def owns_project(self, project: Path) -> bool:
         with self.lock:
@@ -67,9 +70,7 @@ class JobSupervisor:
 
     def snapshot(self, *, workspace_id: str | None = None, job_id: str | None = None) -> dict:
         with self.lock:
-            jobs = [j.public() for j in self.list()
-                    if (workspace_id is None or j.workspace_id == workspace_id)
-                    and (job_id is None or j.job_id == job_id)]
+            jobs = [j.public() for j in self.registry.current(workspace_id, job_id)]
             return {"jobs": jobs, "cursor": self.registry.cursor()}
 
     def _state(self, job_id: str, **changes) -> Job:
@@ -84,7 +85,8 @@ class JobSupervisor:
             raise ValueError("Wrong workspace root.")
         with self.lock:
             from ..util import digest
-            fingerprint = request_fingerprint or digest(asdict(spec))
+            fingerprint = request_fingerprint or digest({key: value for key, value in asdict(spec).items()
+                if key not in {'workspace_root', 'project', 'import_root'}})
             if request_key is not None:
                 previous = self.registry.request(self.workspace_root, request_key, fingerprint)
                 if previous is not None:

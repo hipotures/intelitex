@@ -7,7 +7,7 @@ import threading
 
 from ..application.workspaces import WorkspaceQueries
 from ..bootstrap import create_application
-from ..runtime.registry import JobRegistry, default_registry_path
+from ..runtime.registry import JobRegistry
 from ..runtime.supervisor import JobSupervisor
 from .asgi import ASGIServer as IntelitexHTTPServer
 from .service import ServerService
@@ -33,7 +33,9 @@ def serve(workspace_root: Path, bind: str = "127.0.0.1", port: int = 8780, *, im
     try:
         application = create_application()
         workspaces = WorkspaceQueries(application.projects, workspace_root)
-        registry = JobRegistry(default_registry_path())
+        from ..infrastructure.job_migration import complete_requested_migration
+        complete_requested_migration(workspaces.root)
+        registry = JobRegistry(workspaces.root)
         supervisor = JobSupervisor(registry, workspaces.root)
         server_record = register_server(workspaces.root)
         if stopping.is_set():

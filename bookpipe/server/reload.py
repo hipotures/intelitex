@@ -7,14 +7,15 @@ import signal
 import uuid
 
 from ..runtime.models import JobSpec, parse_spec
-from ..runtime.registry import default_registry_path
 from ..util import atomic_json
 
 HANDOFF_ENV = "INTELITEX_RELOAD_HANDOFF"
 
 
 def _state_dir() -> Path:
-    return default_registry_path().parent
+    configured = os.environ.get('XDG_STATE_HOME')
+    base = Path(configured) if configured and Path(configured).is_absolute() else Path.home() / '.local' / 'state'
+    return base / 'intelitex'
 
 
 def _process_start(pid: int) -> str:

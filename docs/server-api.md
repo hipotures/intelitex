@@ -42,7 +42,7 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces/{id}/analysis/units/{unit_id}/preview?page=0` | Five source blocks plus the saved P1 terms and observations that cite them |
 | POST | `/api/imports` | Import input below → job |
 | POST | `/api/workspaces/{id}/jobs` | Pipeline job input below → job |
-| GET | `/api/jobs` | `{jobs:[job],cursor}` |
+| GET | `/api/jobs` | `{jobs:[job],cursor}` — active jobs plus latest job per workspace; not full history |
 | GET | `/api/jobs/{job_id}` | Job |
 | POST | `/api/jobs/{job_id}/stop` | `{}` → job |
 | GET | `/api/events` | SSE snapshot/replay/live progress |

@@ -14,8 +14,13 @@ export function latestWorkspaceJob(workspaceId: string, recorded: Job | null, li
 }
 export function snapshot(state: StreamState, value: { jobs: Job[]; cursor: number }, allowReset = true): StreamState {
   const base = allowReset && value.cursor < state.cursor ? emptyStream() : state
-  const jobs = { ...base.jobs }
-  for (const job of value.jobs) if (!jobs[job.job_id] || job.sequence >= jobs[job.job_id]!.sequence) jobs[job.job_id] = job
+  // A snapshot contains active/latest jobs, not the full archive. Keep a job
+  // omitted by an older HTTP response only if newer live evidence arrived.
+  const jobs = Object.fromEntries(Object.entries(base.jobs).filter(([, job]) => (job.last_event?.id ?? 0) > value.cursor))
+  for (const job of value.jobs) {
+    const current = base.jobs[job.job_id]
+    jobs[job.job_id] = current && current.sequence > job.sequence ? current : job
+  }
   return { ...base, jobs, cursor: Math.max(base.cursor, value.cursor) }
 }
 export function progress(state: StreamState, value: Envelope): { state: StreamState; gap: boolean; applied: boolean } {

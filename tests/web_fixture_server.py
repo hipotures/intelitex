@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='intelitex-browser-') as directory:
     shutil.copytree(source, sources / 'second-book')
     app = bootstrap.create_application()
     app.projects.import_book(ImportBookCommand(workspaces / 'prepared', source))
-    registry = JobRegistry(base / 'registry' / 'jobs.sqlite3')
+    registry = JobRegistry(workspaces)
     supervisor = JobSupervisor(registry, workspaces, command_factory=lambda spec: [sys.executable, __file__, '--worker', str(bundle)], interrupt_grace=.5, terminate_grace=.3)
     service = ServerService(app, WorkspaceQueries(app.projects, workspaces), supervisor, import_root=sources)
     port = int(sys.argv[sys.argv.index('--port') + 1]) if '--port' in sys.argv else 0

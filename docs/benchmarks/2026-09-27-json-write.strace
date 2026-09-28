@@ -1,0 +1,13 @@
+write(3, ""..., 12785789)               = 12785789 <0.002353>
+fsync(3)                                = 0 <0.003333>
+rename("/home/user/translations/.json-trace-ezxwbd95/.book.jsond0wb6n95", "/home/user/translations/.json-trace-ezxwbd95/book.json") = 0 <0.000038>
+fsync(3)                                = 0 <0.000892>
+write(3, ""..., 12785789)               = 12785789 <0.002358>
+fsync(3)                                = 0 <0.003169>
+rename("/home/user/translations/.json-trace-ezxwbd95/.book.jsonq_zlbfr9", "/home/user/translations/.json-trace-ezxwbd95/book.json") = 0 <0.000873>
+fsync(3)                                = 0 <0.000887>
+write(3, ""..., 12785789)               = 12785789 <0.002077>
+fsync(3)                                = 0 <0.003368>
+rename("/home/user/translations/.json-trace-ezxwbd95/.book.jsonunikq_bl", "/home/user/translations/.json-trace-ezxwbd95/book.json") = 0 <0.000586>
+fsync(3)                                = 0 <0.001067>
++++ exited with 0 +++

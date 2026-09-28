@@ -39,6 +39,13 @@ def parser() -> argparse.ArgumentParser:
     migration_scope.add_argument('--project', type=Path)
     migration_scope.add_argument('--workspace-root', type=Path)
     migration.add_argument('--verify', action='store_true', help='Read-only JSON validation and retired-database drift check.')
+    jobs_migration = sub.add_parser('migrate-jobs', help='Migrate the legacy job registry to portable JSON beneath workspace-root.')
+    jobs_migration.add_argument('--workspace-root', type=Path, required=True)
+    jobs_migration.add_argument('--source', type=Path, help='Legacy jobs.sqlite3; defaults to the previous XDG state location.')
+    jobs_migration.add_argument('--previous-root', type=Path, help='Explicit old scope when data was already moved.')
+    jobs_mode = jobs_migration.add_mutually_exclusive_group()
+    jobs_mode.add_argument('--verify', action='store_true', help='Check JSON migration export and retained SQLite file hashes.')
+    jobs_mode.add_argument('--on-reload', action='store_true', help='Request migration at the next server reload, after old writers stop.')
     pipeline_commands = (
         ("import", "Import an unpacked EPUB/HTML folder; plan chapters and chunks without translating."),
         ("analyze", "P1 over the whole book with cumulative memory; then stop for review."),
@@ -186,6 +193,22 @@ def _render_status(result, ui: Display) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == 'migrate-jobs':
+        from .infrastructure.job_migration import migrate_jobs, request_migration_on_reload, verify_jobs
+        try:
+            if args.on_reload and args.previous_root is not None:
+                raise ValueError('--previous-root applies only to offline migration.')
+            if args.verify:
+                result = verify_jobs(args.workspace_root)
+            elif args.on_reload:
+                result = request_migration_on_reload(args.workspace_root, args.source)
+            else:
+                result = migrate_jobs(args.workspace_root, args.source, previous_root=args.previous_root)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result.get('verified', True) else 1
+        except (PipelineError, OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
+            print(f'ERROR: {exc}', file=sys.stderr)
+            return 1
     if args.command == 'migrate-state':
         from .infrastructure.state_migration import migrate_state, migrate_workspaces, verify_state, verify_workspaces
         try:

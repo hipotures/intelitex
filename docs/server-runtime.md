@@ -86,15 +86,14 @@ it against its own checkpoint snapshot. No read snapshot or project lock is held
 for the lifetime of SSE. Usage inspection reads existing artifact reports without
 claiming the writer lock.
 
-The separate runtime registry is `$XDG_STATE_HOME/intelitex/jobs.sqlite3`, falling
-back to `~/.local/state/intelitex/jobs.sqlite3` when XDG state home is absent or not
-absolute. It uses WAL and private file permissions. A lifetime registry lock
-prevents a second server from concurrently owning the same registry or abandoning
-its live jobs. It stores job metadata and the latest 1,000 events per job. Detailed
-prompts, responses, credentials, auth files, and raw attempt evidence are excluded.
-Job rows are retained across restarts; event history is bounded per job, not a
-replacement for project evidence. A server exposes only records for its configured
-workspace root.
+The runtime registry lives under `<workspace-root>/.runtime/` as checksummed
+JSON job records selected by an atomic `registry.json` manifest. The lifetime
+`.runtime.lock` prevents two supervisors from owning it. Startup builds in-memory
+indexes once; active/latest-job lookups and bounded SSE snapshots do not scan the
+full job archive. Each job retains up to 120 events and the global SSE replay
+buffer holds up to 1,000 events. Explicit job and request-receipt lookups retain
+access to older records. XDG state contains only local process/reload control.
+See [job migration and guarantees](job-json-migration.md).
 
 On startup, earlier `starting`, `running`, and `stopping` records become
 `abandoned`. Version 1 does **not** re-adopt workers or signal historical PIDs.
@@ -205,7 +204,7 @@ disconnected subscribers never cancel jobs or block worker event ingestion.
 
 - `runtime/models.py`, `protocol.py`, `worker.py`: DTOs, metadata protocol, execution.
 - `runtime/supervisor.py`, `processes.py`: lifecycle, exclusion, owned cancellation.
-- `runtime/registry.py`, `events.py`: WAL job/event persistence and replay/wakeups.
+- `runtime/registry.py`, `events.py`: JSON job/receipt persistence, indexed lookups and bounded event replay.
 - `application/workspaces.py`, `sessions.py`, `infrastructure/read_store.py`:
   confined workspace discovery and read-only project snapshots.
 - `server/service.py`, `http.py`, `__init__.py`: control/query adaptation, HTTP/SSE,
