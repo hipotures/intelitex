@@ -28,7 +28,7 @@ class OperationsService:
     def _offline(self, project, operation):
         root = project.resolve()
         with OperationScope(self.dependencies, root, self.progress):
-            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             return ReportResult(copy.deepcopy(operation(root)))
 
     def profiles(self, command: ProfilesCommand) -> ReportResult:
@@ -45,7 +45,7 @@ class OperationsService:
     def usage(self, command: UsageCommand) -> ReportResult:
         root = command.project.resolve()
         with ProjectReadScope(self.dependencies, root):
-            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             return ReportResult(copy.deepcopy(usage_report(root)))
 
     def usage_by_unit(self, command: UsageByUnitCommand) -> UsageByUnitResult:
@@ -62,7 +62,7 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
             providers = scope.providers(settings, profile=command.profile)
             return ReportResult(copy.deepcopy(providers.discover(command.pass_no)))
@@ -74,7 +74,7 @@ class OperationsService:
             raise PipelineError("pass_no must be an integer from 1 through 5.")
         root = command.project.resolve()
         with OperationScope(self.dependencies, root, self.progress) as scope:
-            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
             provider = scope.providers(settings, profile=command.profile).for_pass(command.pass_no)
             stamp = str(time.time_ns())

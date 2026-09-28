@@ -144,6 +144,7 @@ class ReaderSession:
         try:
             load_valid_book(
                 self.project, self.dependencies.plan_fingerprint, self.dependencies.files,
+                readonly=True,
             )
             context = ReaderContext(self.project)
             markers = MarkerRepository(self.project, context, self.dependencies.files)
@@ -231,7 +232,7 @@ class ReaderService:
         # Same lock as the compatibility Reader, held only for this mutation.
         project = project.resolve()
         with self.dependencies.reader_lock(project):
-            load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files)
+            load_valid_book(project, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             repository = MarkerRepository(project, files=self.dependencies.files)
             if operation == "create":
                 return repository.create(value, revision)

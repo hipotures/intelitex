@@ -17,6 +17,7 @@ class LocalProjectFiles:
     def __init__(self):
         self._books = OrderedDict()
         self._books_lock = threading.Lock()
+        self._book_load_locks = tuple(threading.Lock() for _ in range(32))
 
     def validated_book(self, path, fingerprint, *, readonly=False):
         """Bounded immutable-source snapshot, invalidated by replacement or edit.
@@ -25,11 +26,16 @@ class LocalProjectFiles:
         read-only projections borrow the parsed manifest; no workflow state is cached.
         """
         from ..util import PipelineError
-        with self._books_lock:
+        # Serialize loads of the same file without holding the shared cache lock
+        # during JSON parsing and fingerprint validation.
+        with self._book_load_locks[hash(path) % len(self._book_load_locks)]:
             stat = path.stat()
             stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
             key = (path, fingerprint)
-            cached = self._books.get(key)
+            with self._books_lock:
+                cached = self._books.get(key)
+                if cached is not None and cached[0] == stamp:
+                    self._books.move_to_end(key)
             if cached is None or cached[0] != stamp:
                 book = self.read_json(path)
                 if book.get('content_fingerprint') != fingerprint(book):
@@ -37,12 +43,13 @@ class LocalProjectFiles:
                 after = path.stat()
                 if stamp != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                     raise PipelineError('Source manifest changed while reading. Retry the request.')
-                self._books[key] = (stamp, book)
-                while len(self._books) > 4:
-                    self._books.popitem(last=False)
+                with self._books_lock:
+                    self._books[key] = (stamp, book)
+                    self._books.move_to_end(key)
+                    while len(self._books) > 32:
+                        self._books.popitem(last=False)
             else:
                 book = cached[1]
-            self._books.move_to_end(key)
         return book if readonly else copy.deepcopy(book)
 
     def exists(self, path: Path) -> bool:
