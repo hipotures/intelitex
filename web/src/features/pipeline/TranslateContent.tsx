@@ -127,6 +127,61 @@ export function recordedProfileNames(usage: Usage | undefined, passNo: number) {
     .map(pass => pass.profile ?? 'Unknown profile')) ?? [])]
 }
 
+export function recordedProfileGroups(usage: Usage | undefined, passNo: number) {
+  if (!usage) return []
+  type Pass = Usage['units'][number]['passes'][number]
+  const identity = (pass: Pass) => JSON.stringify([pass.provider, pass.profile, pass.requested_model])
+  const contacted = (pass: Pass) => pass.provider_call_count > 0 || pass.unknown_provider_call_count > 0
+  const groups = new Map<string, Pass>()
+  for (const unit of usage.units) {
+    for (const pass of unit.passes) {
+      if (pass.pass_no === passNo && contacted(pass)) groups.set(identity(pass), pass)
+    }
+  }
+  return [...groups].map(([key, pass]) => {
+    const units = usage.units.map(unit => ({ ...unit,
+      passes: unit.passes.filter(item => item.pass_no === passNo && identity(item) === key),
+    })).filter(unit => unit.passes.length)
+    return {
+      key, profile: pass.profile ?? 'Unknown profile', provider: pass.provider,
+      model: pass.requested_model ?? pass.reported_model ?? 'Unknown model',
+      chunks: new Set(units.filter(unit => unit.passes.some(contacted)).map(unit => unit.unit_id)).size,
+      usage: { ...usage, units },
+    }
+  }).sort((a, b) => a.profile.localeCompare(b.profile) || a.model.localeCompare(b.model) || a.key.localeCompare(b.key))
+}
+
+export function RecordedProviderUsage({ pipeline, usage }: { pipeline: Pipeline; usage: Usage | undefined }) {
+  return <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr>
+    <th>Pass</th><th>Used profile(s)</th><th>Chunks</th>
+    {tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th>
+  </tr></thead>{passNumbers.map(number => {
+    const groups = recordedProfileGroups(usage, number)
+    const used = recordedProfileNames(usage, number)
+    const saved = pipeline.units.filter(item => item.passes[String(number)]?.retained_count).length
+    const completed = pipeline.units.filter(item => item.passes[String(number)]?.checkpoint_state === 'completed').length
+    const cost = translationCost(usage, { passNo: number })
+    const breakdown = groups.length > 1
+    return <tbody key={number}>
+      <tr className={breakdown ? 'translate-provider-total' : undefined}>
+        <td>P{number}</td><td title={used.join(', ')}>{breakdown ? 'Total' : used.length ? used.join(', ') : '—'}</td>
+        <td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>
+        {totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}
+        <td className="num" title={cost.note}>{cost.text}</td>
+      </tr>
+      {breakdown && groups.map(group => {
+        const groupCost = translationCost(group.usage, { passNo: number })
+        return <tr className="translate-provider-detail" key={group.key}>
+          <td>↳ P{number}</td><td title={[group.provider ?? 'Unknown provider', group.model].join(' · ')}>{group.profile}<small>{group.model}</small></td>
+          <td title="Chunks with recorded provider calls for this profile and model. A chunk may appear in several rows after retries or model changes.">{group.chunks} used</td>
+          {totals(group.usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}
+          <td className="num" title={groupCost.note}>{groupCost.text}</td>
+        </tr>
+      })}
+    </tbody>
+  })}</table></div>
+}
+
 export function TranslateContent({ id, pipeline, usage, profiles, usageError }: {
   id: string; pipeline: Pipeline; usage?: Usage; profiles?: Profiles; usageError: unknown
 }) {
@@ -323,13 +378,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           })}</tr>)}
         </tbody></table></div>
         <h3 className="translate-summary-heading">Recorded provider usage</h3>
-        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead><tbody>{passNumbers.map(number => {
-          const used = recordedProfileNames(usage, number)
-          const saved = pipeline.units.filter(item => item.passes[String(number)]?.retained_count).length
-          const completed = pipeline.units.filter(item => item.passes[String(number)]?.checkpoint_state === 'completed').length
-          const cost = translationCost(usage, { passNo: number })
-          return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}<td className="num" title={cost.note}>{cost.text}</td></tr>
-        })}</tbody></table></div>
+        <RecordedProviderUsage pipeline={pipeline} usage={usage} />
         <h3 className="translate-summary-heading">Usage by chunk</h3>
         <div className="diagnostic-scroll"><table className="phase-detail-table translate-usage-table"><thead><tr><th>Chunk / pass</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead>{pipeline.units.map(item => {
           const recorded = usageByUnit.get(item.id)
