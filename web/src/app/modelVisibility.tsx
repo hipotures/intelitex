@@ -27,8 +27,8 @@ export function useModelVisibility() {
 
 export function ProfileOptions({ profiles, selected }: { profiles?: Profiles['profiles']; selected?: string | null }) {
   const { hidden } = useModelVisibility()
-  return profiles?.filter(profile => !hidden.has(profile.name) || profile.name === selected).map(profile =>
-    <option key={profile.name} value={profile.name} disabled={!profile.enabled || hidden.has(profile.name)}>
+  return profiles?.filter(profile => profile.enabled && (!hidden.has(profile.name) || profile.name === selected)).map(profile =>
+    <option key={profile.name} value={profile.name} disabled={hidden.has(profile.name)}>
       {profile.name}{hidden.has(profile.name) ? ' (hidden · current assignment)' : ''}
     </option>,
   )
