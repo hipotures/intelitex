@@ -228,7 +228,7 @@ def test_profile_resolution_records_both_wire_formats(project):
     settings = {"profiles": {}, "default_profile": "codex-sol-low", "passes": {"2": {"max_tokens": 1000}}}
     _, profile, _ = resolve_profile(settings, 2, project=project)
     assert profile["options"]["p1_wire_format"] == "compact-v1"
-    assert profile["options"]["translation_wire_format"] == "cache-v1"
+    assert profile["options"]["translation_wire_format"] == "cache-v2"
 
 
 def test_default_transport_enables_translation_cache_and_preserves_compact_p1(project):
@@ -236,11 +236,11 @@ def test_default_transport_enables_translation_cache_and_preserves_compact_p1(pr
     provider.settings["options"] = {}
     assert body_for(provider, 1)["wire_format"] == "compact-v1"
     bodies = [body_for(provider, n) for n in range(2, 6)]
-    assert all(body["wire_format"] == "cache-v1" for body in bodies)
+    assert all(body["wire_format"] == "cache-v2" for body in bodies)
     assert len({body["cache_diagnostics"]["cache_identity_sha256"] for body in bodies}) == 1
 
 
-@pytest.mark.parametrize("wire", [None, "canonical", "cache-v1"])
+@pytest.mark.parametrize("wire", [None, "canonical", "cache-v1", "cache-v2"])
 def test_existing_project_profiles_use_cache_default_and_respect_explicit_rollback(project, wire):
     profile = copy.deepcopy(client(project).resolved_profile)
     profile["options"] = {} if wire is None else {"translation_wire_format": wire}
@@ -248,16 +248,19 @@ def test_existing_project_profiles_use_cache_default_and_respect_explicit_rollba
                 "passes": {"2": {"max_tokens": 1000}}}
     _, resolved, _ = resolve_profile(settings, 2, project=project)
     assert resolved["options"]["p1_wire_format"] == "compact-v1"
-    assert resolved["options"]["translation_wire_format"] == (wire or "cache-v1")
+    assert resolved["options"]["translation_wire_format"] == (wire or "cache-v2")
     provider = CodexAppServerClient({**resolved, "resolved_profile": resolved,
                                     "profile_name": "custom", "project_root": str(project)}, Display(True))
     body = body_for(provider, 2)
-    assert body["wire_format"] == (wire or "cache-v1")
+    assert body["wire_format"] == (wire or "cache-v2")
     if wire == "canonical":
         assert json.loads(body["input"]) == inputs_for(2)
         assert body["output_schema"] == response_schema(2, inputs_for(2))
-    else:
+    elif wire == "cache-v1":
         assert body["output_schema"] == TRANSPORT_SCHEMA
+    else:
+        from bookpipe.codex_cache_v2 import TRANSPORT_SCHEMA as V2_SCHEMA
+        assert body["output_schema"] == V2_SCHEMA
 
 
 @pytest.mark.parametrize("setting,value", [("model", "another-model"), ("reasoning_effort", "high")])

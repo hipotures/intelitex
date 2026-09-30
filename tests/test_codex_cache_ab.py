@@ -112,3 +112,63 @@ def test_report_accounts_for_validation_retries(prepared):
     assert result["passes"][1]["input_tokens"] == 300
     assert len(result["passes"][1]["attempts"]) == 2
     assert result["wall_time_seconds"] is None
+
+
+def test_offline_sizes_encode_same_accepted_tasks_without_provider_calls(prepared, monkeypatch):
+    _, scratch = prepared
+    monkeypatch.setattr(ab, "CodexAppServerClient", lambda *a: (_ for _ in ()).throw(AssertionError("offline opened provider")))
+    result = ab.offline_sizes(scratch)
+    assert {r["wire_format"] for r in result["rows"]} == {"canonical", "cache-v1", "cache-v2"}
+    assert all(r["roundtrip_valid"] for r in result["rows"])
+    assert len({r["source_text_utf8_bytes"] for r in result["rows"]}) == 1
+    assert result["provider_cache_hits_measured"] is False
+    assert read_json(scratch / "sizes.json") == result
+
+
+def test_same_task_p3_variants_freeze_audit_and_run_only_p3(prepared, tmp_path, monkeypatch):
+    project, _ = prepared
+    store = Store(project)
+    try:
+        Runner(store, SyntheticCodex(project, wire="canonical"), SETTINGS, Display(True)).run(3, "pass3/chunk1", inputs_for(3))
+    finally: store.close()
+    scratch = tmp_path / "p3-benchmark"
+    assert ab.prepare(project, "chunk1", scratch, "codex-sol-high", 3)["pass_no"] == 3
+    frozen = ab.load_frozen(scratch)
+    assert frozen["profile"]["model"] == "gpt-6.1-sol" and frozen["profile"]["reasoning_effort"] == "high"
+    from test_codex_cache_v2 import OfflineV2
+    calls = []
+    class Offline(OfflineV2):
+        def __init__(self, profile, ui):
+            super().__init__(Path(profile["project_root"]), profile["options"]["translation_wire_format"])
+        def generate(self, body, directory, recorder):
+            calls.append(body["pass_no"])
+            return super().generate(body, directory, recorder)
+    monkeypatch.setattr(ab, "CodexAppServerClient", Offline)
+    for wire in ("canonical", "cache-v1", "cache-v2"):
+        assert ab.run(scratch, wire)["status"] == "completed"
+        semantic = read_json(next((scratch / wire / "artifacts").rglob("request.semantic.json")))
+        assert semantic["input_payload"] == inputs_for(3)
+        assert semantic["trusted_instructions"] == PROMPTS[3]
+    assert calls == [3, 3, 3]
+    report = ab.report(scratch)
+    assert all(v["time_to_valid_result_seconds"] is not None for v in report["variants"].values())
+    assert all(v["totals"]["cached_input_tokens"] is None for v in report["variants"].values())
+
+
+def test_event_timings_distinguish_submission_reasoning_answer_completion_and_validation(tmp_path):
+    path = tmp_path / "transport.jsonl"
+    rows = [
+        {"timestamp": "2026-09-30T01:00:00Z", "direction": "outbound", "kind": "rpc", "payload": {"method": "turn/start"}},
+        {"timestamp": "2026-09-30T01:00:01Z", "direction": "inbound", "kind": "rpc", "payload": {"method": "item/reasoning/summaryTextDelta"}},
+        {"timestamp": "2026-09-30T01:00:03Z", "direction": "inbound", "kind": "rpc", "payload": {"method": "item/agentMessage/delta"}},
+        {"timestamp": "2026-09-30T01:00:04Z", "direction": "inbound", "kind": "rpc", "payload": {"method": "turn/completed"}},
+        {"timestamp": "2026-09-30T01:00:05Z", "direction": "local", "kind": "validation_started", "payload": {}},
+        {"timestamp": "2026-09-30T01:00:06Z", "direction": "local", "kind": "validation_completed", "payload": {}},
+    ]
+    import json
+    path.write_text("\n".join(json.dumps(row) for row in rows))
+    result = ab.event_timings(tmp_path)
+    assert result["submission_to_completion_seconds"] == 4
+    assert result["local_validation_seconds"] == 1
+    assert result["first_reasoning_at"] != result["first_answer_delta_at"]
+    assert ab.event_timings(tmp_path / "missing")["first_reasoning_at"] is None

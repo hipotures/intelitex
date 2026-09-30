@@ -1,5 +1,8 @@
 # Codex cache-v1
 
+For the optional compact P2–P5 codec, see [cache-v2](codex-cache-v2.md).
+cache-v1 retains its original wire contract and P1 compatibility.
+
 cache-v1 optimizes implicit input prefixes across independent Codex app-server
 requests. Canonical prompts, inputs, schemas, fingerprints, results/checkpoints,
 P1 ordering/unit boundaries, and translation chunk boundaries remain unchanged.
@@ -8,8 +11,8 @@ never depends on a cache hit.
 
 ## Configuration and rollback
 
-Codex profiles default to cache-v1 for P2–P5 and compact-v1 for P1, including
-existing project profiles that omit wire-format options. The explicit equivalent is:
+Codex profiles now default to cache-v2 for P2–P5 and compact-v1 for P1.
+To select the original cache-v1 transport explicitly, use:
 
 ~~~json
 "options": {
@@ -19,15 +22,14 @@ existing project profiles that omit wire-format options. The explicit equivalent
 }
 ~~~
 
-P2–P5 accept cache-v1 (default) or canonical. P1 accepts compact-v1 (default),
+P2–P5 accept cache-v2 (default), cache-v1, or canonical. P1 accepts compact-v1 (default),
 canonical, or cache-v1. Unknown values and explicit nulls fail closed. Profile
 resolution/evidence records both choices. Response metadata records wire_format.
 Other providers are unaffected. For rollback, set translation_wire_format to
 canonical in the selected profile's options. Accepted checkpoints stay valid.
 
 For GPT-6.1 Sol, select a built-in codex-sol-low (or another effort) profile using
-the existing --profile or --pass-profile interface. No profile copy is required
-to enable cache-v1. Restart or checkpoint-safely reload a running server after
+the existing --profile or --pass-profile interface. Set translation_wire_format explicitly to cache-v1 for this rollback format. Restart or checkpoint-safely reload a running server after
 updating code so new workers use the new default.
 
 Tests cover semantic data and codec equivalence. The shared developer contract

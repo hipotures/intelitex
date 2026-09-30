@@ -150,6 +150,14 @@ class AttemptRecorder:
         self._write_json("decoded.canonical.json", value)
         self._remember("decoded.canonical.json")
 
+    def codec_context(self, value: dict[str, Any]) -> None:
+        self._write_json("codec.context.json", value)
+        self._remember("codec.context.json")
+
+    def validation(self, value: dict[str, Any]) -> None:
+        self._write_json("validation.json", value)
+        self._remember("validation.json")
+
     def cache_layout(self, value: dict[str, Any]) -> None:
         self._write_json("cache_layout.json", value)
         self._remember("cache_layout.json")

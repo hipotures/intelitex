@@ -204,10 +204,10 @@ measured with this same conservative byte counter when a Codex profile is used.
 
 ### Compact Codex Pass-1 wire format
 
-Codex uses `cache-v1` by default for independent P2–P5 requests; P1 can opt in.
+Codex uses `cache-v2` by default for independent P2–P5 requests. P1 remains `compact-v1`.
 It shares developer instructions and a structured transport schema,
 places source/context first, and keeps the P3 draft ahead of other P4/P5 data.
-See [Codex cache-v1](docs/codex-cache.md) for settings, rollback, evidence and
+See [Codex cache-v2](docs/codex-cache-v2.md) for settings, rollback, evidence and
 exact commands for a one-chunk GPT-6.1 Sol A/B measurement. Canonical fingerprints
 and checkpoints remain unchanged.
 
@@ -251,8 +251,10 @@ transport and does not change semantic task identity:
 }
 ```
 
-Passes 2-5 and the llama.cpp and native OpenAI transports intentionally remain
-canonical.
+Codex P2–P5 use the [cache-v2 compact codec](docs/codex-cache-v2.md):
+local block/sentence indices, reversible memory/artifact encoding and a fixed flat
+structured schema. Existing profiles without a wire option inherit it globally; P1 remains unchanged. Canonical and cache-v1 remain rollback options.
+The llama.cpp and native OpenAI transports retain their existing representations.
 
 Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When
 JSON checkpoint state exists, Intelitex first creates a JSON state backup under `backups/`.
