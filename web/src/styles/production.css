@@ -487,6 +487,9 @@ body:has(dialog.drawer[open])::before { display:none; }
 /* Debug badges are a presentation-only overlay. The DOM ID stays available when off. */
 .debug-setting { display:flex;align-items:center;gap:10px; }
 .debug-setting input { width:16px;height:16px;accent-color:var(--accent); }
+.model-visibility { display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer; }
+.model-visibility input { width:16px;height:16px;accent-color:var(--accent); }
+.model-config-name, .model-config-desc { overflow-wrap:anywhere; }
 html[data-ui-debug="on"] [data-ui-debug-id]:not(.topbar):not(.reader-selection):not(dialog) { position:relative; }
 html[data-ui-debug="on"] [data-ui-debug-id="WRK"],
 html[data-ui-debug="on"] [data-ui-debug-id="WHT"] { outline:1px dashed color-mix(in srgb,var(--accent) 55%,transparent); }

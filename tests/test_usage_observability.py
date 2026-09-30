@@ -127,7 +127,7 @@ def _attempt(root, task_key, number, *, pass_no, unit_identity=None, generation=
     identity = {
         "pass": pass_no, "task_key": task_key, "attempt_number": number,
         "attempt_id": f"fp-{pass_no}-{number}", "provider": "codex",
-        "profile": "codex-sol-medium", "requested_model": "gpt-5.6-sol",
+        "profile": "codex-sol-medium", "requested_model": "gpt-6.1-sol",
     }
     if unit_identity:
         identity.update(unit_identity)
@@ -140,7 +140,7 @@ def _attempt(root, task_key, number, *, pass_no, unit_identity=None, generation=
         generation=generation, validation=validation,
         metadata={"elapsed_seconds": elapsed,
                   "status": "preflight_failed" if generation == "not_submitted" else generation,
-                  "reported_model": "gpt-5.6-sol"},
+                  "reported_model": "gpt-6.1-sol"},
         error={"type": "FixtureError", "message": "fixture"} if generation != "completed" else None,
     )
     if accepted:
@@ -212,7 +212,7 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
     assert p1.analysis_unit_id == "ch0001_a001"
     assert p1.passes[0].preflight_input.unit == "tokens"
     assert p1.passes[0].cost.status == "partial"  # Missing cache breakdown stays unknown.
-    assert p1.passes[0].cost.amount == 3 * 20 / 1_000_000
+    assert p1.passes[0].cost.amount == 3 * 10 / 1_000_000
     assert "Current catalog rates" in p1.passes[0].cost.note
     assert read_json(p1_attempt / "pricing.json") == {"rate": None, "estimate_status": "unknown"}
 
@@ -222,9 +222,9 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
     assert [item.pass_no for item in chunk.passes] == [2, 3, 4, 5]
     row = chunk.passes[0]
     assert (row.provider, row.profile, row.requested_model) == (
-        "codex", "codex-sol-medium", "gpt-5.6-sol",
+        "codex", "codex-sol-medium", "gpt-6.1-sol",
     )
-    assert row.reported_model == "gpt-5.6-sol"
+    assert row.reported_model == "gpt-6.1-sol"
     assert row.cost is None  # Current-rate fallback is deliberately limited to P1.
     assert row.physical_attempt_count == 4 and row.provider_call_count == 3
     assert row.retry_count == 3 and row.failed_attempt_count == 2

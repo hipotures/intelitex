@@ -629,13 +629,14 @@ def test_builtin_codex_profiles_are_available_without_per_project_copies(tmp_pat
     }
 
     builtins = builtin_codex_profiles()
-    assert len(builtins) == 23
+    assert len(builtins) == 15
+    assert not any(name.startswith("codex-terra-") or name.endswith("-none") for name in builtins)
     assert "codex-sol-medium" not in settings["profiles"]
     name, profile, provenance = resolve_profile(
         settings, 4, command_profile="codex-sol-medium", project=tmp_path
     )
     assert name == "codex-sol-medium"
-    assert profile["model"] == "gpt-5.6-sol"
+    assert profile["model"] == "gpt-6.1-sol"
     assert profile["reasoning_effort"] == "medium"
     assert profile["options"]["auth_source"] == "~/.codex/auth.json"
     assert provenance == {"profile": "command_profile_override"}

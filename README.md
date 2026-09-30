@@ -113,8 +113,8 @@ silently represented as zero. For example (abridged):
       "task_key": "pass2/ch0016_c0004",
       "provider": "codex",
       "profile": "codex-sol-medium",
-      "requested_model": "gpt-5.6-sol",
-      "reported_model": "gpt-5.6-sol",
+      "requested_model": "gpt-6.1-sol",
+      "reported_model": "gpt-6.1-sol",
       "physical_attempt_count": 1,
       "accepted_attempt_id": "<fingerprint>-001",
       "input_tokens": {"value": 27318, "known_attempts": 1, "unknown_attempts": 0},
@@ -177,8 +177,10 @@ user configuration, skills, rules, memories, plugins and trust settings are not.
 
 Intelitex also provides central Codex profiles to every project without copying
 them into each book's `settings.json`. Profile names follow
-`codex-{astra|sol|terra|luna}-{effort}`. Astra includes `low`, `medium`, `high`,
-`xhigh`, and `max`; Sol, Terra, and Luna additionally include `none`. They use
+`codex-{astra|sol|luna}-{effort}`, using `gpt-6-astra`, `gpt-6.1-sol`, and
+`gpt-6-luna`, respectively. All three include `low`, `medium`, `high`, `xhigh`,
+and `max`, verified through Codex `model/list`. The Codex profiles exclude
+`none`, which is not advertised by these models in the app-server. They use
 `~/.codex/auth.json` as the authentication source. A project-local profile with
 the same name overrides the built-in definition. For example:
 

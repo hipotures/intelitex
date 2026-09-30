@@ -21,9 +21,8 @@ COMMON_KEYS = {
 
 _BUILTIN_CODEX_MODELS = {
     "astra": ("gpt-6-astra", ("low", "medium", "high", "xhigh", "max")),
-    "sol": ("gpt-5.6-sol", ("none", "low", "medium", "high", "xhigh", "max")),
-    "terra": ("gpt-5.6-terra", ("none", "low", "medium", "high", "xhigh", "max")),
-    "luna": ("gpt-5.6-luna", ("none", "low", "medium", "high", "xhigh", "max")),
+    "sol": ("gpt-6.1-sol", ("low", "medium", "high", "xhigh", "max")),
+    "luna": ("gpt-6-luna", ("low", "medium", "high", "xhigh", "max")),
 }
 
 
