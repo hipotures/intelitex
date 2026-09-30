@@ -8,7 +8,8 @@ never depends on a cache hit.
 
 ## Configuration and rollback
 
-Add these options to a Codex profile:
+Codex profiles default to cache-v1 for P2–P5 and compact-v1 for P1, including
+existing project profiles that omit wire-format options. The explicit equivalent is:
 
 ~~~json
 "options": {
@@ -18,20 +19,20 @@ Add these options to a Codex profile:
 }
 ~~~
 
-P2–P5 accept canonical (default) or cache-v1. P1 accepts compact-v1 (default),
+P2–P5 accept cache-v1 (default) or canonical. P1 accepts compact-v1 (default),
 canonical, or cache-v1. Unknown values and explicit nulls fail closed. Profile
 resolution/evidence records both choices. Response metadata records wire_format.
-Other providers are unaffected. Rollback changes only the respective setting.
+Other providers are unaffected. For rollback, set translation_wire_format to
+canonical in the selected profile's options. Accepted checkpoints stay valid.
 
-For GPT-6.1 Sol, copy a built-in codex-sol-low (or another effort) profile into
-project settings under a distinct name, retaining its model, context, reserves,
-timeout and auth reference, and add the options above. Select it using the
-existing --profile or --pass-profile interface.
+For GPT-6.1 Sol, select a built-in codex-sol-low (or another effort) profile using
+the existing --profile or --pass-profile interface. No profile copy is required
+to enable cache-v1. Restart or checkpoint-safely reload a running server after
+updating code so new workers use the new default.
 
-Canonical remains the translation default for the first A/B run. Tests prove
-semantic data and codec equivalence. The shared developer contract is larger
-and the string envelope requires JSON escaping; actual latency, output cost,
-model compliance and cache reads need measurement before changing defaults.
+Tests cover semantic data and codec equivalence. The shared developer contract
+is larger and the string envelope requires JSON escaping; actual latency,
+output cost, model compliance and cache reads still require provider measurements.
 
 ## Exact wire structure
 

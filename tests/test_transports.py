@@ -571,7 +571,8 @@ def test_all_real_pass_schemas_compile_for_native_transports(tmp_path, quiet_ui,
     codex = CodexAppServerClient({
         "profile_name": "c", "resolved_profile": {}, "provider": "codex", "model": "opaque/model:id",
         "context_size": 100000, "planning_output_reserve": 1000, "request_timeout": 1,
-        "reasoning_effort": "low", "executable": "codex", "options": {"p1_wire_format": "canonical"},
+        "reasoning_effort": "low", "executable": "codex",
+        "options": {"p1_wire_format": "canonical", "translation_wire_format": "canonical"},
         "project_root": str(tmp_path),
     }, quiet_ui)
     vllm = VLLMClient({

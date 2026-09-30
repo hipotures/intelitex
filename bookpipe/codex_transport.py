@@ -281,7 +281,7 @@ class CodexAppServerClient:
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
         options = self.settings.get("options", {})
-        wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "canonical")
+        wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "cache-v1")
         allowed = ("compact-v1", "canonical", "cache-v1") if pass_no == 1 else ("canonical", "cache-v1")
         if wire_format not in allowed:
             label = "Pass-1" if pass_no == 1 else f"P{pass_no}"

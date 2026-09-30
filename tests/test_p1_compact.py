@@ -176,7 +176,7 @@ def _codex_client(tmp_path, options=None):
     }, Display(True))
 
 
-def test_codex_p1_defaults_compact_but_other_passes_and_rollback_are_canonical(tmp_path, canonical_inputs):
+def test_codex_p1_defaults_compact_and_canonical_rollback_is_available_for_all_passes(tmp_path, canonical_inputs):
     schema = response_schema(1, canonical_inputs)
     client = _codex_client(tmp_path)
     compact = client.body(P1_PROMPT, canonical_inputs, schema, 1)
@@ -194,7 +194,8 @@ def test_codex_p1_defaults_compact_but_other_passes_and_rollback_are_canonical(t
     assert json.loads(rollback["input"]) == canonical_inputs
 
     for pass_no in range(2, 6):
-        body = _codex_client(tmp_path).body("canonical prompt", {"SOURCE_BLOCKS": []}, {"type": "object"}, pass_no)
+        body = _codex_client(tmp_path, {"translation_wire_format": "canonical"}).body(
+            "canonical prompt", {"SOURCE_BLOCKS": []}, {"type": "object"}, pass_no)
         assert body["wire_format"] == "canonical"
         assert json.loads(body["input"]) == {"SOURCE_BLOCKS": []}
 

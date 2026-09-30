@@ -204,8 +204,8 @@ measured with this same conservative byte counter when a Codex profile is used.
 
 ### Compact Codex Pass-1 wire format
 
-Codex also offers an optional `cache-v1` layout for independent P2–P5 requests
-and P1. It shares developer instructions and a structured transport schema,
+Codex uses `cache-v1` by default for independent P2–P5 requests; P1 can opt in.
+It shares developer instructions and a structured transport schema,
 places source/context first, and keeps the P3 draft ahead of other P4/P5 data.
 See [Codex cache-v1](docs/codex-cache.md) for settings, rollback, evidence and
 exact commands for a one-chunk GPT-6.1 Sol A/B measurement. Canonical fingerprints
