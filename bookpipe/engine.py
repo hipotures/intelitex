@@ -15,6 +15,7 @@ from .contracts import InferenceUnitContext, SemanticRequest, preflight_measurem
 from .evidence import AttemptRecorder, EvidenceError
 from .importer import pack_blocks, split_long
 from .p1_compact import decode_output as decode_compact_p1
+from .codex_cache import decode_output as decode_cache_output
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -374,6 +375,11 @@ def _semantic_execution_signature(value: dict) -> dict:
         options = resolved.get("options")
         if isinstance(options, dict):
             options.pop("p1_wire_format", None)
+            options.pop("translation_wire_format", None)
+            # Older Codex profiles may omit options entirely. Resolution now
+            # spells out wire defaults, which add no execution semantics.
+            if not options and resolved.get("provider") == "codex":
+                resolved.pop("options", None)
     return value
 
 
@@ -389,6 +395,8 @@ def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_c
             # canonical semantic input retained with the old attempt.
             block_ids = [block["id"] for block in inputs["SOURCE_BLOCKS"]]
         return decode_compact_p1(value, block_ids)
+    if wire_format == "cache-v1":
+        return decode_cache_output(value)
     raise PipelineError(f"Unknown response wire format: {wire_format!r}")
 
 
@@ -518,7 +526,7 @@ class Runner:
         # the value returned by body(), so its legacy fallback comparison was
         # never useful. Avoid running the new codec before an attempt evidence
         # boundary exists; canonical request.semantic.json remains authoritative.
-        if getattr(provider, "provider", "llamacpp") == "codex" and pass_no == 1:
+        if getattr(provider, "provider", "llamacpp") == "codex":
             recovery_body = {}
         else:
             recovery_body = provider.body(prompt, inputs, schema, pass_no)
@@ -544,6 +552,8 @@ class Runner:
                 value = _decode_transport_result(decoded, meta.get("wire_format", "canonical"), inputs)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 validate_result(pass_no, value, inputs)
+                if meta.get("wire_format") == "cache-v1":
+                    jsonschema.Draft202012Validator(schema).validate(value)
             except (OSError, json.JSONDecodeError, jsonschema.ValidationError, PipelineError):
                 continue
             path = work / "result.json"
@@ -630,6 +640,7 @@ class Runner:
             recorder.semantic(semantic.as_dict(), schema)
             catalog, catalog_path = load_catalog(self.store.root)
             recorder.pricing(pricing_snapshot(catalog, catalog_path, semantic.provider, semantic.requested_model))
+            body = {}
             try:
                 body = provider.body(prompt, payload, schema, pass_no)
                 # llama.cpp discovery is required for a null model/context and
@@ -643,7 +654,9 @@ class Runner:
                 input_count = provider.preflight(body, recorder)
             except BaseException as exc:
                 recorder.finish(generation="not_submitted", validation="not_run",
-                                metadata={"provider": semantic.provider, "status": "preflight_failed", "usage_status": "unavailable"},
+                                metadata={"provider": semantic.provider, "status": "preflight_failed", "usage_status": "unavailable",
+                                          "wire_format": body.get("wire_format", "canonical"),
+                                          **body.get("cache_diagnostics", {})},
                                 error={"type": type(exc).__name__, "message": str(exc)})
                 raise
             measurement = preflight_measurement(provider, input_count)
@@ -673,6 +686,8 @@ class Runner:
                         pass
                 recorder.finish(generation="failed", validation="not_run",
                                 metadata={"provider": semantic.provider, "status": "failed", "usage_status": usage_status,
+                                          "wire_format": body.get("wire_format", "canonical"),
+                                          **body.get("cache_diagnostics", {}),
                                           "partial_answer": (attempt / "answer.partial.txt").exists()},
                                 error={"type": type(exc).__name__, "message": str(exc)},
                                 evidence_complete=(not isinstance(exc, (OSError, EvidenceError))
@@ -687,12 +702,14 @@ class Runner:
                                           and getattr(provider, "diffusion", False)),
                     meta.get("wire_format", "canonical"), inputs, body.get("codec_context")
                 )
-                if meta.get("wire_format") == "compact-v1":
+                if meta.get("wire_format") in {"compact-v1", "cache-v1"}:
                     recorder.decoded_canonical(value)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 if repairs:
                     atomic_json(attempt / "validation_repairs.json", repairs)
                 validate_result(pass_no, value, inputs)
+                if meta.get("wire_format") == "cache-v1":
+                    jsonschema.Draft202012Validator(schema).validate(value)
             except EvidenceError as exc:
                 # Evidence durability failures are not model-output failures.
                 # Never spend another model turn because a local artifact could

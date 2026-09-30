@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import normalized_usage
+from .codex_cache import diagnostics, load_developer_contract, output_schema, serialize
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
 from .progress import ProgressEvent
@@ -279,9 +280,24 @@ class CodexAppServerClient:
         return len(text.encode("utf-8"))
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
-        wire_format = self.settings.get("options", {}).get("p1_wire_format", "compact-v1") if pass_no == 1 else "canonical"
-        if pass_no == 1 and wire_format not in {"compact-v1", "canonical"}:
-            raise PipelineError(f"Unknown Codex Pass-1 wire format: {wire_format!r}")
+        options = self.settings.get("options", {})
+        wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "canonical")
+        allowed = ("compact-v1", "canonical", "cache-v1") if pass_no == 1 else ("canonical", "cache-v1")
+        if wire_format not in allowed:
+            label = "Pass-1" if pass_no == 1 else f"P{pass_no}"
+            raise PipelineError(f"Unknown Codex {label} wire format: {wire_format!r}")
+        if wire_format == "cache-v1":
+            developer = load_developer_contract(self.project_root, prompt, pass_no)
+            layout = serialize(inputs, schema, pass_no)
+            return {
+                "model": self.model, "effort": self.settings.get("reasoning_effort"),
+                "developer_instructions": developer, "input": layout.text,
+                "output_schema": output_schema(), "pass_no": pass_no, "wire_format": wire_format,
+                "cache_diagnostics": diagnostics(
+                    layout, developer, self.model, self.settings.get("reasoning_effort"),
+                    pass_no, inputs, BASE_INSTRUCTIONS.read_text(encoding="utf-8").strip(),
+                ),
+            }
         if pass_no == 1 and wire_format == "compact-v1":
             transport = build_transport(prompt, inputs)
             return {
@@ -318,6 +334,8 @@ class CodexAppServerClient:
         margin = int(self.settings.get("options", {}).get("context_margin_tokens", 2048))
         required = count + reserve + margin
         if recorder:
+            if body.get("cache_diagnostics"):
+                recorder.cache_layout(body["cache_diagnostics"])
             recorder.context({
                 "method": "UTF-8 byte upper bound; app-server has no verified preflight token-count RPC",
                 "quality": "conservative_estimate", "tokenizer_identity": None,
@@ -419,6 +437,7 @@ class CodexAppServerClient:
             raise PipelineError("Codex base instructions must be non-empty.")
         transport_plan = {
             "wire_format": body.get("wire_format", "canonical"),
+            **({"cache_diagnostics": body["cache_diagnostics"]} if body.get("cache_diagnostics") else {}),
             "argv": argv, "environment": {"CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(sqlite_home), "cwd": str(work)},
             "thread": {
                 "model": self.model, "cwd": str(work), "sandbox": "read-only",
@@ -483,6 +502,10 @@ class CodexAppServerClient:
             if not rpc.state["thread_id"] or not rpc.state["thread_path"]:
                 raise PipelineError("Codex persisted thread response omitted id or path.")
             turn_params = dict(transport_plan["turn"], threadId=rpc.state["thread_id"])
+            # Replace the pre-submission plan with the exact physical turn,
+            # including the provider-assigned ID. Diagnostics never enter RPC.
+            transport_plan["turn"] = turn_params
+            recorder.transport_request(transport_plan, body["output_schema"])
             turn_result = rpc.request("turn/start", turn_params, deadline)
             turn = turn_result.get("turn") or {}
             rpc.state["turn_id"] = turn.get("id") or rpc.state["turn_id"]
@@ -536,6 +559,7 @@ class CodexAppServerClient:
                 "rollout_copy": str(copied.relative_to(directory)),
                 "status": "completed", "finish_reason": "stop",
                 "wire_format": body.get("wire_format", "canonical"),
+                **body.get("cache_diagnostics", {}),
                 "usage_status": normalized["status"],
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "isolation": {
