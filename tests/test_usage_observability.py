@@ -225,7 +225,9 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
         "codex", "codex-sol-medium", "gpt-6.1-sol",
     )
     assert row.reported_model == "gpt-6.1-sol"
-    assert row.cost is None  # Current-rate fallback is deliberately limited to P1.
+    assert row.cost.status == "partial"  # The failed attempt without usage has no price.
+    assert row.cost.amount == pytest.approx((20 * 2 + 7 * .1 + 3 * 2.5 + 12 * 10) / 1_000_000)
+    assert "Current catalog rates" in row.cost.note
     assert row.physical_attempt_count == 4 and row.provider_call_count == 3
     assert row.retry_count == 3 and row.failed_attempt_count == 2
     assert row.failed_before_submission_count == 1
@@ -250,3 +252,43 @@ def test_usage_by_unit_accounts_physical_attempts_recovery_unknowns_and_legacy_p
     with pytest.raises(FrozenInstanceError):
         chunk.unit_id = "changed"
     assert first.is_dir()  # failed usage evidence remains part of physical accounting
+
+
+@pytest.mark.parametrize("pass_no", [2, 3, 4, 5])
+@pytest.mark.parametrize("pricing_state", ["missing", "no_rate", "historical"])
+def test_translation_usage_prices_saved_tokens_without_changing_evidence(tmp_path, pass_no, pricing_state):
+    attempt = _attempt(tmp_path, f"pass{pass_no}/ch0001_c0001", 1, pass_no=pass_no,
+                       usage={"input_tokens": 100, "cached_input_tokens": 20, "cache_write_input_tokens": 0,
+                              "output_tokens": 10, "reasoning_output_tokens": 4, "total_tokens": 110},
+                       accepted=True)
+    pricing_path = attempt / "pricing.json"
+    if pricing_state == "no_rate":
+        atomic_json(pricing_path, {"rate": None, "estimate_status": "unknown"})
+    elif pricing_state == "historical":
+        atomic_json(pricing_path, {"provider": "codex", "rate": {
+            "input": 1, "cached_input": .5, "cache_write_input": 0, "output": 3,
+            "currency": "USD", "unit": "million_tokens", "estimate_type": "historical"}})
+    before = {path.name: path.read_bytes() for path in attempt.iterdir() if path.is_file()}
+
+    cost = usage_by_unit_report(tmp_path).units[0].passes[0].cost
+    assert cost.status == "complete"
+    assert cost.currency == "USD"
+    if pricing_state == "historical":
+        assert cost.amount == pytest.approx((80 * 1 + 20 * .5 + 10 * 3) / 1_000_000)
+        assert "Current catalog rates" not in cost.note
+    else:
+        assert cost.amount == pytest.approx((80 * 2 + 20 * .1 + 10 * 10) / 1_000_000)
+        assert "Current catalog rates" in cost.note
+    assert {path.name: path.read_bytes() for path in attempt.iterdir() if path.is_file()} == before
+
+
+def test_saved_translation_usage_uses_requested_model_when_response_has_no_model(tmp_path):
+    attempt = _attempt(tmp_path, "pass3/ch0001_c0001", 1, pass_no=3,
+                       usage={"input_tokens": 100, "cached_input_tokens": 0, "cache_write_input_tokens": 0,
+                              "output_tokens": 10, "reasoning_output_tokens": 0, "total_tokens": 110})
+    response = read_json(attempt / "response_meta.json")
+    response.pop("reported_model")
+    atomic_json(attempt / "response_meta.json", response)
+    cost = usage_by_unit_report(tmp_path).units[0].passes[0].cost
+    assert cost.status == "complete"
+    assert cost.amount == pytest.approx((100 * 2 + 10 * 10) / 1_000_000)

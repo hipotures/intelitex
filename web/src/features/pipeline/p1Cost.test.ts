@@ -28,6 +28,25 @@ describe('P1 recorded cost summary', () => {
 })
 
 describe('translation recorded cost summary', () => {
+  it('isolates chunk and pass costs, excluding P1 and other chunks', () => {
+    const pricedPass = (pass_no: number, amount: number, currency = 'USD') => ({ pass_no,
+      provider_call_count: 1, unknown_provider_call_count: 0,
+      cost: { amount, currency, status: 'complete', estimate_type: 'api', note: null } })
+    const usage = { units: [
+      { unit_id: 'c1', passes: [pricedPass(1, 100), pricedPass(2, .1), pricedPass(3, .2),
+        pricedPass(4, .3), pricedPass(5, .4)] },
+      { unit_id: 'c2', passes: [pricedPass(2, 1)] },
+      { unit_id: 'c3', passes: [pricedPass(2, 1, 'EUR')] },
+    ] } as Usage
+    expect(translationCost(usage, { unitId: 'c1' }).text).toBe('$1.0000')
+    expect(translationCost(usage, { unitId: 'c1', passNo: 3 }).text).toBe('$0.2000')
+    expect(translationCost(usage, { unitId: 'c1', passNo: 3 }).note).toContain('P3 attempts for chunk c1')
+    expect(translationCost(usage, { unitId: 'c2', passNo: 5 }).text).toBe('—')
+    expect(translationCost(usage, { unitId: 'missing' }).text).toBe('—')
+    expect(translationCost(usage, { passNo: 2 }).note).toContain('different currencies')
+    expect(translationCost(usage, { passNo: 3 }).text).toBe('$0.2000')
+  })
+
   it('sums P2–P5 across profiles and keeps an unknown-price attempt visible in the note', () => {
     const usage = { units: [{ unit_id: 'c1', passes: [
       { pass_no: 1, profile: 'p1', provider_call_count: 1, unknown_provider_call_count: 0,

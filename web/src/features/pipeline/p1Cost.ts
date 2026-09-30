@@ -31,16 +31,21 @@ export function p1Cost(usage: Usage | undefined) {
     note: `${detail}${fallback ? ' Older attempts without saved rates use the current model catalog.' : ''}${partial ? ' Some attempts have unknown price or usage, so the shown sum covers only known amounts.' : ''}` }
 }
 
-export function translationCost(usage: Usage | undefined) {
-  const passes = usage?.units.flatMap(unit => unit.passes.filter(pass => pass.pass_no >= 2 && pass.pass_no <= 5)) ?? []
+export function translationCost(usage: Usage | undefined, scope: { unitId?: string; passNo?: number } = {}) {
+  const label = scope.passNo == null ? 'P2–P5' : `P${scope.passNo}`
+  const location = scope.unitId ? `for chunk ${scope.unitId}` : 'across all chunks'
+  const passes = usage?.units.filter(unit => scope.unitId == null || unit.unit_id === scope.unitId)
+    .flatMap(unit => unit.passes.filter(pass => pass.pass_no >= 2 && pass.pass_no <= 5 &&
+      (scope.passNo == null || pass.pass_no === scope.passNo))) ?? []
   const contacted = passes.filter(pass => pass.provider_call_count > 0 || pass.unknown_provider_call_count > 0)
   const priced = contacted.map(pass => pass.cost).filter((cost): cost is Cost => cost?.amount != null && !!cost.currency)
-  if (!contacted.length) return { text: '—', note: 'Waiting for recorded P2–P5 model usage.' }
-  if (!priced.length) return { text: '—', note: 'P2–P5 price unavailable: usage or a saved model rate is missing.' }
+  if (!contacted.length) return { text: '—', note: `Waiting for recorded ${label} model usage ${location}.` }
+  if (!priced.length) return { text: '—', note: `${label} price unavailable: usage or a saved model rate is missing.` }
   const currencies = new Set(priced.map(cost => cost.currency))
-  if (currencies.size !== 1) return { text: '—', note: 'P2–P5 estimates use different currencies and cannot be added.' }
+  if (currencies.size !== 1) return { text: '—', note: `${label} estimates use different currencies and cannot be added.` }
   const amount = priced.reduce((sum, cost) => sum + cost.amount!, 0)
   const partial = priced.length !== contacted.length || priced.some(cost => cost.status !== 'complete')
+  const fallback = contacted.some(pass => pass.cost?.note?.includes('Current catalog rates'))
   return { text: formatCost(amount, priced[0]!.currency!),
-    note: `Recorded P2–P5 attempts across all chunks, passes, models and retries. This is an estimate, not a provider invoice.${partial ? ' Some attempts have unknown price or usage, so the shown sum covers only known amounts.' : ''}` }
+    note: `Recorded ${label} attempts ${location}, including all models and retries. This is an estimate, not a provider invoice.${fallback ? ' Older attempts without saved rates use the current model catalog.' : ''}${partial ? ' Some attempts have unknown price or usage, so the shown sum covers only known amounts.' : ''}` }
 }

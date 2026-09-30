@@ -170,9 +170,10 @@ cost estimates and attempts. Attempts expose generation/validation/acceptance
 status, checkpoint association, provider-contact status, reported usage/timing and
 cost. Unknown usage stays null with explicit coverage; no raw provider reports,
 request bodies, attempt paths or credential configuration are returned.
-For P1 only, usage reads may estimate older attempts with the current model
-catalog when their saved pricing snapshot has no rate. The response labels this
-current-rate estimate; the saved attempt artifacts remain unchanged.
+For P1–P5, usage reads may estimate older attempts with the current model
+catalog when their saved pricing snapshot has no rate. The reported model is used,
+or the requested model when the response does not identify one. The response labels
+this current-rate estimate; the saved attempt artifacts remain unchanged.
 
 ## Pipeline read model
 

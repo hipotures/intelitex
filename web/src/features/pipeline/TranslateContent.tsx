@@ -10,6 +10,7 @@ import { Activity } from './Workspace'
 import { sectionTitles } from './sectionTitles'
 import { useConnection, useLive } from '../../realtime/coordinator'
 import { latestWorkspaceJob } from '../../realtime/state'
+import { translationCost } from './p1Cost'
 
 const tokenFields = ['input_tokens', 'cached_input_tokens', 'reasoning_output_tokens', 'output_tokens'] as const
 const tokenLabels = ['Input', 'Cache', 'Reason', 'Output']
@@ -23,8 +24,9 @@ export function highestSavedPass(unit: Pipeline['units'][number] | undefined): n
   return null
 }
 
-function totals(usage: Usage | undefined, passNo: number) {
-  const passes = usage?.units.flatMap(unit => unit.passes.filter(pass => pass.pass_no === passNo)) ?? []
+function totals(usage: Usage | undefined, passNo?: number) {
+  const passes = usage?.units.flatMap(unit => unit.passes.filter(pass => pass.pass_no >= 2 && pass.pass_no <= 5 &&
+      (passNo == null || pass.pass_no === passNo))) ?? []
   return tokenFields.map(field => {
     const values = passes.map(pass => pass[field])
     const known = values.filter(value => value.value !== null)
@@ -145,6 +147,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const previewPass = selectedPass ?? highestSavedPass(unit)
   const selectedCheckStatus = checkFilter?.chunkId === unit?.id && checkFilter?.passNo === previewPass ? checkFilter.status : ''
   const sections = new Map(pipeline.sections.map(section => [section.id, section]))
+  const usageByUnit = new Map(usage?.units.map(item => [item.unit_id, item]))
   const titles = sectionTitles(pipeline.sections, pipeline.metadata.creators)
   const overriddenSections = pipeline.sections.filter(section => passNumbers.some(number => !!section.profiles[String(number)]))
   const previewPath = endpoint(id, `translation/chunks/${encodeURIComponent(unit?.id ?? '')}/passes/${previewPass ?? 2}`)
@@ -305,7 +308,8 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
         </>}</div>
       </Panel>
     </div>
-      <Panel debugId="PTS" title="Models and usage"><details className="translate-summary-details"><summary>Show details</summary>
+      <Panel debugId="PTS" title="P2–P5 costs and tokens"><details className="translate-summary-details"><summary>Show details</summary><ErrorNote error={usageError} />
+        {usage?.warning && <p className="subtitle">{usage.warning}</p>}
         <h3 className="translate-summary-heading">Current model assignments</h3>
         <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary translate-model-grid"><thead><tr><th>Section</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>
           <tr><td><strong>Default</strong></td>{passNumbers.map(number => {
@@ -319,12 +323,27 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           })}</tr>)}
         </tbody></table></div>
         <h3 className="translate-summary-heading">Recorded provider usage</h3>
-        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}</tr></thead><tbody>{passNumbers.map(number => {
+        <div className="diagnostic-scroll"><table className="phase-detail-table pass-summary"><thead><tr><th>Pass</th><th>Used profile(s)</th><th>Chunks</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead><tbody>{passNumbers.map(number => {
           const used = recordedProfileNames(usage, number)
           const saved = pipeline.units.filter(item => item.passes[String(number)]?.retained_count).length
           const completed = pipeline.units.filter(item => item.passes[String(number)]?.checkpoint_state === 'completed').length
-          return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}</tr>
-        })}</tbody></table></div><p className="translate-usage-hint" title="Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Usage includes retries, including failed attempts; hover for details.</p>
+          const cost = translationCost(usage, { passNo: number })
+          return <tr key={number}><td>P{number}</td><td title={used.join(', ')}>{used.length ? used.join(', ') : '—'}</td><td title={number === 5 ? 'Verified current final translations' : 'Saved historical results; current inputs are checked before reuse'}>{number === 5 ? `${completed}/${pipeline.units.length} verified` : `${saved}/${pipeline.units.length} saved`}</td>{totals(usage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}<td className="num" title={cost.note}>{cost.text}</td></tr>
+        })}</tbody></table></div>
+        <h3 className="translate-summary-heading">Usage by chunk</h3>
+        <div className="diagnostic-scroll"><table className="phase-detail-table translate-usage-table"><thead><tr><th>Chunk / pass</th>{tokenLabels.map(label => <th className="num" key={label}>{label}</th>)}<th className="num">Cost</th></tr></thead>{pipeline.units.map(item => {
+          const recorded = usageByUnit.get(item.id)
+          const chunkUsage = usage && { ...usage, units: recorded ? [recorded] : [] }
+          const cost = translationCost(chunkUsage, { unitId: item.id })
+          return <tbody key={item.id}>
+            <tr className="translate-usage-total"><td><div className="translate-usage-chunk"><strong>{item.id}</strong><span>P2–P5 total</span></div></td>{totals(chunkUsage).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}<td className="num" title={cost.note}>{cost.text}</td></tr>
+            {passNumbers.map(number => {
+              const passCost = translationCost(chunkUsage, { unitId: item.id, passNo: number })
+              return <tr className="translate-usage-pass" key={number}><td aria-label={`${item.id} P${number}`}><span className="translate-usage-pass-label">P{number}</span></td>{totals(chunkUsage, number).map((value, index) => <td className="num" key={tokenFields[index]}>{value}</td>)}<td className="num" title={passCost.note}>{passCost.text}</td></tr>
+            })}
+          </tbody>
+        })}</table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}
+        <p className="translate-usage-hint" title="Chunk totals sum P2–P5. Usage includes recorded attempts and retries. Cache and reasoning are subsets of other totals; do not add these columns together.">ⓘ Chunk totals sum P2–P5 and include retries, including failed attempts; hover for details.</p>
       </details></Panel>
     </div>
     <Activity id={id} title="Recent execution" />

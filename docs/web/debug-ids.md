@@ -94,7 +94,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PAE | Analyse empty-state card | `web/src/features/pipeline/Phase.tsx` |
 | PAC | Analyse P1 data action card | `web/src/features/pipeline/Phase.tsx` |
 | PRM | P1 reset confirmation modal | `web/src/features/pipeline/Phase.tsx` |
-| PTS | Translate pass summary card | `web/src/features/pipeline/TranslateContent.tsx` |
+| PTS | Translate P2–P5 costs and token usage card | `web/src/features/pipeline/TranslateContent.tsx` |
 | PSC | Translate chunk progress card | `web/src/features/pipeline/TranslateContent.tsx` |
 | TPV | Translate pass source and result preview | `web/src/features/pipeline/TranslateContent.tsx` |
 | TCM | Translate targeted pass confirmation | `web/src/features/pipeline/TranslateContent.tsx` |

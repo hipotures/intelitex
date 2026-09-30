@@ -82,7 +82,7 @@ export const debugRegions = [
   { id: 'PAE', description: 'Analyse empty-state card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PAC', description: 'Analyse P1 data action card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PRM', description: 'P1 reset confirmation modal', source: 'features/pipeline/Phase.tsx' },
-  { id: 'PTS', description: 'Translate pass summary card', source: 'features/pipeline/TranslateContent.tsx' },
+  { id: 'PTS', description: 'Translate P2–P5 costs and token usage card', source: 'features/pipeline/TranslateContent.tsx' },
   { id: 'PSC', description: 'Translate chunk progress card', source: 'features/pipeline/TranslateContent.tsx' },
   { id: 'TPV', description: 'Translate pass source and result preview', source: 'features/pipeline/TranslateContent.tsx' },
   { id: 'TCM', description: 'Translate targeted pass confirmation', source: 'features/pipeline/TranslateContent.tsx' },

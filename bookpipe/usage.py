@@ -268,7 +268,7 @@ def _aggregate_cost(attempts: Iterable[AttemptUsage]) -> CostEstimate | None:
         return None
     known = [cost for cost in costs if cost.amount is not None]
     identities = {(cost.currency, cost.estimate_type) for cost in known}
-    fallback_note = " Current catalog rates were used for saved P1 usage without a historical rate." if any(
+    fallback_note = " Current catalog rates were used for saved token usage without a historical rate." if any(
         "Current catalog rates" in (cost.note or "") for cost in costs) else ""
     if known and len(known) == len(eligible) and len(identities) == 1 and all(cost.status == "complete" for cost in known):
         currency, estimate_type = next(iter(identities))
@@ -320,9 +320,9 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
         pricing = _optional_json(manifest_path.parent / "pricing.json")
         usage_json = usage_json if isinstance(usage_json, dict) else None
         pricing = pricing if isinstance(pricing, dict) else None
-        if pass_no == 1 and usage_json and usage_json.get("status") == "reported" and not (pricing or {}).get("rate"):
+        if usage_json and usage_json.get("status") == "reported" and not (pricing or {}).get("rate"):
             provider = identity.get("provider")
-            reported_model = response.get("reported_model") or response.get("model")
+            reported_model = response.get("reported_model") or response.get("model") or identity.get("requested_model")
             if isinstance(provider, str) and isinstance(reported_model, str) and reported_model:
                 try:
                     if current_catalog is None:
@@ -331,7 +331,7 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
                     entry = model_entry(catalog, provider, reported_model)
                     if entry and entry.get("pricing"):
                         pricing = pricing_snapshot(catalog, catalog_path, provider, reported_model)
-                        pricing["note"] = ("Current catalog rates applied to saved P1 token usage because its historical "
+                        pricing["note"] = (f"Current catalog rates applied to saved P{pass_no} token usage because its historical "
                                            "pricing snapshot had no rate. This is an estimate, not an invoice.")
                 except (OSError, PipelineError):
                     pass
