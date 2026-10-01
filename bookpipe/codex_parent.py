@@ -13,7 +13,9 @@ from .util import PipelineError, digest, read_json
 
 
 STRATEGY = "p2-parent-ephemeral-fork-v1"
-STRATEGIES = ("fresh-root", STRATEGY)
+PAIRED_STRATEGY = "paired-passes-v1"
+DEFAULT_STRATEGY = PAIRED_STRATEGY
+STRATEGIES = ("fresh-root", STRATEGY, PAIRED_STRATEGY)
 COMPATIBILITY_FIELDS = (
     "source_message_sha256", "translation_common_message_sha256",
     "developer_instructions_sha256", "base_instructions_sha256",
@@ -22,14 +24,15 @@ COMPATIBILITY_FIELDS = (
 
 
 def strategy(options: dict) -> str:
-    value = options.get("translation_thread_strategy", STRATEGY)
+    value = options.get("translation_thread_strategy", DEFAULT_STRATEGY)
     if value not in STRATEGIES:
         raise PipelineError(f"Unknown Codex translation_thread_strategy: {value!r}; expected {STRATEGIES}.")
     return value
 
 
-def inspect_parent(path: Path, thread_id: str, session_id: str, turn_id: str, body: dict) -> dict:
-    """Prove the exact native cutoff retains only SOURCE/COMMON application data.
+def inspect_parent(path: Path, thread_id: str, session_id: str, turn_id: str, body: dict,
+                   *, message_count: int = 2) -> dict:
+    """Prove the native cutoff retains only the expected pre-turn data.
 
     0.159.3's native file export has task_started turn boundaries. Unsupported
     exports (including incomplete paginated bundles) are optimization misses;
@@ -50,7 +53,7 @@ def inspect_parent(path: Path, thread_id: str, session_id: str, turn_id: str, bo
     boundaries = [i for i, e in enumerate(events) if e.get("type") == "event_msg"
                   and e.get("payload", {}).get("type") == "task_started"]
     if len(boundaries) != 1 or events[boundaries[0]]["payload"].get("turn_id") != turn_id:
-        raise PipelineError("Parent must contain exactly the accepted P2 turn boundary.")
+        raise PipelineError("Parent must contain exactly the accepted parent turn boundary.")
     prefix = events[:boundaries[0]]
     messages = []
     developers = []
@@ -72,16 +75,16 @@ def inspect_parent(path: Path, thread_id: str, session_id: str, turn_id: str, bo
         if text.startswith("<environment_context>"):
             continue  # Codex-owned environment wrapper; not pipeline input.
         messages.append({k: item[k] for k in ("type", "role", "content")})
-    expected = [{k: item[k] for k in ("type", "role", "content")} for item in body["injected_items"][:2]]
+    expected = [{k: item[k] for k in ("type", "role", "content")} for item in body["injected_items"][:message_count]]
     if messages != expected:
-        raise PipelineError("Parent pre-P2 history does not contain exactly the current SOURCE and COMMON.")
+        raise PipelineError("Parent pre-turn history does not contain exactly the current injected data.")
     if sum(body["developer_instructions"] in text for text in developers) != 1:
         raise PipelineError("Parent persisted developer contract differs from the current request.")
     if not any(e.get("type") == "event_msg" and e.get("payload", {}).get("type") == "task_complete"
                and e["payload"].get("turn_id") == turn_id for e in events):
-        raise PipelineError("Parent P2 turn has no persisted completion.")
+        raise PipelineError("Parent turn has no persisted completion.")
     return {"parent_rollout_sha256": digest(data), "before_turn_boundary_verified": True,
-            "inherited_message_count": 2, "prior_assistant_history": False}
+            "inherited_message_count": message_count, "prior_assistant_history": False}
 
 
 def parent_metadata(meta: dict, attempt: Path, body: dict, accepted: dict) -> dict:

@@ -6,13 +6,14 @@ maps, fixed 2,758-byte Structured Output schema and full canonical validation.
 Built-in and custom Codex profiles without explicit wire options default to
 `cache-shared-v2` for P1–P5. No existing wire version is redefined.
 
-Each pass and each validation retry starts its own isolated runtime/process and
-independent model conversation. Translation defaults to a persistent P2 cache
-parent and ephemeral sibling forks **before the accepted P2 turn** for P3–P5;
-see [the production lifecycle](codex-cache-parent.md). Only the pre-turn SOURCE
-and COMMON are inherited. Accepted canonical artifacts are supplied explicitly
-as data. P1 stays independent. There is no conversation continuation, warm-up,
-keepalive, custom affinity key, TTL state or model/profile/effort change.
+Each pass and validation retry owns an isolated runtime/process. Translation
+defaults to [paired-passes-v1](codex-paired-passes.md): P3 continues accepted P2,
+while P5 continues accepted P4 in a separate conversation. P4 starts fresh and
+never inherits P2/P3 conversations. Canonical artifacts remain explicit data.
+P1 stays independent. The retained [ephemeral-fork strategy](codex-cache-parent.md)
+provides greater conversational isolation; `fresh-root` opts out of history reuse.
+Neither strategy changes this codec. No warm-up, keepalive, custom affinity key,
+TTL state or model/profile/effort change is introduced.
 
 ## Installed protocol and physical messages
 
@@ -133,14 +134,17 @@ Both options default to `cache-shared-v2`. They can also be set explicitly on th
 selected Codex profile, or independently selected:
 
 ```json
-{"options":{"p1_wire_format":"cache-shared-v2","translation_wire_format":"cache-shared-v2","translation_thread_strategy":"p2-parent-ephemeral-fork-v1"}}
+{"options":{"p1_wire_format":"cache-shared-v2","translation_wire_format":"cache-shared-v2","translation_thread_strategy":"paired-passes-v1"}}
 ```
 
 Explicit profile options still override the defaults. A normal server restart
 reloads the defaults; a project with explicit older options needs those options
 updated to use v2. Model/effort assignments remain unchanged. Rollback selects
 `cache-shared-v1`, or earlier supported formats. Existing checkpoints require no
-migration. Set `translation_thread_strategy: fresh-root` to retain independent
+migration. The default [paired lifecycle](codex-paired-passes.md) resumes P2 for P3
+and separately P4 for P5, with P4 in a fresh conversation. The retained
+`p2-parent-ephemeral-fork-v1` option preserves sibling conversational isolation.
+Set `translation_thread_strategy: fresh-root` to retain independent
 fresh roots without changing the codec. Older codecs also continue using roots.
 
 ```bash
@@ -148,7 +152,7 @@ uv run pytest -q tests/test_codex_cache_shared_v2.py \
   tests/test_codex_cache_shared_v2_app_server.py tests/test_codex_parent.py
 ```
 
-The second file launches the **installed 0.159.3 binary** with an isolated empty
+The second file launches the **installed standard Codex binary** with an isolated empty
 home, no authentication, and an HTTP Responses provider pointing exclusively to
 a loopback SSE mock. It captures the actual outbound Responses JSON, proves
 separate ordered role=user items, zero requests during injection, one request per

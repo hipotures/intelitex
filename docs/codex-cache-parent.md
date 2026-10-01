@@ -1,6 +1,7 @@
-# Codex translation cache parent
+# Codex translation cache parent (retained strategy)
 
-Codex translation profiles now default to:
+The default is now [paired-passes-v1](codex-paired-passes.md). Select this
+retained strategy explicitly for maximum conversational isolation:
 
 ```json
 {"options": {

@@ -206,19 +206,19 @@ measured with this same conservative byte counter when a Codex profile is used.
 
 Codex profiles default to [cache-shared-v2](docs/codex-cache-shared-v2.md) for
 P1–P5: shared developer/schema/source prefixes, separate SOURCE/COMMON/DRAFT user
-messages, and a final active-pass message. Every pass remains an independent complete
-request. Explicit profile wire options override the defaults; `compact-v1` and
+messages, and a final active-pass message. Every pass retains its complete canonical
+task and validation. Explicit profile wire options override the defaults; `compact-v1` and
 [cache-v2](docs/codex-cache-v2.md) remain available for rollback. Canonical
 fingerprints and checkpoints remain unchanged. Prefix equality does not
 demonstrate provider cache reuse. A normal server restart reloads the defaults.
 
 Codex translation now defaults to
-`translation_thread_strategy: p2-parent-ephemeral-fork-v1`: accepted P2 supplies
-a durable technical cache parent; P3–P5 use independent ephemeral sibling forks
-before the P2 turn. Only SOURCE/COMMON are inherited, never earlier answers.
-Each attempt still owns its isolated app-server/runtime. P1 is unchanged.
-Set `translation_thread_strategy: fresh-root` to opt out. See the
-[lifecycle, cold-runtime import and fallback](docs/codex-cache-parent.md).
+`translation_thread_strategy: paired-passes-v1`: P3 resumes accepted P2, while
+P5 resumes accepted P4 in a separate conversation. P4 starts a fresh root and
+never inherits P2/P3 conversations. Each attempt owns a new isolated runtime
+and works from immutable accepted native snapshots. P1 is unchanged. The
+`p2-parent-ephemeral-fork-v1` strategy remains available for rollback; `fresh-root`
+opts out. See the [three strategies, retries and fallback](docs/codex-paired-passes.md).
 
 The supported Pass-1 `compact-v1` rollback format is only the physical app-server
 wire representation: source blocks use local integer indices, the response has

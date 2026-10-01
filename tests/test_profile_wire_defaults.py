@@ -30,7 +30,7 @@ def test_all_builtin_codex_profiles_default_to_shared_without_mutating_settings(
         "auth_source": "~/.codex/auth.json",
         "p1_wire_format": SHARED,
         "translation_wire_format": SHARED,
-        "translation_thread_strategy": "p2-parent-ephemeral-fork-v1",
+        "translation_thread_strategy": "paired-passes-v1",
     }
     for number in range(1, 6):
         resolved_name, profile, _ = resolve_profile(settings, number, command_profile=name, project=tmp_path)
@@ -55,7 +55,7 @@ def test_custom_codex_profiles_inherit_only_missing_options(settings, options, t
     before = copy.deepcopy(settings)
     _, profile, _ = resolve_profile(settings, 1, project=tmp_path)
     assert profile["options"] == {"p1_wire_format": SHARED, "translation_wire_format": SHARED,
-                                  "translation_thread_strategy": "p2-parent-ephemeral-fork-v1",
+                                  "translation_thread_strategy": "paired-passes-v1",
                                   **(options or {})}
     for key, value in custom.items():
         if key != "options":
@@ -138,7 +138,7 @@ def test_salvation_resolution_and_restart_are_read_only(settings, tmp_path):
                 assert profile["reasoning_effort"] == "high"
                 assert profile["options"]["p1_wire_format"] == SHARED
                 assert profile["options"]["translation_wire_format"] == SHARED
-                assert profile["options"]["translation_thread_strategy"] == "p2-parent-ephemeral-fork-v1"
+                assert profile["options"]["translation_thread_strategy"] == "paired-passes-v1"
                 rows.append(copy.deepcopy(profile))
             snapshots.append(rows)
         finally:

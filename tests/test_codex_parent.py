@@ -200,7 +200,7 @@ def test_strategy_default_override_validation_and_canonical_identity(project):
     settings = {'profiles':{}, 'default_profile':'codex-sol-high', 'passes':SETTINGS['passes']}
     for n in range(1, 6):
         _, profile, _ = resolve_profile(settings, n, project=project)
-        assert profile['options']['translation_thread_strategy'] == codex_parent.STRATEGY
+        assert profile['options']['translation_thread_strategy'] == codex_parent.DEFAULT_STRATEGY
         assert profile['options']['translation_wire_format'] == messages.WIRE_FORMAT
     settings['profiles']['codex-sol-high'] = copy.deepcopy(profile)
     settings['profiles']['codex-sol-high']['options']['translation_thread_strategy'] = 'fresh-root'
@@ -320,7 +320,7 @@ def test_opt_out_non_codex_and_salvation_resolution(project):
             p = pool.for_pass(n)
             assert p.provider == 'codex'
             assert p.settings['options']['translation_wire_format'] == messages.WIRE_FORMAT
-            assert p.settings['options']['translation_thread_strategy'] == codex_parent.STRATEGY
+            assert p.settings['options']['translation_thread_strategy'] == codex_parent.DEFAULT_STRATEGY
             selected = settings['profiles'].get(p.profile_name)
             if selected:
                 assert p.model == selected['model']

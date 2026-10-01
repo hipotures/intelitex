@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .catalog import load_catalog, model_entry
-from .codex_parent import STRATEGY, STRATEGIES
+from .codex_parent import DEFAULT_STRATEGY, STRATEGIES
 from .util import PipelineError, atomic_json, digest
 
 
@@ -17,7 +17,7 @@ CODEX_WIRE_DEFAULTS = {
     "p1_wire_format": "cache-shared-v2",
     "translation_wire_format": "cache-shared-v2",
 }
-CODEX_EXECUTION_DEFAULTS = {"translation_thread_strategy": STRATEGY}
+CODEX_EXECUTION_DEFAULTS = {"translation_thread_strategy": DEFAULT_STRATEGY}
 COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
     "max_output_tokens", "request_timeout", "reasoning_effort", "credential_env",
@@ -186,7 +186,7 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
         translation_wire_format = profile.get("options", {}).get("translation_wire_format", CODEX_WIRE_DEFAULTS["translation_wire_format"])
         if provider == "codex" and translation_wire_format not in ("canonical", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2"):
             raise PipelineError(f"Profile {name!r} options.translation_wire_format must be 'canonical', 'cache-v1', 'cache-v2', 'cache-shared-v1', or 'cache-shared-v2'.")
-        if provider == "codex" and profile.get("options", {}).get("translation_thread_strategy", STRATEGY) not in STRATEGIES:
+        if provider == "codex" and profile.get("options", {}).get("translation_thread_strategy", DEFAULT_STRATEGY) not in STRATEGIES:
             raise PipelineError(f"Profile {name!r} options.translation_thread_strategy must be one of {STRATEGIES}.")
         def secret_key(value: Any) -> bool:
             if isinstance(value, dict):

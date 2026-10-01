@@ -23,9 +23,7 @@ def local_responses(tmp_path, monkeypatch):
     if not shutil.which('codex'):
         pytest.skip('Installed Codex required for provider-facing integration test')
     version = subprocess.check_output(['codex', '--version'], text=True).strip()
-    if version != 'codex-cli 0.159.3':
-        pytest.skip('Provider-facing protocol audit is pinned to installed Codex 0.159.3')
-    state = {'requests': [], 'headers': [], 'invalid_first': False, 'invalid_calls': set()}
+    state = {'cli_version': version, 'requests': [], 'headers': [], 'invalid_first': False, 'invalid_calls': set(), 'output_overrides': {}}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -43,6 +41,7 @@ def local_responses(tmp_path, monkeypatch):
             output = messages.encode_output(RESULTS[n], n, messages.context_for(inputs_for(n), n))
             if (state['invalid_first'] and len(state['requests']) == 1) or len(state['requests']) in state['invalid_calls']:
                 output['t' if n in (3, 5) else 'c'] = []
+            output = state['output_overrides'].get(len(state['requests']), output)
             rid = f"response-{len(state['requests'])}"
             item = {'type':'message', 'id':f'message-{rid}', 'role':'assistant', 'phase':'final_answer',
                     'content':[{'type':'output_text', 'text':json.dumps(output, ensure_ascii=False), 'annotations':[]}]}

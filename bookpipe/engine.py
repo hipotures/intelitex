@@ -19,7 +19,7 @@ from .p1_compact import decode_output as decode_compact_p1
 from .codex_cache import decode_output as decode_cache_output
 from . import codex_cache_v2
 from . import codex_cache_shared, codex_cache_shared_v2
-from . import codex_parent
+from . import codex_parent, codex_pair
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -682,6 +682,10 @@ class Runner:
                         and body.get("wire_format") == "cache-shared-v2"
                         and codex_parent.strategy(provider.settings.get("options", {})) == codex_parent.STRATEGY):
                     body.update(codex_parent.resolve_parent(self.store, body, inputs))
+                if (getattr(provider, "provider", None) == "codex" and pass_no in codex_pair.PARENTS
+                        and body.get("wire_format") == "cache-shared-v2"
+                        and codex_parent.strategy(provider.settings.get("options", {})) == codex_pair.STRATEGY):
+                    body.update(codex_pair.resolve_parent(self.store, body, inputs))
                 # llama.cpp discovery is required for a null model/context and
                 # is recorded inside the already-created attempt boundary.
                 if getattr(provider, "provider", "llamacpp") in {"llamacpp", "vllm"} and not getattr(provider, "identity", {}).get("id"):
@@ -815,6 +819,17 @@ class Runner:
                 else:
                     recorder.artifact_json("cache_parent.json", parent)
                     meta.update(cache_parent=parent, cache_parent_status="available")
+            if (pass_no in (2, 4) and meta.get("provider") == "codex"
+                    and meta.get("wire_format") == "cache-shared-v2"
+                    and meta.get("translation_thread_strategy") == codex_pair.STRATEGY):
+                meta["accepted_attempt"] = str(attempt.relative_to(self.store.root))
+                try:
+                    parent = codex_pair.parent_metadata(meta, attempt, body, value, pass_no)
+                except (OSError, ValueError, KeyError, TypeError, PipelineError, jsonschema.ValidationError) as exc:
+                    meta.update(pair_parent_status="unavailable", pair_parent_reason=str(exc))
+                else:
+                    recorder.artifact_json("pair_parent.json", parent)
+                    meta.update(pair_parent=parent, pair_parent_status="available")
             recorder.finish(generation="completed", validation="passed", metadata={**meta, **measurement_meta,
                             "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
             self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,

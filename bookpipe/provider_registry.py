@@ -13,7 +13,7 @@ from .processing import configuration
 
 
 class ProviderPool:
-    """Resolve profile precedence and reuse only transport processes/clients, never conversations."""
+    """Resolve profiles and reuse clients; Codex attempt runtimes stay private."""
 
     def __init__(
         self,
