@@ -211,6 +211,11 @@ See [Codex cache-v2](docs/codex-cache-v2.md) for settings, rollback, evidence an
 exact commands for a one-chunk GPT-6.1 Sol A/B measurement. Canonical fingerprints
 and checkpoints remain unchanged.
 
+An optional [cache-shared-v1](docs/codex-cache-shared-v1.md) transport extends
+shared developer/schema/source prefixes to P1–P5 while keeping independent
+complete requests. It is opt-in; existing defaults and wire formats remain.
+Prefix equality does not demonstrate provider cache reuse.
+
 Codex Pass 1 uses `compact-v1` by default. This is only the physical app-server
 wire representation: source blocks use local integer indices, the response has
 short field names, and the flat transport schema does not repeat the canonical

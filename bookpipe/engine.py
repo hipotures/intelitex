@@ -18,6 +18,7 @@ from .importer import pack_blocks, split_long
 from .p1_compact import decode_output as decode_compact_p1
 from .codex_cache import decode_output as decode_cache_output
 from . import codex_cache_v2
+from . import codex_cache_shared
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -400,17 +401,18 @@ def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_c
         return decode_compact_p1(value, block_ids)
     if wire_format == "cache-v1":
         return decode_cache_output(value)
-    if wire_format == "cache-v2":
-        if expected_pass not in (2, 3, 4, 5):
-            raise EvidenceError("cache-v2 requires the application's expected translation pass.")
+    if wire_format in ("cache-v2", "cache-shared-v1"):
+        codec = codex_cache_shared if wire_format == "cache-shared-v1" else codex_cache_v2
+        if expected_pass not in ((1, 2, 3, 4, 5) if wire_format == "cache-shared-v1" else (2, 3, 4, 5)):
+            raise EvidenceError(f"{wire_format} requires the application's expected pass.")
         try:
-            context = codex_cache_v2.context_for(inputs, expected_pass)
-            if codec_context is not None and codex_cache_v2.CodecContext.from_dict(codec_context) != context:
-                raise PipelineError("cache-v2 saved reference map differs from its canonical semantic input.")
+            context = codec.context_for(inputs, expected_pass)
+            if codec_context is not None and codec.CodecContext.from_dict(codec_context) != context:
+                raise PipelineError(f"{wire_format} saved reference map differs from its canonical semantic input.")
         except PipelineError as exc:
             # This is local codec/context corruption, not a model mistake.
             raise EvidenceError(str(exc)) from exc
-        return codex_cache_v2.decode_output(value, expected_pass, context)
+        return codec.decode_output(value, expected_pass, context)
     raise PipelineError(f"Unknown response wire format: {wire_format!r}")
 
 
@@ -564,21 +566,22 @@ class Runner:
                 wire = meta.get("wire_format", "canonical")
                 old_inputs = inputs
                 old_context = None
-                if wire == "cache-v2":
-                    if type(meta.get("codec_map_version")) is not int or meta.get("codec_map_version") != codex_cache_v2.MAP_VERSION:
-                        raise EvidenceError("Unsupported recorded cache-v2 codec version; no new inference was submitted.")
+                if wire in ("cache-v2", "cache-shared-v1"):
+                    codec = codex_cache_shared if wire == "cache-shared-v1" else codex_cache_v2
+                    if type(meta.get("codec_map_version")) is not int or meta.get("codec_map_version") != codec.MAP_VERSION:
+                        raise EvidenceError(f"Unsupported recorded {wire} codec version; no new inference was submitted.")
                     try:
                         old_inputs = read_json(attempt / "request.semantic.json")["input_payload"]
                         old_context = read_json(attempt / "codec.context.json")
                     except (OSError, ValueError, KeyError) as exc:
-                        raise EvidenceError(f"Cannot read saved cache-v2 codec context: {attempt}; no new inference was submitted.") from exc
-                decoded = (codex_cache_v2.parse_output(raw) if wire == "cache-v2" else
+                        raise EvidenceError(f"Cannot read saved {wire} codec context: {attempt}; no new inference was submitted.") from exc
+                decoded = (codex_cache_v2.parse_output(raw) if wire in ("cache-v2", "cache-shared-v1") else
                            _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
                                                  and getattr(provider, "diffusion", False)))
                 value = _decode_transport_result(decoded, wire, old_inputs, old_context, expected_pass=pass_no)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 validate_result(pass_no, value, inputs)
-                if meta.get("wire_format") in {"cache-v1", "cache-v2"}:
+                if meta.get("wire_format") in {"cache-v1", "cache-v2", "cache-shared-v1"}:
                     jsonschema.Draft202012Validator(schema).validate(value)
             except EvidenceError:
                 raise
@@ -728,20 +731,20 @@ class Runner:
                 translation_timing = pass_no > 1 and getattr(provider, "provider", None) == "codex"
                 if translation_timing:
                     recorder.event("local", "validation_started", {"wire_format": meta.get("wire_format", "canonical")})
-                if meta.get("wire_format") == "cache-v2":
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1"):
                     meta = {**meta, "output_utf8_bytes": len(raw.encode("utf-8")),
                             "canonical_schema_utf8_bytes": len(codex_cache_v2.encode_value(schema).encode("utf-8"))}
                 validation_started = time.monotonic()
                 value = _decode_transport_result(
-                    codex_cache_v2.parse_output(raw) if meta.get("wire_format") == "cache-v2" else
+                    codex_cache_v2.parse_output(raw) if meta.get("wire_format") in ("cache-v2", "cache-shared-v1") else
                     _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
                                           and getattr(provider, "diffusion", False)),
                     meta.get("wire_format", "canonical"), inputs, body.get("codec_context"), expected_pass=pass_no,
                 )
-                if meta.get("wire_format") in {"compact-v1", "cache-v1", "cache-v2"}:
+                if meta.get("wire_format") in {"compact-v1", "cache-v1", "cache-v2", "cache-shared-v1"}:
                     recorder.decoded_canonical(value)
                 initial_error = None
-                if meta.get("wire_format") == "cache-v2":
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1"):
                     meta["decoded_output_utf8_bytes"] = len(codex_cache_v2.encode_value(value).encode("utf-8"))
                     try:
                         jsonschema.Draft202012Validator(schema).validate(value)
@@ -752,12 +755,12 @@ class Runner:
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 if repairs:
                     atomic_json(attempt / "validation_repairs.json", repairs)
-                if meta.get("wire_format") == "cache-v2":
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1"):
                     jsonschema.Draft202012Validator(schema).validate(value)
                 validate_result(pass_no, value, inputs)
                 if meta.get("wire_format") == "cache-v1":
                     jsonschema.Draft202012Validator(schema).validate(value)
-                if meta.get("wire_format") == "cache-v2":
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1"):
                     recorder.validation({"initial_validation_error": initial_error, "repairs": repairs,
                                          "final_validation": "passed", "elapsed_seconds": time.monotonic() - validation_started})
                     meta["accepted_output_utf8_bytes"] = len(codex_cache_v2.encode_value(value).encode("utf-8"))

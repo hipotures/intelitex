@@ -15,6 +15,7 @@ from typing import Any
 from .contracts import normalized_usage
 from .codex_cache import diagnostics, load_developer_contract, output_schema, serialize
 from . import codex_cache_v2
+from . import codex_cache_shared
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
 from .progress import ProgressEvent
@@ -284,19 +285,20 @@ class CodexAppServerClient:
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
         options = self.settings.get("options", {})
         wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "cache-v2")
-        allowed = ("compact-v1", "canonical", "cache-v1") if pass_no == 1 else ("canonical", "cache-v1", "cache-v2")
+        allowed = ("compact-v1", "canonical", "cache-v1", "cache-shared-v1") if pass_no == 1 else ("canonical", "cache-v1", "cache-v2", "cache-shared-v1")
         if wire_format not in allowed:
             label = "Pass-1" if pass_no == 1 else f"P{pass_no}"
             raise PipelineError(f"Unknown Codex {label} wire format: {wire_format!r}")
-        if wire_format == "cache-v2":
-            developer = codex_cache_v2.load_developer_contract(self.project_root, prompt, pass_no)
-            layout, context = codex_cache_v2.encode_input(inputs, pass_no)
+        if wire_format in ("cache-v2", "cache-shared-v1"):
+            codec = codex_cache_shared if wire_format == "cache-shared-v1" else codex_cache_v2
+            developer = codec.load_developer_contract(self.project_root, prompt, pass_no)
+            layout, context = codec.encode_input(inputs, pass_no)
             return {
                 "model": self.model, "effort": self.settings.get("reasoning_effort"),
                 "developer_instructions": developer, "input": layout.text,
-                "output_schema": copy.deepcopy(codex_cache_v2.TRANSPORT_SCHEMA),
+                "output_schema": copy.deepcopy(codec.TRANSPORT_SCHEMA),
                 "pass_no": pass_no, "wire_format": wire_format, "codec_context": context.as_dict(),
-                "cache_diagnostics": codex_cache_v2.diagnostics(
+                "cache_diagnostics": codec.diagnostics(
                     layout, developer, self.model, self.settings.get("reasoning_effort"), pass_no, inputs,
                     BASE_INSTRUCTIONS.read_text(encoding="utf-8").strip(),
                 ),
@@ -349,7 +351,7 @@ class CodexAppServerClient:
         margin = int(self.settings.get("options", {}).get("context_margin_tokens", 2048))
         required = count + reserve + margin
         if recorder:
-            if body.get("wire_format") == "cache-v2":
+            if body.get("wire_format") in ("cache-v2", "cache-shared-v1"):
                 recorder.codec_context(body["codec_context"])
             if body.get("cache_diagnostics"):
                 recorder.cache_layout(body["cache_diagnostics"])

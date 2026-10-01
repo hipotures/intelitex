@@ -173,13 +173,13 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
             ):
                 raise PipelineError(f"Profile {name!r} {field} must be 'all', a language list, or unknown.")
         p1_wire_format = profile.get("options", {}).get("p1_wire_format", "compact-v1")
-        if provider == "codex" and p1_wire_format not in ("compact-v1", "canonical", "cache-v1"):
+        if provider == "codex" and p1_wire_format not in ("compact-v1", "canonical", "cache-v1", "cache-shared-v1"):
             raise PipelineError(
-                f"Profile {name!r} options.p1_wire_format must be 'compact-v1', 'canonical', or 'cache-v1'."
+                f"Profile {name!r} options.p1_wire_format must be 'compact-v1', 'canonical', 'cache-v1', or 'cache-shared-v1'."
             )
         translation_wire_format = profile.get("options", {}).get("translation_wire_format", "cache-v2")
-        if provider == "codex" and translation_wire_format not in ("canonical", "cache-v1", "cache-v2"):
-            raise PipelineError(f"Profile {name!r} options.translation_wire_format must be 'canonical', 'cache-v1', or 'cache-v2'.")
+        if provider == "codex" and translation_wire_format not in ("canonical", "cache-v1", "cache-v2", "cache-shared-v1"):
+            raise PipelineError(f"Profile {name!r} options.translation_wire_format must be 'canonical', 'cache-v1', 'cache-v2', or 'cache-shared-v1'.")
         def secret_key(value: Any) -> bool:
             if isinstance(value, dict):
                 for key, item in value.items():

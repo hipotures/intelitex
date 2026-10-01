@@ -16,6 +16,7 @@ from pathlib import Path
 from bookpipe.codex_cache import COMMON_FIELDS, RETRY_FIELDS
 from bookpipe.codex_transport import CodexAppServerClient
 from bookpipe import codex_cache_v2 as v2
+from bookpipe import codex_cache_shared as shared, p1_compact as p1
 from bookpipe.engine import Runner, response_schema, validate_result
 from bookpipe.codex_cache import developer_contract as v1_developer, serialize as v1_serialize, TRANSPORT_SCHEMA as V1_SCHEMA, encode_value, decode_output as v1_decode
 from bookpipe.evidence import utc_now
@@ -264,6 +265,88 @@ def offline_sizes(scratch: Path) -> dict:
     return result
 
 
+def shared_sizes(project: Path, chunk_id: str, analysis_unit: str, scratch: Path) -> dict:
+    """Read accepted tasks only; compare old/shared layouts without model calls."""
+    project, scratch = project.resolve(), scratch.resolve()
+    repository = Path(__file__).resolve().parents[1]
+    if any(scratch.is_relative_to(root) or root.is_relative_to(scratch) for root in (project, repository)):
+        raise PipelineError("Size-report scratch must be outside the project/repository and cannot contain them.")
+    for name in (chunk_id, analysis_unit):
+        if not name or Path(name).name != name or name in (".", ".."):
+            raise PipelineError("Chunk/analysis identifiers must be plain names.")
+    tasks, prompts = {}, {}
+    for n in range(1, 6):
+        unit = analysis_unit if n == 1 else chunk_id
+        paths = [p for p in (project / "artifacts" / f"pass{n}" / unit).glob("*/attempt_*/request.semantic.json")
+                 if (p.parent / "attempt.json").is_file()
+                 and read_json(p.parent / "attempt.json").get("lifecycle", {}).get("acceptance") == "checkpointed"]
+        if not paths:
+            raise PipelineError(f"No accepted P{n} attempt for {unit}; no inference will be made.")
+        path = max(paths, key=lambda p: p.parent.stat().st_mtime)
+        semantic = read_json(path)
+        result_path = path.parent.parent / "result.json"
+        tasks[n] = {"inputs": semantic["input_payload"], "result": read_json(result_path),
+                    "source_attempt": str(path.parent), "semantic_sha256": digest(path.read_bytes()),
+                    "result_sha256": digest(result_path.read_bytes())}
+        prompts[n] = semantic["trusted_instructions"]
+    developer = shared.developer_contract(prompts)
+    translation_developer = v2.developer_contract({n: prompts[n] for n in range(2, 6)})
+    def size(value): return len(encode_value(value).encode("utf-8"))
+    rows, prefixes = [], {}
+    for n, task in tasks.items():
+        inputs, result = task["inputs"], task["result"]
+        jsonschema.validate(result, response_schema(n, inputs))
+        validate_result(n, result, inputs)
+        layout, ctx = shared.encode_input(inputs, n)
+        prefixes[str(n)] = {"source": digest(layout.source_prefix),
+                            "translation_common": digest(layout.translation_common_prefix) if n > 1 else None,
+                            "draft": digest(layout.draft_prefix) if n in (4, 5) else None}
+        compact = shared.encode_output(result, n, ctx)
+        if shared.decode_input(layout, ctx) != inputs or shared.decode_output(compact, n, ctx) != result:
+            raise PipelineError(f"P{n} cache-shared-v1 round trip failed.")
+        rows.append({"pass_no": n, "wire_format": shared.WIRE_FORMAT,
+                     "developer_utf8_bytes": len(developer.encode()), "schema_utf8_bytes": size(shared.TRANSPORT_SCHEMA),
+                     "source_prefix_utf8_bytes": len(layout.source_prefix.encode()),
+                     "translation_common_prefix_utf8_bytes": len(layout.translation_common_prefix.encode()) if n > 1 else None,
+                     "translation_common_section_utf8_bytes": len(layout.translation_common_prefix.encode()) - len(layout.source_prefix.encode()) if n > 1 else None,
+                     "input_utf8_bytes": len(layout.text.encode()), "output_utf8_bytes": size(compact), "roundtrip_valid": True})
+        if n == 1:
+            old = p1.build_transport(prompts[n], inputs)
+            # compact-v1 has no leading source-only prefix: memory precedes it.
+            old_row = {"wire_format": "compact-v1", "developer_utf8_bytes": len(old.developer_instructions.encode()),
+                       "schema_utf8_bytes": size(old.output_schema), "source_prefix_utf8_bytes": None,
+                       "translation_common_prefix_utf8_bytes": None, "translation_common_section_utf8_bytes": None,
+                       "input_utf8_bytes": size(old.input_payload)}
+            old_output = {"t": compact["a"], "o": compact["o"]}
+            if old.decode(old_output) != result:
+                raise PipelineError("P1 compact-v1 output round trip failed.")
+        else:
+            old, old_ctx = v2.encode_input(inputs, n)
+            old_wire = json.loads(old.text)
+            source_prefix = '{"CACHE_V2":1,' + ''.join(encode_value(k) + ':' + encode_value(old_wire[k]) + ',' for k in ("SOURCE_BLOCKS", "SOURCE_LOOKUP"))
+            old_row = {"wire_format": "cache-v2", "developer_utf8_bytes": len(translation_developer.encode()),
+                       "schema_utf8_bytes": size(v2.TRANSPORT_SCHEMA), "source_prefix_utf8_bytes": len(source_prefix.encode()),
+                       "translation_common_prefix_utf8_bytes": len(old.common_prefix.encode()),
+                       "translation_common_section_utf8_bytes": len(old.common_prefix.encode()) - len(source_prefix.encode()),
+                       "input_utf8_bytes": len(old.text.encode())}
+            old_output = v2.encode_output(result, n, old_ctx)
+            if v2.decode_input(old, old_ctx) != inputs or v2.decode_output(old_output, n, old_ctx) != result:
+                raise PipelineError(f"P{n} cache-v2 round trip failed.")
+        rows.append({"pass_no": n, **old_row, "output_utf8_bytes": size(old_output), "roundtrip_valid": True})
+    report = {"chunk_id": chunk_id, "analysis_unit_id": analysis_unit,
+              "method": "Offline deterministic UTF-8 bytes, not model tokens, hits, cost or latency; prefixes include prior fields and trailing comma.",
+              "note": "compact-v1 has no source-only leading prefix (null); translation common prefix includes source; section excludes source. Original retry data is retained.",
+              "source_attempts": {str(n): {k: t[k] for k in ("source_attempt", "semantic_sha256", "result_sha256")} for n, t in tasks.items()},
+              "rows": rows, "prefixes": prefixes,
+              "source_prefix_equal_p1_p2": prefixes["1"]["source"] == prefixes["2"]["source"],
+              "translation_common_equal_p2_p5": len({prefixes[str(n)]["translation_common"] for n in range(2, 6)}) == 1,
+              "draft_prefix_equal_p4_p5": prefixes["4"]["draft"] == prefixes["5"]["draft"], "live_model_calls": 0}
+    scratch.mkdir(parents=True, exist_ok=False, mode=0o700)
+    atomic_json(scratch / "shared-sizes.json", report)
+    atomic_json(scratch / "schema.cache-shared-v1.json", shared.TRANSPORT_SCHEMA)
+    return report
+
+
 def event_timings(directory: Path) -> dict:
     """Timing from saved RPC events; absent observations remain null."""
     path = directory / "transport.jsonl"
@@ -314,6 +397,11 @@ def main() -> int:
     live.add_argument("--wire", choices=("canonical", "cache-v1", "cache-v2"), required=True)
     sizes = sub.add_parser("sizes", help="Offline comparison of frozen accepted canonical tasks/results")
     sizes.add_argument("--scratch", type=Path, required=True)
+    shared_report = sub.add_parser("shared-sizes", help="Offline P1 compact-v1/P2-P5 cache-v2 versus cache-shared-v1 sizes")
+    shared_report.add_argument("--project", type=Path, required=True)
+    shared_report.add_argument("--chunk-id", required=True)
+    shared_report.add_argument("--analysis-unit", required=True)
+    shared_report.add_argument("--scratch", type=Path, required=True)
     saved = sub.add_parser("report")
     saved.add_argument("--scratch", type=Path, required=True)
     args = parser.parse_args()
@@ -324,6 +412,8 @@ def main() -> int:
             result = run(args.scratch, args.wire)
         elif args.command == "sizes":
             result = offline_sizes(args.scratch)
+        elif args.command == "shared-sizes":
+            result = shared_sizes(args.project, args.chunk_id, args.analysis_unit, args.scratch)
         else:
             result = report(args.scratch)
         print(json.dumps(result, ensure_ascii=False, indent=2))

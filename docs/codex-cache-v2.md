@@ -1,5 +1,9 @@
 # Codex cache-v2 translation codec
 
+For an opt-in shared P1–P5 developer/schema/source layout, see
+[cache-shared-v1](codex-cache-shared-v1.md). Defaults remain compact-v1/cache-v2;
+the new layout does not establish provider cache reuse or change session routing.
+
 `cache-v2` is the global Codex default for P2–P5 only. It compresses representations without
 changing canonical prompts, schemas, task fingerprints, approvals, inputs,
 chunk boundaries, pass dependencies, accepted results or checkpoints. P1's
