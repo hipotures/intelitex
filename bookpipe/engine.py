@@ -19,6 +19,7 @@ from .p1_compact import decode_output as decode_compact_p1
 from .codex_cache import decode_output as decode_cache_output
 from . import codex_cache_v2
 from . import codex_cache_shared, codex_cache_shared_v2
+from . import codex_parent
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -379,6 +380,7 @@ def _semantic_execution_signature(value: dict) -> dict:
         if isinstance(options, dict):
             options.pop("p1_wire_format", None)
             options.pop("translation_wire_format", None)
+            options.pop("translation_thread_strategy", None)
             # Older Codex profiles may omit options entirely. Resolution now
             # spells out wire defaults, which add no execution semantics.
             if not options and resolved.get("provider") == "codex":
@@ -676,6 +678,10 @@ class Runner:
             body = {}
             try:
                 body = provider.body(prompt, payload, schema, pass_no)
+                if (getattr(provider, "provider", None) == "codex" and pass_no in (3, 4, 5)
+                        and body.get("wire_format") == "cache-shared-v2"
+                        and codex_parent.strategy(provider.settings.get("options", {})) == codex_parent.STRATEGY):
+                    body.update(codex_parent.resolve_parent(self.store, body, inputs))
                 # llama.cpp discovery is required for a null model/context and
                 # is recorded inside the already-created attempt boundary.
                 if getattr(provider, "provider", "llamacpp") in {"llamacpp", "vllm"} and not getattr(provider, "identity", {}).get("id"):
@@ -798,6 +804,17 @@ class Runner:
             if pass_no in (3, 5):
                 atomic_text(work / "result.txt", "\n\n".join(b["text"] for b in value["translations"]) + "\n")
             measurement_meta = preflight_metadata(measurement)
+            if pass_no == 2 and meta.get("provider") == "codex" and meta.get("wire_format") == "cache-shared-v2":
+                meta["accepted_attempt"] = str(attempt.relative_to(self.store.root))
+                try:
+                    parent = codex_parent.parent_metadata(meta, attempt, body, value)
+                except (OSError, ValueError, KeyError, TypeError, PipelineError) as exc:
+                    # Accepted canonical work stays valid even without usable
+                    # native parent evidence. No billable retry for cache state.
+                    meta.update(cache_parent_status="unavailable", cache_parent_reason=str(exc))
+                else:
+                    recorder.artifact_json("cache_parent.json", parent)
+                    meta.update(cache_parent=parent, cache_parent_status="available")
             recorder.finish(generation="completed", validation="passed", metadata={**meta, **measurement_meta,
                             "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
             self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,

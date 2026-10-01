@@ -7,9 +7,12 @@ Built-in and custom Codex profiles without explicit wire options default to
 `cache-shared-v2` for P1–P5. No existing wire version is redefined.
 
 Each pass and each validation retry starts its own isolated runtime/process and
-fresh root thread. Accepted canonical artifacts are supplied explicitly as data.
-There is no continuation, fork, replay of another pass's conversation, warm-up,
-keepalive, affinity key, TTL state or model/profile/effort change.
+independent model conversation. Translation defaults to a persistent P2 cache
+parent and ephemeral sibling forks **before the accepted P2 turn** for P3–P5;
+see [the production lifecycle](codex-cache-parent.md). Only the pre-turn SOURCE
+and COMMON are inherited. Accepted canonical artifacts are supplied explicitly
+as data. P1 stays independent. There is no conversation continuation, warm-up,
+keepalive, custom affinity key, TTL state or model/profile/effort change.
 
 ## Installed protocol and physical messages
 
@@ -92,16 +95,19 @@ Canonical fingerprints and accepted results do not change with message layout.
 Recorded `cache-shared-v2` contexts have their own explicit wire version and map
 version 1; recovery checks maps against that attempt's saved canonical input.
 All older wire versions remain supported without rewriting evidence or spending
-another call on accepted work. Retries recreate complete data in a fresh root,
-without including any failed assistant output.
+another call on accepted work. P2 retries create fresh parents; P3–P5 retries
+create new ephemeral siblings of the accepted P2. Without a compatible parent,
+the complete request uses a fresh root. No failed assistant output is inherited.
 
 The existing capability-based reasoning-effort integration is unchanged: user
 selection stays authoritative; supported combinations use Codex's trusted
 configuration-update path and unsupported ones retain request-level effort.
 IntelliTex never injects a configuration_update through `inject_items` or user
-text. There are no new effort/session settings.
+text. The execution strategy does not introduce effort settings or change this
+path. Ephemeral children have no durable rollout. Standard turn/settings RPC
+evidence is used when available; unobservable configuration-update fields stay null.
 
-`request.transport.json` includes exact thread parameters, ordered injection
+`request.transport.json` includes exact thread/start or thread/fork parameters, ordered injection
 RPC parameters with the returned thread ID, final turn parameters, and the
 application-owned `message_plan` (base/developer instructions followed by user
 items). Raw outbound/inbound RPC events remain in `transport.jsonl`. Local
@@ -111,6 +117,8 @@ The six provider usage categories and missing-value semantics are unchanged.
 Diagnostics record `source_message_*`, `translation_common_message_*`,
 `draft_message_*` and `active_pass_message_*` SHA-256/UTF-8-byte fields where
 applicable, plus developer/base/schema hashes, wire/map version and selection.
+Fork evidence also records accepted-parent identity, durable rollout reference,
+verified cutoff, distinct child identity, execution strategy and fallback status.
 `input_utf8_bytes` sums actual message text bytes. `full_input_*` describes the
 unambiguous canonical JSON serialization of the ordered raw user-message plan.
 Candidate `source/translation_common/draft_prefix_*` hashes/sizes describe the
@@ -125,27 +133,30 @@ Both options default to `cache-shared-v2`. They can also be set explicitly on th
 selected Codex profile, or independently selected:
 
 ```json
-{"options":{"p1_wire_format":"cache-shared-v2","translation_wire_format":"cache-shared-v2"}}
+{"options":{"p1_wire_format":"cache-shared-v2","translation_wire_format":"cache-shared-v2","translation_thread_strategy":"p2-parent-ephemeral-fork-v1"}}
 ```
 
 Explicit profile options still override the defaults. A normal server restart
 reloads the defaults; a project with explicit older options needs those options
 updated to use v2. Model/effort assignments remain unchanged. Rollback selects
 `cache-shared-v1`, or earlier supported formats. Existing checkpoints require no
-migration.
+migration. Set `translation_thread_strategy: fresh-root` to retain independent
+fresh roots without changing the codec. Older codecs also continue using roots.
 
 ```bash
 uv run pytest -q tests/test_codex_cache_shared_v2.py \
-  tests/test_codex_cache_shared_v2_app_server.py
+  tests/test_codex_cache_shared_v2_app_server.py tests/test_codex_parent.py
 ```
 
 The second file launches the **installed 0.159.3 binary** with an isolated empty
 home, no authentication, and an HTTP Responses provider pointing exclusively to
 a loopback SSE mock. It captures the actual outbound Responses JSON, proves
 separate ordered role=user items, zero requests during injection, one request per
-pass, independent roots, complete fresh-root retries, and exact recorded RPC
-parameters. It is skipped when that pinned binary is absent; the reported local
+pass, independent conversations, complete retries, and exact recorded RPC
+parameters. The fresh-root tests explicitly select rollback; parent tests prove
+cold-runtime fork imports, cutoff isolation, sibling retries and safe fallback.
+It is skipped when that pinned binary is absent; the reported local
 run executes it. Fixtures use small synthetic data, no production book input.
 
-No live-model/cache-routing/latency/quality measurements are part of this step.
-Message boundaries are exposed; actual provider caching is not demonstrated.
+Implementation tests use no live model calls. Message hashes establish data
+identity; actual production hits are determined only by provider usage telemetry.

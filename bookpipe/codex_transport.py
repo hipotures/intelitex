@@ -17,6 +17,7 @@ from .codex_cache import diagnostics, load_developer_contract, output_schema, se
 from . import codex_cache_v2
 from . import codex_cache_shared
 from . import codex_cache_shared_v2
+from . import codex_parent
 from .codex_effort import EffortPlan, resolve_effort_plan, runtime_model_metadata, rollout_effort_evidence, verify_reported_selection
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
@@ -63,6 +64,7 @@ class _RpcSession:
             "terminal": None, "terminal_error": None, "final_messages": [],
             "fallback_messages": [], "usage_events": [], "context_altered": False,
             "last_emitted_usage": None,
+            "turn_submitted": False, "turn_settings": None,
         }
         self._threads = [
             threading.Thread(target=self._read, args=("stdout", proc.stdout), daemon=True),
@@ -184,6 +186,10 @@ class _RpcSession:
                     self.state["fallback_messages"].append(item["text"])
         elif method == "turn/completed":
             self.state["terminal"] = params.get("turn") or params
+        elif method == "thread/settings/updated" and self.state.get("turn_submitted"):
+            # Standard RPC observation of settings applied to the submitted
+            # turn. Useful when an ephemeral child has no turn_context rollout.
+            self.state["turn_settings"] = params.get("threadSettings")
         elif method == "error" and not params.get("willRetry", False):
             self.state["terminal_error"] = params
         elif method == "thread/status/changed":
@@ -332,6 +338,8 @@ class CodexAppServerClient:
         if wire_format not in allowed:
             label = "Pass-1" if pass_no == 1 else f"P{pass_no}"
             raise PipelineError(f"Unknown Codex {label} wire format: {wire_format!r}")
+        if pass_no > 1:
+            codex_parent.strategy(options)  # Validate even when using a rollback codec.
         if wire_format in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
             codec = {"cache-v2": codex_cache_v2, "cache-shared-v1": codex_cache_shared,
                      "cache-shared-v2": codex_cache_shared_v2}[wire_format]
@@ -505,10 +513,38 @@ class CodexAppServerClient:
         base = BASE_INSTRUCTIONS.read_text(encoding="utf-8").strip()
         if not base:
             raise PipelineError("Codex base instructions must be non-empty.")
+        strategy = codex_parent.strategy(self.settings.get("options", {})) if body.get("pass_no", 1) > 1 else "fresh-root"
+        use_parent = (strategy == codex_parent.STRATEGY and body.get("wire_format") == "cache-shared-v2"
+                      and body.get("pass_no") in (3, 4, 5))
+        execution = {"translation_thread_strategy": strategy,
+                     "execution_strategy": "p2_parent" if strategy == codex_parent.STRATEGY and
+                     body.get("pass_no") == 2 and body.get("wire_format") == "cache-shared-v2" else "fresh-root"}
+        parent = body.get("cache_parent") if use_parent else None
+        if use_parent:
+            execution.update({k: body.get(k) for k in ("cache_parent_status", "cache_parent_reason")})
+            execution["execution_strategy"] = "fresh_root_fallback"
+            if parent:
+                try:
+                    proof = codex_parent.inspect_parent(Path(parent["parent_rollout"]), parent["parent_thread_id"],
+                                                        parent["parent_session_id"], parent["parent_turn_id"], body)
+                    if (proof["parent_rollout_sha256"] != parent["parent_rollout_sha256"] or
+                            any(parent[k] != body["cache_diagnostics"][k] for k in codex_parent.COMPATIBILITY_FIELDS)):
+                        raise PipelineError("Accepted P2 parent changed before fork submission.")
+                except (OSError, ValueError, KeyError, TypeError, PipelineError) as exc:
+                    parent = None
+                    execution.update(cache_parent_status="incompatible", cache_parent_reason=str(exc))
+                else:
+                    execution.update(execution_strategy="ephemeral_fork", cache_parent_status="available", cache_parent=parent)
+            elif not execution.get("cache_parent_status"):
+                execution.update(cache_parent_status="unavailable", cache_parent_reason="No accepted parent supplied")
+        parent_native_path = home / "sessions" / Path(parent["native_rollout_name"]).name if parent else None
+        if parent:
+            execution["parent_runtime_rollout"] = str(parent_native_path)
         transport_plan = {
             "wire_format": body.get("wire_format", "canonical"),
             "requested_model": self.model, "reported_model": None, "reported_effort": None,
             **effort_plan.metadata(),
+            **execution,
             **({"cache_diagnostics": body["cache_diagnostics"]} if body.get("cache_diagnostics") else {}),
             "argv": argv, "environment": {"CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(sqlite_home), "cwd": str(work)},
             "thread": {
@@ -526,8 +562,9 @@ class CodexAppServerClient:
             },
         }
         if body.get("wire_format") == "cache-shared-v2":
+            injected = body["injected_items"][2:] if parent else body["injected_items"]
             transport_plan["injections"] = [{"method": "thread/inject_items", "params": {"items": [copy.deepcopy(item)]}}
-                                            for item in body["injected_items"]]
+                                            for item in injected]
             # Application-owned messages only. Codex can additionally add its
             # platform-owned sandbox/environment wrappers. This is evidence,
             # not a raw Responses request or extra app-server parameters.
@@ -542,6 +579,14 @@ class CodexAppServerClient:
         rpc: _RpcSession | None = None
         graceful = False
         try:
+            if parent:
+                # 0.159.3 resolves paginated sources by ID after reading the
+                # supplied path. Stage the unchanged native export in the
+                # private session tree for Codex's own resolver/indexer.
+                # No state DB copy, fabricated history, or retained runtime.
+                parent_native_path.parent.mkdir(parents=True, mode=0o700)
+                shutil.copyfile(parent["parent_rollout"], parent_native_path)
+                os.chmod(parent_native_path, 0o600)
             proc = subprocess.Popen(
                 argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 cwd=work, env=self._process_env(home, sqlite_home), start_new_session=True,
@@ -575,8 +620,46 @@ class CodexAppServerClient:
             effort_plan, effort_capability = self._effort_plan(rpc, home, installed, body.get("effort"), deadline)
             transport_plan.update(effort_plan.metadata(), reasoning_effort_capability=effort_capability)
             transport_plan["thread"]["config"] = effort_plan.thread_config()
+            if parent:
+                # ThreadForkParams differs from ThreadStartParams: unsupported
+                # start-only capability fields never enter this RPC. The private
+                # runtime still suppresses all capabilities; turns override roots.
+                transport_plan["fork"] = {k: transport_plan["thread"][k] for k in (
+                    "model", "cwd", "sandbox", "approvalPolicy", "baseInstructions",
+                    "developerInstructions", "runtimeWorkspaceRoots", "config",
+                )}
+                transport_plan["fork"].update(
+                    threadId=parent["parent_thread_id"], path=str(parent_native_path),
+                    beforeTurnId=parent["parent_turn_id"], ephemeral=True, excludeTurns=True,
+                )
+                transport_plan["fork"]["config"] = {**effort_plan.thread_config(), "personality": "none"}
+                transport_plan.pop("thread")
             recorder.transport_request(transport_plan, body["output_schema"])
-            thread_result = rpc.request("thread/start", transport_plan["thread"], deadline)
+            try:
+                thread_result = rpc.request("thread/fork" if parent else "thread/start",
+                                            transport_plan["fork" if parent else "thread"], deadline)
+            except PipelineError as exc:
+                if not parent or not str(exc).startswith("Codex RPC thread/fork failed:"):
+                    raise
+                # A native fork rejected before any turn is an optimization
+                # miss. Reconstruct the complete independent request in this
+                # same isolated process; never retry an already submitted turn.
+                execution.update(execution_strategy="fresh_root_fallback", cache_parent_status="unavailable",
+                                 cache_parent_reason=str(exc))
+                parent = None
+                transport_plan["rejected_fork"] = transport_plan.pop("fork")
+                transport_plan.update(execution)
+                transport_plan["thread"] = {
+                    "model": self.model, "cwd": str(work), "sandbox": "read-only", "approvalPolicy": "never",
+                    "ephemeral": False, "baseInstructions": base,
+                    "developerInstructions": body["developer_instructions"], "personality": "none",
+                    "environments": [], "dynamicTools": [], "selectedCapabilityRoots": [],
+                    "runtimeWorkspaceRoots": [], "config": effort_plan.thread_config(),
+                }
+                transport_plan["injections"] = [{"method": "thread/inject_items", "params": {"items": [copy.deepcopy(item)]}}
+                                                for item in body["injected_items"]]
+                recorder.transport_request(transport_plan, body["output_schema"])
+                thread_result = rpc.request("thread/start", transport_plan["thread"], deadline)
             thread = thread_result.get("thread") or {}
             rpc.state.update({
                 "thread_id": thread.get("id"), "session_id": thread.get("sessionId"),
@@ -586,11 +669,19 @@ class CodexAppServerClient:
                 "model_provider": thread_result.get("modelProvider") or thread.get("modelProvider"),
                 "cli_version": thread.get("cliVersion"),
             })
-            if not rpc.state["thread_id"] or not rpc.state["thread_path"]:
+            if not rpc.state["thread_id"] or (not parent and not rpc.state["thread_path"]):
                 raise PipelineError("Codex persisted thread response omitted id or path.")
+            if parent and (thread.get("ephemeral") is not True or thread.get("forkedFromId") != parent["parent_thread_id"]
+                           or rpc.state["thread_id"] == parent["parent_thread_id"] or not rpc.state["session_id"]
+                           or rpc.state["session_id"] == parent["parent_session_id"]):
+                raise PipelineError("Codex did not confirm an independent ephemeral child of the accepted P2; no turn submitted.")
+            if parent:
+                execution.update(forked_from_id=thread["forkedFromId"], ephemeral=True,
+                                 before_turn_id=parent["parent_turn_id"])
+                transport_plan.update(execution)
             transport_plan["reported_model"] = rpc.state["reported_model"]
             if effort_plan.mode == "configuration_update" and rpc.state["reported_effort"] != effort_plan.baseline:
-                raise PipelineError("Codex thread/start did not confirm the model-default effort baseline; no turn submitted.")
+                raise PipelineError("Codex thread creation did not confirm the model-default effort baseline; no turn submitted.")
             turn_params = dict(transport_plan["turn"], threadId=rpc.state["thread_id"])
             # Replace the pre-submission plan with the exact physical turn,
             # including the provider-assigned ID. Diagnostics never enter RPC.
@@ -598,13 +689,26 @@ class CodexAppServerClient:
             for injection in transport_plan.get("injections", []):
                 injection["params"]["threadId"] = rpc.state["thread_id"]
             recorder.transport_request(transport_plan, body["output_schema"])
+            recorder.artifact_json("codex_execution.json", {
+                **execution, **effort_plan.metadata(), "requested_model": self.model,
+                "reported_model": rpc.state["reported_model"],
+                "thread_id": rpc.state["thread_id"], "session_id": rpc.state["session_id"],
+                "thread_path": rpc.state["thread_path"], "turn_id": None,
+            })
             for injection in transport_plan.get("injections", []):
                 # Each raw user ResponseItem is appended without a model turn.
                 # Failure stops this attempt; never emulate with extra turns.
                 rpc.request(injection["method"], injection["params"], deadline)
+            rpc.state["turn_submitted"] = True
             turn_result = rpc.request("turn/start", turn_params, deadline)
             turn = turn_result.get("turn") or {}
             rpc.state["turn_id"] = turn.get("id") or rpc.state["turn_id"]
+            recorder.artifact_json("codex_execution.json", {
+                **execution, **effort_plan.metadata(), "requested_model": self.model,
+                "reported_model": rpc.state["reported_model"],
+                "thread_id": rpc.state["thread_id"], "session_id": rpc.state["session_id"],
+                "thread_path": rpc.state["thread_path"], "turn_id": rpc.state["turn_id"],
+            })
             rpc.drain_until_terminal(deadline)
             if rpc.state["terminal_error"] is not None:
                 raise PipelineError(f"Codex terminal error: {rpc.state['terminal_error']}")
@@ -626,14 +730,20 @@ class CodexAppServerClient:
             # Close stdin first so Codex flushes the persisted rollout.
             self._cleanup_process(proc, graceful=True)
             graceful = True
-            copied = self._copy_rollout(rpc.state["thread_path"], home, directory / "codex")
-            effort_observed = rollout_effort_evidence(copied, rpc.state["turn_id"])
-            reported_model = effort_observed["rollout_model"] or terminal.get("model") or turn.get("model") or rpc.state["reported_model"]
-            reported_effort = effort_observed["rollout_effort"] or terminal.get("effort") or turn.get("effort")
-            reported_effort_source = "rollout.turn_context" if effort_observed["rollout_effort"] else "turn"
+            copied = None if parent else self._copy_rollout(rpc.state["thread_path"], home, directory / "codex")
+            effort_observed = (rollout_effort_evidence(copied, rpc.state["turn_id"]) if copied else {
+                "configuration_update_observed": None, "configuration_update_effort": None,
+                "provider_request_effort": None, "rollout_model": None, "rollout_effort": None,
+            })
+            turn_settings = rpc.state.get("turn_settings") or {}
+            reported_model = (effort_observed["rollout_model"] or terminal.get("model") or turn.get("model")
+                              or turn_settings.get("model") or rpc.state["reported_model"])
+            reported_effort = effort_observed["rollout_effort"] or terminal.get("effort") or turn.get("effort") or turn_settings.get("effort")
+            reported_effort_source = ("rollout.turn_context" if effort_observed["rollout_effort"] else
+                                      "turn" if terminal.get("effort") or turn.get("effort") else "thread.settings.updated")
             if reported_effort is None and effort_plan.mode == "request_level":
                 reported_effort = rpc.state["reported_effort"]
-                reported_effort_source = "thread.start" if reported_effort is not None else None
+                reported_effort_source = ("thread.fork" if parent else "thread.start") if reported_effort is not None else None
             elif reported_effort is None:
                 reported_effort_source = None
             # thread/start reports the baseline, not the override's effective effort.
@@ -675,16 +785,17 @@ class CodexAppServerClient:
                 "model_provider": rpc.state["model_provider"], "cli_version": rpc.state["cli_version"] or installed["cli_version"],
                 "thread_id": rpc.state["thread_id"], "session_id": rpc.state["session_id"],
                 "turn_id": rpc.state["turn_id"], "thread_path": rpc.state["thread_path"],
-                "rollout_copy": str(copied.relative_to(directory)),
+                "rollout_copy": str(copied.relative_to(directory)) if copied else None,
                 "status": "completed", "finish_reason": "stop",
                 "wire_format": body.get("wire_format", "canonical"),
                 **body.get("cache_diagnostics", {}),
                 **effort_plan.metadata(), **effort_observed,
+                **execution,
                 "reasoning_effort_capability": effort_capability,
                 "usage_status": normalized["status"],
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "isolation": {
-                    "ephemeral": False, "sandbox": "read-only", "approval_policy": "never",
+                    "ephemeral": bool(parent), "sandbox": "read-only", "approval_policy": "never",
                     "skills_disabled": len(paths), "skills_verified_disabled": True,
                     "dynamic_tools": [], "environments": [], "capability_roots": [], "runtime_workspace_roots": [],
                     "base_instructions": base, "developer_instructions": body["developer_instructions"],

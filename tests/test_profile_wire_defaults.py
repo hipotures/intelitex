@@ -30,6 +30,7 @@ def test_all_builtin_codex_profiles_default_to_shared_without_mutating_settings(
         "auth_source": "~/.codex/auth.json",
         "p1_wire_format": SHARED,
         "translation_wire_format": SHARED,
+        "translation_thread_strategy": "p2-parent-ephemeral-fork-v1",
     }
     for number in range(1, 6):
         resolved_name, profile, _ = resolve_profile(settings, number, command_profile=name, project=tmp_path)
@@ -42,7 +43,8 @@ def test_all_builtin_codex_profiles_default_to_shared_without_mutating_settings(
 
 @pytest.mark.parametrize("options", [None, {}, {"auth_source": "/shared/auth.json"},
                                      {"p1_wire_format": "compact-v1"},
-                                     {"translation_wire_format": "cache-v2"}])
+                                     {"translation_wire_format": "cache-v2"},
+                                     {"translation_thread_strategy": "fresh-root"}])
 def test_custom_codex_profiles_inherit_only_missing_options(settings, options, tmp_path):
     custom = {"provider": "codex", "model": "user-model", "context_size": 100000,
               "reasoning_effort": None, "request_timeout": 4321}
@@ -53,6 +55,7 @@ def test_custom_codex_profiles_inherit_only_missing_options(settings, options, t
     before = copy.deepcopy(settings)
     _, profile, _ = resolve_profile(settings, 1, project=tmp_path)
     assert profile["options"] == {"p1_wire_format": SHARED, "translation_wire_format": SHARED,
+                                  "translation_thread_strategy": "p2-parent-ephemeral-fork-v1",
                                   **(options or {})}
     for key, value in custom.items():
         if key != "options":
@@ -135,6 +138,7 @@ def test_salvation_resolution_and_restart_are_read_only(settings, tmp_path):
                 assert profile["reasoning_effort"] == "high"
                 assert profile["options"]["p1_wire_format"] == SHARED
                 assert profile["options"]["translation_wire_format"] == SHARED
+                assert profile["options"]["translation_thread_strategy"] == "p2-parent-ephemeral-fork-v1"
                 rows.append(copy.deepcopy(profile))
             snapshots.append(rows)
         finally:

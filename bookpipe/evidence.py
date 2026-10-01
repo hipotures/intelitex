@@ -112,6 +112,11 @@ class AttemptRecorder:
         except OSError as exc:
             raise EvidenceError(f"Cannot write evidence {name}: {exc}") from exc
 
+    def artifact_json(self, name: str, value: Any) -> None:
+        """Persist additional versioned transport evidence inside this attempt."""
+        self._write_json(name, value)
+        self._remember(name)
+
     def _write_text(self, name: str, value: str) -> None:
         try:
             path = self._path(name)

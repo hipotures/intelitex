@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .catalog import load_catalog, model_entry
+from .codex_parent import STRATEGY, STRATEGIES
 from .util import PipelineError, atomic_json, digest
 
 
@@ -16,6 +17,7 @@ CODEX_WIRE_DEFAULTS = {
     "p1_wire_format": "cache-shared-v2",
     "translation_wire_format": "cache-shared-v2",
 }
+CODEX_EXECUTION_DEFAULTS = {"translation_thread_strategy": STRATEGY}
 COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
     "max_output_tokens", "request_timeout", "reasoning_effort", "credential_env",
@@ -49,7 +51,7 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
                 "max_output_tokens": None,
                 "request_timeout": 1_200,
                 "reasoning_effort": effort,
-                "options": {"auth_source": "~/.codex/auth.json", **CODEX_WIRE_DEFAULTS},
+                "options": {"auth_source": "~/.codex/auth.json", **CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS},
             }
     return result
 
@@ -184,6 +186,8 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
         translation_wire_format = profile.get("options", {}).get("translation_wire_format", CODEX_WIRE_DEFAULTS["translation_wire_format"])
         if provider == "codex" and translation_wire_format not in ("canonical", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2"):
             raise PipelineError(f"Profile {name!r} options.translation_wire_format must be 'canonical', 'cache-v1', 'cache-v2', 'cache-shared-v1', or 'cache-shared-v2'.")
+        if provider == "codex" and profile.get("options", {}).get("translation_thread_strategy", STRATEGY) not in STRATEGIES:
+            raise PipelineError(f"Profile {name!r} options.translation_thread_strategy must be one of {STRATEGIES}.")
         def secret_key(value: Any) -> bool:
             if isinstance(value, dict):
                 for key, item in value.items():
@@ -262,7 +266,7 @@ def resolve_profile(
         raise PipelineError(f"Profile {name!r} is a template/disabled profile.")
     if profile["provider"] == "codex":
         options = profile.setdefault("options", {})
-        for key, default in CODEX_WIRE_DEFAULTS.items():
+        for key, default in {**CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS}.items():
             options.setdefault(key, default)
     profile.setdefault("planning_output_reserve", settings["passes"][str(pass_no)]["max_tokens"])
     profile.setdefault("request_timeout", settings.get("request_timeout", 1200))

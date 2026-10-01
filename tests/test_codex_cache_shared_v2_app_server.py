@@ -25,7 +25,7 @@ def local_responses(tmp_path, monkeypatch):
     version = subprocess.check_output(['codex', '--version'], text=True).strip()
     if version != 'codex-cli 0.159.3':
         pytest.skip('Provider-facing protocol audit is pinned to installed Codex 0.159.3')
-    state = {'requests': [], 'invalid_first': False}
+    state = {'requests': [], 'headers': [], 'invalid_first': False, 'invalid_calls': set()}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -34,13 +34,14 @@ def local_responses(tmp_path, monkeypatch):
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             state['requests'].append(request)
+            state['headers'].append({k: self.headers.get(k) for k in ('session-id', 'x-codex-turn-metadata')})
             assert self.path == '/v1/responses'
             assert not self.headers.get('Authorization')
             users = [x for x in request['input'] if x.get('type') == 'message' and x.get('role') == 'user']
             suffix = json.loads(users[-1]['content'][0]['text'])
             n = suffix['ACTIVE_PASS']
             output = messages.encode_output(RESULTS[n], n, messages.context_for(inputs_for(n), n))
-            if state['invalid_first'] and len(state['requests']) == 1:
+            if (state['invalid_first'] and len(state['requests']) == 1) or len(state['requests']) in state['invalid_calls']:
                 output['t' if n in (3, 5) else 'c'] = []
             rid = f"response-{len(state['requests'])}"
             item = {'type':'message', 'id':f'message-{rid}', 'role':'assistant', 'phase':'final_answer',
@@ -95,6 +96,8 @@ def configured_provider(project, tmp_path):
     p.timeout = 20
     p.settings['runtime_root'] = str(tmp_path/'isolated-runtime')
     p.settings['options']['late_usage_wait'] = 0.01
+    # These tests explicitly exercise the supported fresh-root rollback.
+    p.settings['options']['translation_thread_strategy'] = 'fresh-root'
     assert not p.settings['options'].get('auth_source')
     return p
 

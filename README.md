@@ -212,6 +212,14 @@ request. Explicit profile wire options override the defaults; `compact-v1` and
 fingerprints and checkpoints remain unchanged. Prefix equality does not
 demonstrate provider cache reuse. A normal server restart reloads the defaults.
 
+Codex translation now defaults to
+`translation_thread_strategy: p2-parent-ephemeral-fork-v1`: accepted P2 supplies
+a durable technical cache parent; P3–P5 use independent ephemeral sibling forks
+before the P2 turn. Only SOURCE/COMMON are inherited, never earlier answers.
+Each attempt still owns its isolated app-server/runtime. P1 is unchanged.
+Set `translation_thread_strategy: fresh-root` to opt out. See the
+[lifecycle, cold-runtime import and fallback](docs/codex-cache-parent.md).
+
 The supported Pass-1 `compact-v1` rollback format is only the physical app-server
 wire representation: source blocks use local integer indices, the response has
 short field names, and the flat transport schema does not repeat the canonical
