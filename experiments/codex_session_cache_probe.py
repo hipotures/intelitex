@@ -217,11 +217,12 @@ def isolate_skills(rpc: ProbeRpc, work: Path, timeout: float) -> list[str]:
     return paths
 
 
-def validate_thread(result: dict, *, allow_local_fork_environment: bool = False) -> dict:
+def validate_thread(result: dict, *, allow_local_fork_environment: bool = False,
+                    expected_model: str = MODEL, expected_effort: str = EFFORT) -> dict:
     thread = result.get("thread") or {}
     model = result.get("model") or thread.get("model")
     effort = result.get("reasoningEffort") or thread.get("reasoningEffort")
-    if model != MODEL or effort != EFFORT:
+    if model != expected_model or effort != expected_effort:
         raise PipelineError(f"Reported configuration mismatch: {model!r}, {effort!r}")
     if not thread.get("id") or not thread.get("sessionId"):
         raise PipelineError("Thread response omitted thread/session identity.")
