@@ -61,10 +61,14 @@ P3 sees SOURCE, COMMON, the accepted P2 user turn and raw assistant answer, then
 its own suffix. P5 sees SOURCE, COMMON, DRAFT, the accepted P4 turn and raw answer,
 then its own suffix. P4/P5 see canonical P2/P3 artifacts as supplied data; they
 never inherit their conversations. The raw answers are additional context, not
-the canonical source of truth. Canonical decoding, conservative repair, effective
+the canonical source of truth. The shared developer contract treats earlier
+assistant output as context and gives explicitly supplied canonical dependencies
+precedence when they differ, including after deterministic repair. It selects
+only the final user message's active pass and forbids rerunning earlier stages.
+Canonical decoding, conservative repair, effective
 schema validation and semantic validation remain mandatory.
 
-`cache-shared-v2` encoding, instructions, SOURCE/COMMON/DRAFT text bytes, compact
+`cache-shared-v2` encoding, SOURCE/COMMON/DRAFT text bytes, compact
 maps and fixed provider schema are unchanged. Continuations skip injection of
 already inherited messages and retain the explicit accepted canonical audit or
 ledger in the new turn. Canonical fingerprints and checkpoint reuse do not
@@ -89,6 +93,10 @@ selected accepted result. Decoding and repair of the saved raw answer must
 reproduce that accepted result. Persistent existing cache-shared-v2 P2/P4 roots
 can qualify without new metadata. Ephemeral P4 exports cannot be resumed without
 a durable native snapshot and fall back safely.
+
+A developer-contract change makes older native snapshots incompatible. The
+complete fresh-root fallback uses the accepted canonical dependency without
+rewriting the snapshot or regenerating the accepted upstream pass.
 
 Rejected P2/P4 attempts never become parents; their retries start new roots.
 Every P3/P5 retry restores the original accepted parent snapshot, so failed child
