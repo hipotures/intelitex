@@ -149,9 +149,9 @@ class WebCatalog:
                 raise
             return {'workspace_id': ident, 'source_id': source_id}
 
-    def configure_draft_profiles(self, workspace_id, revision, updates, allow_model_change=False):
+    def configure_draft_profiles(self, workspace_id, revision, updates):
         """Change saved pass assignments before import, with a settings revision."""
-        from ..processing import ConfigConflict, ModelChangeRequired
+        from ..processing import ConfigConflict
         from .web import WorkspaceArchived
         from .workspace_setup import validate_draft_destination
 
@@ -173,8 +173,6 @@ class WebCatalog:
                 configured, _ = with_profiles(raw)
                 assignments = dict(configured.get('pass_profiles', {}))
                 changed = any(assignments.get(number) != name for number, name in updates.items())
-                if changed and allow_model_change is not True:
-                    raise ModelChangeRequired('Confirm model changes for future work.')
                 assignments.update(updates)
                 configured['pass_profiles'] = assignments
                 for number in range(1, 6):

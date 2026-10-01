@@ -7,7 +7,7 @@ from ..runtime.supervisor import JobConflict, RequestConflict
 from ..application.web import LifecycleConflict, WorkspaceArchived
 from ..application.projects import ReprepareLocked
 from ..application.analysis_reset import AnalysisResetLocked
-from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired
+from ..processing import AnalysisMembershipLocked, ConfigConflict
 from ..book_metadata import MetadataConflict
 from ..util import PipelineError, LockConflict
 from ..application.review import ReviewConflict
@@ -136,7 +136,6 @@ class Handler(BaseHTTPRequestHandler):
                 (ReprepareLocked, 409, 'preparation_locked', 'This workspace has saved work or a changed source; its plan cannot be rebuilt in place.'),
                 (AnalysisResetLocked, 409, 'analysis_reset_locked', 'P1 cannot be cleared while dependent work exists.'),
                 (ConfigConflict, 409, 'config_revision_conflict', 'Configuration changed.'),
-                (ModelChangeRequired, 409, 'model_change_confirmation_required', 'Confirm model changes.'),
                 (ReviewConflict, 409, 'review_revision_conflict', 'Review state changed.'),
                 (MarkerConflict, 409, 'marker_revision_conflict', 'Marker state or translated text changed.'),
                 (DestinationConflict, 409, 'destination_exists', 'Import destination already exists.'),

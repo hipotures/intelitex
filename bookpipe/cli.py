@@ -67,7 +67,6 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--model", help="Model ID from /v1/models.")
             command.add_argument("--context-size", type=int, help="Optional context ceiling; never exceeds detected server capacity.")
             command.add_argument("--thinking", choices=["off", "analysis"], help="off is default; analysis enables model thinking in P1/P2/P4.")
-            command.add_argument("--allow-model-change", action="store_true", help="Explicitly permit a different model; preserve the existing chunk manifest/checkpoints.")
             command.add_argument("--profile", help="Use one named profile for this command without saving it.")
             command.add_argument("--pass-profile", action="append", default=[], metavar="P=PROFILE",
                                  help="Override a pass profile for this command; repeatable.")
@@ -133,7 +132,7 @@ def _model_options(args) -> dict:
     return {
         "project": args.project.resolve(), "host": args.host, "port": args.port,
         "model": args.model, "context_size": args.context_size, "thinking": args.thinking,
-        "allow_model_change": args.allow_model_change, "profile": args.profile,
+        "profile": args.profile,
         "pass_profiles": _parse_pass_profiles(args.pass_profile),
     }
 

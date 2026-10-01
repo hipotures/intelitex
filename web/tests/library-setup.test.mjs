@@ -150,7 +150,7 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
       assert.equal(await page.getByRole('dialog', { name: 'Change model assignment?' }).count(), 0)
       assert.equal(patches.length, 1)
       assert.deepEqual(patches[0].pass_profiles, { '1': 'codex-luna-low' })
-      assert.equal(patches[0].allow_model_change, true)
+      assert.equal(patches[0].allow_model_change, undefined)
       assert.equal(prepares.length, 0, 'changing a draft profile must not Prepare or call a model')
       await page.screenshot({ path: `${output}/draft-prepare-dark-1440.png`, animations: 'disabled' })
       await page.setViewportSize({ width: 390, height: 844 })

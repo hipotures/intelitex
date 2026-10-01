@@ -241,7 +241,7 @@ class WebWorkspaceService:
         return {**value, 'revision': digest(value)}
 
     def configure(self, root, payload, section_id=None):
-        from ..processing import AnalysisMembershipLocked, ConfigConflict, ModelChangeRequired, effective_book, processing, reconcile_membership
+        from ..processing import AnalysisMembershipLocked, ConfigConflict, effective_book, processing, reconcile_membership
         from ..profiles import resolve_profile
         from .sessions import OperationScope
         with OperationScope(self.dependencies, root) as scope:
@@ -277,18 +277,12 @@ class WebWorkspaceService:
                 if not isinstance(profiles, dict) or set(profiles) - set('12345'):
                     raise ValueError('Invalid assignments.')
                 raw = self.dependencies.files.read_json(root / 'settings.json')
-                changed = False
                 for number, name in profiles.items():
                     if name is not None:
                         if not isinstance(name, str):
                             raise ValueError('Invalid profile.')
                         resolve_profile(raw, int(number), command_profile=name, project=root)
-                    changed |= target.get(key, {}).get(number) != name
-                if changed and payload.get('allow_model_change') is not True:
-                    raise ModelChangeRequired('Confirm model changes for future work; completed results are retained.')
                 target.setdefault(key, {}).update(profiles)
-                if changed:
-                    config['accepted_settings_digest'] = digest(raw)
             if reset_analysis:
                 plan = root / 'analysis_plan.json'
                 if self.dependencies.files.is_file(plan):

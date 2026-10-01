@@ -186,7 +186,7 @@ the same name overrides the built-in definition. For example:
 
 ```bash
 uv run intelitex translate --project "$PROJECT" \
-  --profile codex-sol-medium --continue 1 --allow-model-change
+  --profile codex-sol-medium --continue 1
 ```
 All discovered skills are disabled and re-listed before a thread starts. The
 saved rollout is copied into the attempt and the temporary authentication copy is
@@ -204,19 +204,15 @@ measured with this same conservative byte counter when a Codex profile is used.
 
 ### Compact Codex Pass-1 wire format
 
-Codex uses `cache-v2` by default for independent P2–P5 requests. P1 remains `compact-v1`.
-It shares developer instructions and a structured transport schema,
-places source/context first, and keeps the P3 draft ahead of other P4/P5 data.
-See [Codex cache-v2](docs/codex-cache-v2.md) for settings, rollback, evidence and
-exact commands for a one-chunk GPT-6.1 Sol A/B measurement. Canonical fingerprints
-and checkpoints remain unchanged.
+Codex profiles default to [cache-shared-v1](docs/codex-cache-shared-v1.md) for
+P1–P5: shared developer/schema/source prefixes, source/context first, and the P3
+draft ahead of other P4/P5 data. Every pass remains an independent complete
+request. Explicit profile wire options override the defaults; `compact-v1` and
+[cache-v2](docs/codex-cache-v2.md) remain available for rollback. Canonical
+fingerprints and checkpoints remain unchanged. Prefix equality does not
+demonstrate provider cache reuse. A normal server restart reloads the defaults.
 
-An optional [cache-shared-v1](docs/codex-cache-shared-v1.md) transport extends
-shared developer/schema/source prefixes to P1–P5 while keeping independent
-complete requests. It is opt-in; existing defaults and wire formats remain.
-Prefix equality does not demonstrate provider cache reuse.
-
-Codex Pass 1 uses `compact-v1` by default. This is only the physical app-server
+The supported Pass-1 `compact-v1` rollback format is only the physical app-server
 wire representation: source blocks use local integer indices, the response has
 short field names, and the flat transport schema does not repeat the canonical
 block-ID enum. Intelitex decodes the raw response before its existing Pass-1
@@ -256,9 +252,10 @@ transport and does not change semantic task identity:
 }
 ```
 
-Codex P2–P5 use the [cache-v2 compact codec](docs/codex-cache-v2.md):
-local block/sentence indices, reversible memory/artifact encoding and a fixed flat
-structured schema. Existing profiles without a wire option inherit it globally; P1 remains unchanged. Canonical and cache-v1 remain rollback options.
+Codex P2–P5 use compact local block/sentence indices, reversible memory/artifact
+encoding and a fixed flat structured schema. Profiles without a wire option
+inherit `cache-shared-v1` globally. The [cache-v2 codec](docs/codex-cache-v2.md),
+canonical and cache-v1 remain explicit rollback options.
 The llama.cpp and native OpenAI transports retain their existing representations.
 
 Existing format-1 local settings migrate narrowly to a `llamacpp` profile. When

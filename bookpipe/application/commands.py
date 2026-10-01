@@ -18,7 +18,6 @@ class ModelOptions:
     model: str | None = None
     context_size: int | None = None
     thinking: str | None = None
-    allow_model_change: bool = False
     profile: str | None = None
     pass_profiles: Mapping[int, str] = field(default_factory=dict)
 

@@ -227,8 +227,8 @@ def test_unknown_config_fails_closed(project, option, value):
 def test_profile_resolution_records_both_wire_formats(project):
     settings = {"profiles": {}, "default_profile": "codex-sol-low", "passes": {"2": {"max_tokens": 1000}}}
     _, profile, _ = resolve_profile(settings, 2, project=project)
-    assert profile["options"]["p1_wire_format"] == "compact-v1"
-    assert profile["options"]["translation_wire_format"] == "cache-v2"
+    assert profile["options"]["p1_wire_format"] == "cache-shared-v1"
+    assert profile["options"]["translation_wire_format"] == "cache-shared-v1"
 
 
 def test_default_transport_enables_translation_cache_and_preserves_compact_p1(project):
@@ -240,27 +240,30 @@ def test_default_transport_enables_translation_cache_and_preserves_compact_p1(pr
     assert len({body["cache_diagnostics"]["cache_identity_sha256"] for body in bodies}) == 1
 
 
-@pytest.mark.parametrize("wire", [None, "canonical", "cache-v1", "cache-v2"])
+@pytest.mark.parametrize("wire", [None, "canonical", "cache-v1", "cache-v2", "cache-shared-v1"])
 def test_existing_project_profiles_use_cache_default_and_respect_explicit_rollback(project, wire):
     profile = copy.deepcopy(client(project).resolved_profile)
     profile["options"] = {} if wire is None else {"translation_wire_format": wire}
     settings = {"profiles": {"custom": profile}, "default_profile": "custom",
                 "passes": {"2": {"max_tokens": 1000}}}
     _, resolved, _ = resolve_profile(settings, 2, project=project)
-    assert resolved["options"]["p1_wire_format"] == "compact-v1"
-    assert resolved["options"]["translation_wire_format"] == (wire or "cache-v2")
+    assert resolved["options"]["p1_wire_format"] == "cache-shared-v1"
+    assert resolved["options"]["translation_wire_format"] == (wire or "cache-shared-v1")
     provider = CodexAppServerClient({**resolved, "resolved_profile": resolved,
                                     "profile_name": "custom", "project_root": str(project)}, Display(True))
     body = body_for(provider, 2)
-    assert body["wire_format"] == (wire or "cache-v2")
+    assert body["wire_format"] == (wire or "cache-shared-v1")
     if wire == "canonical":
         assert json.loads(body["input"]) == inputs_for(2)
         assert body["output_schema"] == response_schema(2, inputs_for(2))
     elif wire == "cache-v1":
         assert body["output_schema"] == TRANSPORT_SCHEMA
-    else:
+    elif wire == "cache-v2":
         from bookpipe.codex_cache_v2 import TRANSPORT_SCHEMA as V2_SCHEMA
         assert body["output_schema"] == V2_SCHEMA
+    else:
+        from bookpipe.codex_cache_shared import TRANSPORT_SCHEMA as SHARED_SCHEMA
+        assert body["output_schema"] == SHARED_SCHEMA
 
 
 @pytest.mark.parametrize("setting,value", [("model", "another-model"), ("reasoning_effort", "high")])

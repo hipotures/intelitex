@@ -1,6 +1,6 @@
 # Codex cache-shared-v1: shared physical prefixes only
 
-This opt-in format supplies the same application-controlled developer contract,
+This default Codex format supplies the same application-controlled developer contract,
 provider schema and source representation to P1–P5. Every inference remains an
 independent complete request, with the existing private runtime and fresh thread.
 No app-server change, session routing, affinity key, conversation replay, fork,
@@ -14,8 +14,9 @@ hits, latency, cost, quality or retry-rate improvements.
 
 ## Activation and rollback
 
-Set these options in the Codex profile(s) actually selected for the relevant
-passes. Neither model nor effort selection changes:
+Built-in Codex profiles and custom Codex profiles without explicit wire options
+default to these values. Explicit profile options still win. Neither model nor
+effort selection changes:
 
 ```json
 {
@@ -27,12 +28,18 @@ passes. Neither model nor effort selection changes:
 }
 ```
 
-Both options are independently selectable. Defaults stay `compact-v1` for P1
-and `cache-v2` for P2–P5. P1 also accepts `canonical` and `cache-v1`; P2–P5 also
-accept `canonical` and `cache-v1`. P1 still rejects `cache-v2`. Unknown values,
+Both options are independently selectable. P1 also accepts `compact-v1`,
+`canonical` and `cache-v1`; P2–P5 also accept `cache-v2`, `canonical` and `cache-v1`.
+P1 still rejects `cache-v2`. Unknown values,
 including explicit null, fail closed. Other providers retain their wire formats.
 Rollback means restoring `compact-v1`/`cache-v2` in selected profiles; existing
 accepted results require no migration or inference.
+
+A normal server restart reloads the profile defaults; each new operation reads
+project settings and creates its own provider pool. No data migration is needed.
+An existing explicit project wire option keeps its value until edited. Profile
+definitions in `settings.json` override built-ins with the same name. Pass
+assignments select those definitions; wire defaults do not alter assignments.
 
 ## Exact input order and candidate prefix levels
 
@@ -184,6 +191,47 @@ applicable; developer/base/schema hashes; full input hash/bytes; wire/map versio
 pass/unit; model and effort. Per-level application identities combine prefix and
 instruction/schema/model/effort hashes. Provider wrappers and routing are outside
 these identities. Only provider `cachedInputTokens` demonstrates an actual hit.
+
+## Reasoning effort and cache
+
+The user's selected model and reasoning effort remain authoritative. Supported
+Codex/model combinations automatically use Codex's trusted configuration-update
+path: a fresh thread starts with the model's advertised default as the stable
+request baseline, and `turn/start.effort` retains the user's selection. Codex,
+not user text or the compact codec, authors any required `configuration_update`.
+When selection equals the baseline, IntelliTex adds no extra update item.
+
+Support comes from the installed feature surface and version-matched private
+model catalog (`supports_reasoning_effort_updates`), cross-checked with
+`model/list`. Missing, unsupported or conflicting metadata uses ordinary
+request-level effort. Aliases/custom modes retain normal Codex handling.
+Users continue setting only their ordinary profile effort.
+
+Every P1–P5 request still starts its own isolated process/runtime/root thread and
+sends its complete semantic data. Payload, developer, schema and prefix bytes,
+canonical identity and checkpoints do not change. Changing models may naturally
+prevent reuse; cache hit/miss never affects correctness.
+
+Evidence separates requested effective effort, intended baseline and observed
+updates. `thread/start` reports the baseline, not effective turn effort. Missing
+observations remain null; mismatched effective effort/model rejects the result.
+
+The [public contract](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation)
+was consulted through OpenAI Developer Docs MCP. Implementation was separately
+checked against **Codex 0.159.3**:
+[feature/provider/capability gate](https://github.com/openai/codex/blob/rust-v0.159.3/codex-rs/core/src/client.rs),
+[trusted updates and pinning](https://github.com/openai/codex/blob/rust-v0.159.3/codex-rs/core/src/session/reasoning_effort.rs).
+Codex appends its trusted update after accepted input; IntelliTex follows that order.
+
+Codex's existing
+[`startup path`](https://github.com/openai/codex/blob/rust-v0.159.3/codex-rs/core/src/session/startup_prewarm.rs)
+establishes the pin before first-turn overrides when its own WebSocket startup
+completes. Without that pin (for example, a failed startup connection or an HTTP-only
+path), the first sampling operation can instead pin the selected turn effort.
+Thread configuration therefore records the intended baseline, not proof that
+every provider request used it. IntelliTex adds no warm-up calls, waits or session
+operations to force pinning. This step has no live-model/cache measurements and
+does not solve independent-root routing.
 
 ## Offline measurement on salvation-03/ch0022
 

@@ -306,13 +306,13 @@ def test_evidence_failure_never_retries(project, monkeypatch):
     finally: store.close()
 
 
-def test_global_v2_default_and_p1_v2_rejected(project):
+def test_global_shared_default_and_p1_v2_rejected(project):
     provider = OfflineV2(project)
     validate_profiles({"profiles": {"test": provider.resolved_profile}, "default_profile": "test"})
     settings = {"profiles": {}, "default_profile": "codex-sol-high", "passes": SETTINGS["passes"]}
     _, resolved, _ = resolve_profile(settings, 3, project=project)
-    assert resolved["options"]["translation_wire_format"] == "cache-v2"
-    assert resolved["options"]["p1_wire_format"] == "compact-v1"
+    assert resolved["options"]["translation_wire_format"] == "cache-shared-v1"
+    assert resolved["options"]["p1_wire_format"] == "cache-shared-v1"
     provider.settings["options"]["p1_wire_format"] = "cache-v2"
     with pytest.raises(PipelineError): provider.body(PROMPTS[1], inputs_for(1), response_schema(1, inputs_for(1)), 1)
     with pytest.raises(PipelineError): validate_profiles({"profiles": {"bad": provider.settings}, "default_profile": "bad"})

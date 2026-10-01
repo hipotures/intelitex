@@ -439,6 +439,7 @@ for raw in sys.stdin:
         skills_disabled = True
         send({"id":request_id,"result":{"effectiveEnabled":False}})
     elif method == "thread/start":
+        selected_model = message["params"]["model"]
         assert message["params"]["ephemeral"] is False
         assert message["params"]["developerInstructions"] == "Trusted pass instructions"
         assert message["params"]["dynamicTools"] == []
@@ -446,13 +447,13 @@ for raw in sys.stdin:
     elif method == "turn/start":
         assert message["params"]["input"][0]["text"] == '{"SOURCE":"payload"}'
         send({"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"msg-1","delta":"partial"}})
-        send({"id":request_id,"result":{"turn":{"id":"turn-1","model":"gpt-5.6-luna","effort":"low"}}})
+        send({"id":request_id,"result":{"turn":{"id":"turn-1","model":selected_model,"effort":"low"}}})
         send({"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"comment","type":"agentMessage","phase":"commentary","text":"not final"}}})
         send({"id":900,"method":"unsupported/request","params":{"token":"secret"}})
     elif request_id == 900 and "error" in message:
         send({"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":json.dumps({"ok":True}, separators=(",", ":"))}}})
         send({"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":10,"cachedInputTokens":2,"cacheWriteInputTokens":1,"outputTokens":4,"reasoningOutputTokens":3,"totalTokens":14},"total":{"inputTokens":10,"cachedInputTokens":2,"cacheWriteInputTokens":1,"outputTokens":4,"reasoningOutputTokens":3,"totalTokens":14},"modelContextWindow":1000}}})
-        send({"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1","turn":{"id":"turn-1","status":"completed","model":"gpt-5.6-luna","effort":"low"}}})
+        send({"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1","turn":{"id":"turn-1","status":"completed","model":selected_model,"effort":"low"}}})
         send({"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":11,"cachedInputTokens":3,"cacheWriteInputTokens":2,"outputTokens":5,"reasoningOutputTokens":4,"totalTokens":16},"total":{"inputTokens":11,"cachedInputTokens":3,"cacheWriteInputTokens":2,"outputTokens":5,"reasoningOutputTokens":4,"totalTokens":16},"modelContextWindow":1000}}})
 
 thread_path.parent.mkdir(parents=True, exist_ok=True)

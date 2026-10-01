@@ -423,13 +423,13 @@ def test_evidence_failure_never_causes_model_retry(project, monkeypatch, method)
     finally: store.close()
 
 
-def test_options_fail_closed_and_defaults_unchanged(project):
+def test_options_fail_closed_and_profiles_default_to_shared(project):
     instance = provider(project)
     validate_profiles({"profiles": {"test": instance.resolved_profile}, "default_profile": "test"})
     settings = {"profiles": {}, "default_profile": "codex-sol-high", "passes": SETTINGS["passes"]}
     _, default, _ = resolve_profile(settings, 1, project=project)
-    assert default["options"]["p1_wire_format"] == "compact-v1"
-    assert default["options"]["translation_wire_format"] == "cache-v2"
+    assert default["options"]["p1_wire_format"] == shared.WIRE_FORMAT
+    assert default["options"]["translation_wire_format"] == shared.WIRE_FORMAT
     for option in ("p1_wire_format", "translation_wire_format"):
         for bad in ("future-v1", None, [], 3):
             instance.settings["options"][option] = bad

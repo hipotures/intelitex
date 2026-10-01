@@ -172,6 +172,7 @@ class ServerService:
     def configure(self, ident, payload, section_id=None):
         fields(payload, {'revision', 'processing', 'content_type', 'profiles', 'allow_model_change'} if section_id
                else {'revision', 'pass_profiles', 'allow_model_change'}, {'revision'})
+        # Older cached clients may send this boolean; it no longer gates changes.
         if 'allow_model_change' in payload and type(payload['allow_model_change']) is not bool:
             raise ValueError('Invalid model permission.')
         try:
@@ -184,7 +185,7 @@ class ServerService:
                 if self.supervisor.owns_project(root) or self.supervisor.active_for_project(root):
                     raise JobConflict('Workspace busy.')
                 return self.catalog.configure_draft_profiles(
-                    ident, revision(payload), payload['pass_profiles'], payload.get('allow_model_change', False))
+                    ident, revision(payload), payload['pass_profiles'])
         with self.mutable(ident) as root:
             return self.application.web.configure(root, payload, section_id)
 

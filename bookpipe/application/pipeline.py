@@ -12,7 +12,7 @@ from .commands import AnalyzeCommand, TranslateCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .projects import effective_settings, load_valid_book, validate_pass_profiles
 from .review import approval_current
-from ..processing import effective_book, accepts_web_model_change
+from ..processing import effective_book
 from .results import PipelineResult
 from .sessions import OperationScope
 
@@ -30,7 +30,8 @@ def _reload_after_pass(progress: ProgressSink, completed_units: int) -> None:
         raise ReloadAtCheckpoint(completed_units)
 
 
-def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) -> None:
+def report_model_change(client: Any, book: dict, progress: ProgressSink) -> None:
+    """Report a model switch without gating the user's profile selection."""
     old = book.get("model_identity", {})
     current = client.identity
     # Older Codex imports saved the complete app-server model discovery response.
@@ -44,11 +45,6 @@ def check_model(client: Any, book: dict, allowed: bool, progress: ProgressSink) 
         and old.get("reported_model", old["requested_model"]) == old["requested_model"]
     )
     if old and digest(old) != digest(current) and not same_codex_model:
-        if not allowed:
-            raise PipelineError(
-                "The server model differs from the import model. Use --allow-model-change intentionally. "
-                "Existing chunk boundaries/checkpoints will be preserved."
-            )
         progress.emit(ProgressEvent(kind="model_changed", values={
             "fixed_chunk_boundaries": True,
             "recalculate_request_tokens": True,
@@ -359,7 +355,7 @@ class PipelineService:
                     "provider": selected.provider, "requested_model": selected.model,
                     "profile": selected.profile_name,
                 }
-            check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
+            report_model_change(client, book, self.progress)
             return execute_analyze(
                 scope.store, book, client, settings, self.progress, self.dependencies.files,
                 command.unit_id,
@@ -396,7 +392,7 @@ class PipelineService:
                     "provider": selected.provider, "requested_model": selected.model,
                     "profile": selected.profile_name,
                 }
-            check_model(client, book, command.allow_model_change or accepts_web_model_change(root, command), self.progress)
+            report_model_change(client, book, self.progress)
             result = (execute_target_pass(scope.store, book, client, settings, self.progress,
                         command.chunk_id, command.pass_no, command.rerun)
                       if command.chunk_id is not None else execute_translate(

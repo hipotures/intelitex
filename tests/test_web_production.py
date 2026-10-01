@@ -149,8 +149,7 @@ def test_draft_pass_profile_can_change_with_revision_before_prepare(api):
     destination = root.parent / ident
     code, before = request(server, 'GET', f'/api/workspaces/{ident}/profiles')
     assert code == 200 and before['assignments']['1'] == 'local'
-    payload = {'revision': before['revision'], 'pass_profiles': {'1': 'codex-luna-low'},
-               'allow_model_change': True}
+    payload = {'revision': before['revision'], 'pass_profiles': {'1': 'codex-luna-low'}}
     code, updated = request(server, 'PATCH', f'/api/workspaces/{ident}/settings', payload)
     assert code == 200 and updated['pass_profiles']['1'] == 'codex-luna-low'
     assert updated['revision'] != before['revision']
@@ -162,13 +161,12 @@ def test_draft_pass_profile_can_change_with_revision_before_prepare(api):
     assert not (destination / 'book.json').exists()
     code, stale = request(server, 'PATCH', f'/api/workspaces/{ident}/settings', payload)
     assert code == 409 and stale['error']['code'] == 'config_revision_conflict'
-    code, confirmation = request(server, 'PATCH', f'/api/workspaces/{ident}/settings',
-                                 {'revision': after['revision'], 'pass_profiles': {'1': 'local'}})
-    assert code == 409 and confirmation['error']['code'] == 'model_change_confirmation_required'
+    code, changed = request(server, 'PATCH', f'/api/workspaces/{ident}/settings',
+                            {'revision': after['revision'], 'pass_profiles': {'1': 'local'}})
+    assert code == 200 and changed['pass_profiles']['1'] == 'local'
     with project_lock(destination):
         code, busy = request(server, 'PATCH', f'/api/workspaces/{ident}/settings',
-                             {'revision': after['revision'], 'pass_profiles': {'1': 'local'},
-                              'allow_model_change': True})
+                             {'revision': changed['revision'], 'pass_profiles': {'1': 'codex-luna-low'}})
         assert code == 409 and busy['error']['code'] == 'workspace_busy'
     assert not (destination / 'state.sqlite3').exists()
 

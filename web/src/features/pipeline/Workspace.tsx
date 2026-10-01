@@ -104,8 +104,7 @@ export function WorkspacePage() {
       const revision = assignmentRevision.current
       if (!revision) { assignmentQueue.current = []; setAssignmentIntents({}); break }
       const result = await command.send(endpoint(id, next.section ? `sections/${encodeURIComponent(next.section)}` : 'settings'),
-        configSchema, { revision, [next.section ? 'profiles' : 'pass_profiles']: { [next.number]: next.value },
-          allow_model_change: true }, 'PATCH', true)
+        configSchema, { revision, [next.section ? 'profiles' : 'pass_profiles']: { [next.number]: next.value } }, 'PATCH', true)
       if (!result) { assignmentQueue.current = []; setAssignmentIntents({}); break }
       assignmentRevision.current = result.revision
       await queryClient.cancelQueries({ predicate: item => item.queryKey[0] === scope &&

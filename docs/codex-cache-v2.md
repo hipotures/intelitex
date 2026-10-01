@@ -1,13 +1,13 @@
 # Codex cache-v2 translation codec
 
-For an opt-in shared P1–P5 developer/schema/source layout, see
-[cache-shared-v1](codex-cache-shared-v1.md). Defaults remain compact-v1/cache-v2;
-the new layout does not establish provider cache reuse or change session routing.
+For the default shared P1–P5 developer/schema/source layout, see
+[cache-shared-v1](codex-cache-shared-v1.md). Explicit `cache-v2` selections remain
+supported; neither layout establishes provider cache reuse or changes session routing.
 
-`cache-v2` is the global Codex default for P2–P5 only. It compresses representations without
+`cache-v2` is a supported Codex wire format for P2–P5 only. It compresses representations without
 changing canonical prompts, schemas, task fingerprints, approvals, inputs,
 chunk boundaries, pass dependencies, accepted results or checkpoints. P1's
-codec, prompts, units and default remain `compact-v1`. Canonical and cache-v1
+prompts and units are unchanged; `compact-v1` remains available. Canonical and cache-v1
 remain available. Other providers are unchanged.
 
 ## Activation and rollback
@@ -28,10 +28,11 @@ For a GPT-6.1 Sol/high comparison the selected profile is `codex-sol-high`;
 use its existing full profile definition and add these options, preserving
 model, effort and other settings. For rollback set `translation_wire_format`
 to `cache-v1` or `canonical`. Resolution and attempt evidence show the selected
-format. Profiles without an explicit translation wire option inherit `cache-v2` globally. `p1_wire_format: cache-v2` and unknown values fail closed.
+format. Profiles without explicit wire options now inherit `cache-shared-v1` globally.
+`p1_wire_format: cache-v2` and unknown values fail closed.
 
 Explicit profile overrides still take precedence over the global default. This
-patch neither edits an active production project's settings nor restarts jobs.
+codec does not restart jobs or migrate project data.
 A format switch does not force valid saved tasks to make another model call.
 
 ## Input layout and reference domains

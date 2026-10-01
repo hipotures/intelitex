@@ -14,28 +14,18 @@ class AnalysisMembershipLocked(PipelineError):
     pass
 
 
-class ModelChangeRequired(PipelineError):
-    pass
-
-
 def configuration(root: Path):
     path = root / 'web.config.json'
     if path.is_symlink():
         raise PipelineError('Unsafe workspace configuration.')
     value = read_json(path) if path.is_file() else {'sections': {}, 'pass_profiles': {}}
+    # Read old receipts for compatibility; model selection no longer uses them.
     if not isinstance(value, dict) or set(value) - {'sections', 'pass_profiles', 'accepted_settings_digest'} or not isinstance(value.get('sections'), dict) or not isinstance(value.get('pass_profiles'), dict):
         raise PipelineError('Invalid workspace configuration.')
     for section in value['sections'].values():
         if not isinstance(section, dict) or set(section) - {'processing', 'content_type', 'profiles'}:
             raise PipelineError('Invalid section configuration.')
     return value
-
-
-def accepts_web_model_change(root, command):
-    if command.profile is not None or command.pass_profiles or command.model is not None:
-        return False
-    accepted = configuration(root).get('accepted_settings_digest')
-    return bool(accepted and accepted == digest(read_json(root / 'settings.json')))
 
 
 def processing(book, config, ident):

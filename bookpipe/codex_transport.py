@@ -16,6 +16,7 @@ from .contracts import normalized_usage
 from .codex_cache import diagnostics, load_developer_contract, output_schema, serialize
 from . import codex_cache_v2
 from . import codex_cache_shared
+from .codex_effort import EffortPlan, resolve_effort_plan, runtime_model_metadata, rollout_effort_evidence, verify_reported_selection
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
 from .progress import ProgressEvent
@@ -282,6 +283,47 @@ class CodexAppServerClient:
     def count(self, text: str) -> int:
         return len(text.encode("utf-8"))
 
+    def _installed_effort_feature(self, executable: str, home: Path, sqlite_home: Path) -> dict[str, Any]:
+        """Inspect this executable in the private home; never enable a global flag."""
+        result: dict[str, Any] = {"available": False, "cli_version": None}
+        try:
+            kwargs = dict(stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10,
+                          env=self._process_env(home, sqlite_home), cwd=home)
+            version = subprocess.run([executable, "--version"], **kwargs)
+            if version.returncode == 0:
+                result["cli_version"] = version.stdout.strip()
+            features = subprocess.run([executable, "features", "list"], **kwargs)
+            if features.returncode == 0:
+                result["available"] = any(
+                    parts and parts[0] == "reasoning_effort_override" and "removed" not in parts
+                    for parts in (line.split() for line in features.stdout.splitlines())
+                )
+        except (OSError, subprocess.SubprocessError):
+            pass  # An unavailable optimization never changes the selected effort.
+        return result
+
+    def _effort_plan(self, rpc: _RpcSession, home: Path, installed: dict, requested: str | None,
+                     deadline: float) -> tuple[EffortPlan, dict]:
+        metadata = None
+        evidence: dict[str, Any] = {"source": "installed Codex", "trusted": False, "feature": installed}
+        if installed["available"]:
+            cursor = None
+            seen = set()
+            while True:
+                params = {"includeHidden": True, "limit": 100, **({"cursor": cursor} if cursor else {})}
+                result = rpc.request("model/list", params, deadline)
+                match = next((m for m in result.get("data", [])
+                              if self.model in (m.get("id"), m.get("model"))), None)
+                if match is not None or not result.get("nextCursor"):
+                    metadata, evidence = runtime_model_metadata(home, self.model, installed["cli_version"], match)
+                    evidence["feature"] = installed
+                    break
+                cursor = result["nextCursor"]
+                if cursor in seen:
+                    raise PipelineError("Codex model/list repeated a pagination cursor.")
+                seen.add(cursor)
+        return resolve_effort_plan(requested, metadata, feature_available=installed["available"]), evidence
+
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
         options = self.settings.get("options", {})
         wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "cache-v2")
@@ -450,12 +492,16 @@ class CodexAppServerClient:
         if not executable:
             raise PipelineError(f"Codex executable not found: {self.executable}")
         home, sqlite_home, work = self._runtime(directory)
+        installed = self._installed_effort_feature(executable, home, sqlite_home)
+        effort_plan = resolve_effort_plan(body.get("effort"), None, feature_available=installed["available"])
         argv = app_server_argv(executable)
         base = BASE_INSTRUCTIONS.read_text(encoding="utf-8").strip()
         if not base:
             raise PipelineError("Codex base instructions must be non-empty.")
         transport_plan = {
             "wire_format": body.get("wire_format", "canonical"),
+            "requested_model": self.model, "reported_model": None, "reported_effort": None,
+            **effort_plan.metadata(),
             **({"cache_diagnostics": body["cache_diagnostics"]} if body.get("cache_diagnostics") else {}),
             "argv": argv, "environment": {"CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(sqlite_home), "cwd": str(work)},
             "thread": {
@@ -464,7 +510,7 @@ class CodexAppServerClient:
                 "baseInstructions": base, "developerInstructions": body["developer_instructions"],
                 "personality": "none", "environments": [], "dynamicTools": [],
                 "selectedCapabilityRoots": [], "runtimeWorkspaceRoots": [],
-                "config": {"model_reasoning_effort": body.get("effort")},
+                "config": effort_plan.thread_config(),
             },
             "turn": {
                 "input": [{"type": "text", "text": body["input"]}],
@@ -508,6 +554,10 @@ class CodexAppServerClient:
                 enabled = [s.get("path") for s in group.get("skills", []) if s.get("enabled")]
                 if enabled:
                     raise PipelineError(f"Codex skills remain enabled: {enabled}")
+            effort_plan, effort_capability = self._effort_plan(rpc, home, installed, body.get("effort"), deadline)
+            transport_plan.update(effort_plan.metadata(), reasoning_effort_capability=effort_capability)
+            transport_plan["thread"]["config"] = effort_plan.thread_config()
+            recorder.transport_request(transport_plan, body["output_schema"])
             thread_result = rpc.request("thread/start", transport_plan["thread"], deadline)
             thread = thread_result.get("thread") or {}
             rpc.state.update({
@@ -520,6 +570,9 @@ class CodexAppServerClient:
             })
             if not rpc.state["thread_id"] or not rpc.state["thread_path"]:
                 raise PipelineError("Codex persisted thread response omitted id or path.")
+            transport_plan["reported_model"] = rpc.state["reported_model"]
+            if effort_plan.mode == "configuration_update" and rpc.state["reported_effort"] != effort_plan.baseline:
+                raise PipelineError("Codex thread/start did not confirm the model-default effort baseline; no turn submitted.")
             turn_params = dict(transport_plan["turn"], threadId=rpc.state["thread_id"])
             # Replace the pre-submission plan with the exact physical turn,
             # including the provider-assigned ID. Diagnostics never enter RPC.
@@ -550,6 +603,22 @@ class CodexAppServerClient:
             self._cleanup_process(proc, graceful=True)
             graceful = True
             copied = self._copy_rollout(rpc.state["thread_path"], home, directory / "codex")
+            effort_observed = rollout_effort_evidence(copied, rpc.state["turn_id"])
+            reported_model = effort_observed["rollout_model"] or terminal.get("model") or turn.get("model") or rpc.state["reported_model"]
+            reported_effort = effort_observed["rollout_effort"] or terminal.get("effort") or turn.get("effort")
+            reported_effort_source = "rollout.turn_context" if effort_observed["rollout_effort"] else "turn"
+            if reported_effort is None and effort_plan.mode == "request_level":
+                reported_effort = rpc.state["reported_effort"]
+                reported_effort_source = "thread.start" if reported_effort is not None else None
+            elif reported_effort is None:
+                reported_effort_source = None
+            # thread/start reports the baseline, not the override's effective effort.
+            # Keep unavailable evidence null instead of substituting our intent.
+            recorder.event("local", "reasoning_effort_observed", {
+                **effort_plan.metadata(), **effort_observed,
+                "reported_model": reported_model, "reported_effort": reported_effort,
+                "reported_effort_source": reported_effort_source,
+            })
             usage_raw = rpc.state["usage_events"]
             last_event = usage_raw[-1] if usage_raw else {}
             last = last_event.get("last") or {}
@@ -564,21 +633,30 @@ class CodexAppServerClient:
             normalized["model_context_window"] = last_event.get("modelContextWindow")
             recorder.usage(usage_raw, normalized)
             recorder.write_answer(answer)
+            verify_reported_selection(self.model, body.get("effort"), reported_model, reported_effort)
+            if effort_observed["configuration_update_observed"] and effort_plan.mode == "configuration_update":
+                expected_update = body.get("effort") or effort_plan.baseline
+                # Codex's persistent alias is named "disabled" by the backend.
+                if expected_update == "persistent":
+                    expected_update = "disabled"
+                if effort_observed["configuration_update_effort"] != expected_update:
+                    raise PipelineError("Codex recorded a configuration_update for a different effective effort; result rejected.")
             if rpc.stderr:
                 atomic_text(directory / "stderr.txt", str(redact(rpc.stderr.decode("utf-8", "replace"))))
                 os.chmod(directory / "stderr.txt", 0o600)
             meta = {
                 "provider": "codex", "requested_model": self.model,
-                "reported_model": terminal.get("model") or turn.get("model") or rpc.state["reported_model"],
-                "requested_effort": body.get("effort"),
-                "reported_effort": terminal.get("effort") or turn.get("effort") or rpc.state["reported_effort"],
-                "model_provider": rpc.state["model_provider"], "cli_version": rpc.state["cli_version"],
+                "reported_model": reported_model, "reported_effort": reported_effort,
+                "reported_effort_source": reported_effort_source,
+                "model_provider": rpc.state["model_provider"], "cli_version": rpc.state["cli_version"] or installed["cli_version"],
                 "thread_id": rpc.state["thread_id"], "session_id": rpc.state["session_id"],
                 "turn_id": rpc.state["turn_id"], "thread_path": rpc.state["thread_path"],
                 "rollout_copy": str(copied.relative_to(directory)),
                 "status": "completed", "finish_reason": "stop",
                 "wire_format": body.get("wire_format", "canonical"),
                 **body.get("cache_diagnostics", {}),
+                **effort_plan.metadata(), **effort_observed,
+                "reasoning_effort_capability": effort_capability,
                 "usage_status": normalized["status"],
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "isolation": {

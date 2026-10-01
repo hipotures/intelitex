@@ -12,6 +12,10 @@ from .util import PipelineError, atomic_json, digest
 
 
 PROVIDERS = {"llamacpp", "openai", "codex", "vllm"}
+CODEX_WIRE_DEFAULTS = {
+    "p1_wire_format": "cache-shared-v1",
+    "translation_wire_format": "cache-shared-v1",
+}
 COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
     "max_output_tokens", "request_timeout", "reasoning_effort", "credential_env",
@@ -45,7 +49,7 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
                 "max_output_tokens": None,
                 "request_timeout": 1_200,
                 "reasoning_effort": effort,
-                "options": {"auth_source": "~/.codex/auth.json"},
+                "options": {"auth_source": "~/.codex/auth.json", **CODEX_WIRE_DEFAULTS},
             }
     return result
 
@@ -172,12 +176,12 @@ def validate_profiles(settings: dict[str, Any], project: Path | None = None) -> 
                 any(not isinstance(lang, str) or not re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', lang) for lang in languages)
             ):
                 raise PipelineError(f"Profile {name!r} {field} must be 'all', a language list, or unknown.")
-        p1_wire_format = profile.get("options", {}).get("p1_wire_format", "compact-v1")
+        p1_wire_format = profile.get("options", {}).get("p1_wire_format", CODEX_WIRE_DEFAULTS["p1_wire_format"])
         if provider == "codex" and p1_wire_format not in ("compact-v1", "canonical", "cache-v1", "cache-shared-v1"):
             raise PipelineError(
                 f"Profile {name!r} options.p1_wire_format must be 'compact-v1', 'canonical', 'cache-v1', or 'cache-shared-v1'."
             )
-        translation_wire_format = profile.get("options", {}).get("translation_wire_format", "cache-v2")
+        translation_wire_format = profile.get("options", {}).get("translation_wire_format", CODEX_WIRE_DEFAULTS["translation_wire_format"])
         if provider == "codex" and translation_wire_format not in ("canonical", "cache-v1", "cache-v2", "cache-shared-v1"):
             raise PipelineError(f"Profile {name!r} options.translation_wire_format must be 'canonical', 'cache-v1', 'cache-v2', or 'cache-shared-v1'.")
         def secret_key(value: Any) -> bool:
@@ -258,8 +262,8 @@ def resolve_profile(
         raise PipelineError(f"Profile {name!r} is a template/disabled profile.")
     if profile["provider"] == "codex":
         options = profile.setdefault("options", {})
-        options.setdefault("p1_wire_format", "compact-v1")
-        options.setdefault("translation_wire_format", "cache-v2")
+        for key, default in CODEX_WIRE_DEFAULTS.items():
+            options.setdefault(key, default)
     profile.setdefault("planning_output_reserve", settings["passes"][str(pass_no)]["max_tokens"])
     profile.setdefault("request_timeout", settings.get("request_timeout", 1200))
     if profile["provider"] == "llamacpp":

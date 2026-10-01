@@ -89,7 +89,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
       else if (path === '/api/workspaces/w-1/settings' && request.method() === 'PATCH') {
         const payload = request.postDataJSON()
         assert.equal(payload.revision, pipeline.config.revision)
-        assert.equal(payload.allow_model_change, true)
+        assert.equal(payload.allow_model_change, undefined)
         modelMutations.push({ path, payload })
         profiles.assignments = { ...profiles.assignments, ...payload.pass_profiles }
         profiles.resolved_passes['1'] = otherProfile
@@ -111,7 +111,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         const payload = request.postDataJSON()
         assert.equal(payload.revision, pipeline.config.revision)
         if (payload.profiles) {
-          assert.equal(payload.allow_model_change, true)
+          assert.equal(payload.allow_model_change, undefined)
           modelMutations.push({ path, payload })
           section.profiles = { ...section.profiles, ...payload.profiles }
           pipeline.config.revision = 'rev-model-2'

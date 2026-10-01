@@ -370,13 +370,18 @@ provenance. Nullable fields represent unspecified settings. Legacy settings are
 adapted in memory without migration or provider construction.
 
 For a configured unprepared draft, PATCH `/api/workspaces/{id}/settings` accepts
-`{revision,pass_profiles:{"1".."5":name},allow_model_change:true}` with one or more
+`{revision,pass_profiles:{"1".."5":name}}` with one or more
 pass assignments. The revision comes from GET `/api/workspaces/{id}/profiles`
 and changes when the saved settings change. The application rejects stale revisions,
 active/cleanup jobs, archived drafts, invalid/disabled profiles and declared
 language incompatibility. It updates only the draft's saved settings; no import,
 checkpoint or provider call occurs. Prepared workspace settings retain their
 existing configuration revision and invalidation rules.
+
+Model/profile changes need no separate permission or confirmation flag. Older
+clients' `allow_model_change` boolean is accepted and ignored. Legacy
+`accepted_settings_digest` configuration fields are readable but no longer
+control model selection; completed checkpoints remain available.
 
 Only allowlisted fields are projected. Endpoint URLs, credential references or
 values, headers, provider options, executable/runtime locations, HOME/CODEX_HOME,
