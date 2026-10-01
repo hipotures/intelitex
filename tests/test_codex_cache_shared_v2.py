@@ -191,13 +191,19 @@ def test_old_translation_history_recoverable_without_new_inference(project, wire
     finally: store.close()
 
 
-def test_profiles_accept_new_format_but_keep_current_defaults(project):
+def test_profiles_default_to_message_boundary_format(project):
     p = provider(project)
     validate_profiles({'profiles':{'test':p.resolved_profile}, 'default_profile':'test'})
     for n in range(1, 6):
         _, profile, _ = resolve_profile({'profiles':{}, 'default_profile':'codex-sol-high', 'passes':SETTINGS['passes']}, n, project=project)
-        assert profile['options']['p1_wire_format'] == old.WIRE_FORMAT
-        assert profile['options']['translation_wire_format'] == old.WIRE_FORMAT
+        assert profile['options']['p1_wire_format'] == messages.WIRE_FORMAT
+        assert profile['options']['translation_wire_format'] == messages.WIRE_FORMAT
+        p.settings['options'] = profile['options']
+        body = p.body(PROMPTS[n], inputs_for(n), response_schema(n, inputs_for(n)), n)
+        assert body['wire_format'] == messages.WIRE_FORMAT
+        assert len(body['injected_items']) == (1 if n == 1 else 3 if n in (4, 5) else 2)
+        assert json.loads(body['input'])['ACTIVE_PASS'] == n
+        assert 'SOURCE_BLOCKS' not in json.loads(body['input'])
 
 
 @pytest.mark.parametrize('n,mutate', [

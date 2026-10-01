@@ -3,7 +3,7 @@
 For the optional compact P2–P5 codec, see [cache-v2](codex-cache-v2.md).
 cache-v1 retains its original wire contract and P1 compatibility.
 For the default shared physical prefixes across all five passes, see
-[cache-shared-v1](codex-cache-shared-v1.md); it adds no session/cache routing.
+[cache-shared-v2](codex-cache-shared-v2.md); it adds no session/cache routing.
 
 cache-v1 optimizes implicit input prefixes across independent Codex app-server
 requests. Canonical prompts, inputs, schemas, fingerprints, results/checkpoints,
@@ -13,7 +13,8 @@ never depends on a cache hit.
 
 ## Configuration and rollback
 
-Codex profiles now default to cache-shared-v1 for P1–P5.
+Codex profiles now default to cache-shared-v2 for P1–P5, with separate
+SOURCE/COMMON/DRAFT user messages and a final active-pass message.
 To select the original cache-v1 transport explicitly, use:
 
 ~~~json
@@ -24,8 +25,8 @@ To select the original cache-v1 transport explicitly, use:
 }
 ~~~
 
-P2–P5 accept cache-v2, cache-v1, canonical, or cache-shared-v1 (default).
-P1 accepts compact-v1, canonical, cache-v1, or cache-shared-v1 (default).
+P2–P5 accept cache-v2, cache-v1, canonical, cache-shared-v1, or cache-shared-v2 (default).
+P1 accepts compact-v1, canonical, cache-v1, cache-shared-v1, or cache-shared-v2 (default).
 Unknown values and explicit nulls fail closed. Profile
 resolution/evidence records both choices. Response metadata records wire_format.
 Other providers are unaffected. For rollback, set translation_wire_format to

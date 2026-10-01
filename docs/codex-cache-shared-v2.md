@@ -1,9 +1,10 @@
 # Codex cache-shared-v2: complete user-message boundaries
 
-`cache-shared-v2` is an opt-in physical layout for P1–P5. It reuses the
+`cache-shared-v2` is the default Codex physical layout for P1–P5. It reuses the
 [cache-shared-v1](codex-cache-shared-v1.md) compact record/code tables, reference
 maps, fixed 2,758-byte Structured Output schema and full canonical validation.
-The default remains `cache-shared-v1`. No existing wire version is redefined.
+Built-in and custom Codex profiles without explicit wire options default to
+`cache-shared-v2` for P1–P5. No existing wire version is redefined.
 
 Each pass and each validation retry starts its own isolated runtime/process and
 fresh root thread. Accepted canonical artifacts are supplied explicitly as data.
@@ -120,15 +121,18 @@ identity; only provider `cachedInputTokens` proves an observed cache read.
 
 ## Selection and offline verification
 
-Set both options on the selected Codex profile, or independently select either:
+Both options default to `cache-shared-v2`. They can also be set explicitly on the
+selected Codex profile, or independently selected:
 
 ```json
 {"options":{"p1_wire_format":"cache-shared-v2","translation_wire_format":"cache-shared-v2"}}
 ```
 
-This implementation does not edit any project/global option or enable the format.
-Rollback selects `cache-shared-v1`, or earlier supported formats. Existing
-checkpoints require no migration.
+Explicit profile options still override the defaults. A normal server restart
+reloads the defaults; a project with explicit older options needs those options
+updated to use v2. Model/effort assignments remain unchanged. Rollback selects
+`cache-shared-v1`, or earlier supported formats. Existing checkpoints require no
+migration.
 
 ```bash
 uv run pytest -q tests/test_codex_cache_shared_v2.py \

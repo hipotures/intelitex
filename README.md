@@ -204,9 +204,9 @@ measured with this same conservative byte counter when a Codex profile is used.
 
 ### Compact Codex Pass-1 wire format
 
-Codex profiles default to [cache-shared-v1](docs/codex-cache-shared-v1.md) for
-P1–P5: shared developer/schema/source prefixes, source/context first, and the P3
-draft ahead of other P4/P5 data. Every pass remains an independent complete
+Codex profiles default to [cache-shared-v2](docs/codex-cache-shared-v2.md) for
+P1–P5: shared developer/schema/source prefixes, separate SOURCE/COMMON/DRAFT user
+messages, and a final active-pass message. Every pass remains an independent complete
 request. Explicit profile wire options override the defaults; `compact-v1` and
 [cache-v2](docs/codex-cache-v2.md) remain available for rollback. Canonical
 fingerprints and checkpoints remain unchanged. Prefix equality does not
@@ -254,7 +254,7 @@ transport and does not change semantic task identity:
 
 Codex P2–P5 use compact local block/sentence indices, reversible memory/artifact
 encoding and a fixed flat structured schema. Profiles without a wire option
-inherit `cache-shared-v1` globally. The [cache-v2 codec](docs/codex-cache-v2.md),
+inherit `cache-shared-v2` globally. The [cache-v2 codec](docs/codex-cache-v2.md),
 canonical and cache-v1 remain explicit rollback options.
 The llama.cpp and native OpenAI transports retain their existing representations.
 

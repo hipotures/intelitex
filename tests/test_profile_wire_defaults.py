@@ -14,7 +14,7 @@ from bookpipe.util import PipelineError, atomic_json, read_json
 
 
 BUNDLE = Path(__file__).resolve().parent.parent
-SHARED = "cache-shared-v1"
+SHARED = "cache-shared-v2"
 
 
 @pytest.fixture
@@ -60,8 +60,8 @@ def test_custom_codex_profiles_inherit_only_missing_options(settings, options, t
     assert settings == before
 
 
-@pytest.mark.parametrize("p1", ["compact-v1", "canonical", "cache-v1", SHARED])
-@pytest.mark.parametrize("translation", ["canonical", "cache-v1", "cache-v2", SHARED])
+@pytest.mark.parametrize("p1", ["compact-v1", "canonical", "cache-v1", "cache-shared-v1", SHARED])
+@pytest.mark.parametrize("translation", ["canonical", "cache-v1", "cache-v2", "cache-shared-v1", SHARED])
 def test_explicit_project_wire_choices_override_builtin_defaults(settings, p1, translation, tmp_path):
     profile = builtin_codex_profiles()["codex-sol-high"]
     profile["options"].update(p1_wire_format=p1, translation_wire_format=translation)

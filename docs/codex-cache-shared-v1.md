@@ -1,6 +1,6 @@
 # Codex cache-shared-v1: shared physical prefixes only
 
-This default Codex format supplies the same application-controlled developer contract,
+This supported rollback Codex format supplies the same application-controlled developer contract,
 provider schema and source representation to P1–P5. Every inference remains an
 independent complete request, with the existing private runtime and fresh thread.
 No app-server change, session routing, affinity key, conversation replay, fork,
@@ -12,14 +12,15 @@ JSON field boundaries inside one user message are not official provider cache
 breakpoints. This step does not establish cache eligibility, routing, actual
 hits, latency, cost, quality or retry-rate improvements.
 
-The separate opt-in [cache-shared-v2](codex-cache-shared-v2.md) places complete
+The default [cache-shared-v2](codex-cache-shared-v2.md) places complete
 SOURCE/COMMON/DRAFT JSON objects in distinct user messages using the installed
-app-server injection operation. It preserves this version and its defaults.
+app-server injection operation. This version remains available by explicit selection.
 
 ## Activation and rollback
 
+To select this rollback format, set the following explicit wire options.
 Built-in Codex profiles and custom Codex profiles without explicit wire options
-default to these values. Explicit profile options still win. Neither model nor
+default to `cache-shared-v2`. Explicit profile options still win. Neither model nor
 effort selection changes:
 
 ```json

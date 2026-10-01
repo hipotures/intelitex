@@ -13,8 +13,8 @@ from .util import PipelineError, atomic_json, digest
 
 PROVIDERS = {"llamacpp", "openai", "codex", "vllm"}
 CODEX_WIRE_DEFAULTS = {
-    "p1_wire_format": "cache-shared-v1",
-    "translation_wire_format": "cache-shared-v1",
+    "p1_wire_format": "cache-shared-v2",
+    "translation_wire_format": "cache-shared-v2",
 }
 COMMON_KEYS = {
     "provider", "model", "enabled", "context_size", "planning_output_reserve",
