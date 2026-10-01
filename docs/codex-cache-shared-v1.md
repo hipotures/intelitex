@@ -12,6 +12,10 @@ JSON field boundaries inside one user message are not official provider cache
 breakpoints. This step does not establish cache eligibility, routing, actual
 hits, latency, cost, quality or retry-rate improvements.
 
+The separate opt-in [cache-shared-v2](codex-cache-shared-v2.md) places complete
+SOURCE/COMMON/DRAFT JSON objects in distinct user messages using the installed
+app-server injection operation. It preserves this version and its defaults.
+
 ## Activation and rollback
 
 Built-in Codex profiles and custom Codex profiles without explicit wire options

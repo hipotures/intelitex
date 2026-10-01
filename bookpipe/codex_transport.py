@@ -16,6 +16,7 @@ from .contracts import normalized_usage
 from .codex_cache import diagnostics, load_developer_contract, output_schema, serialize
 from . import codex_cache_v2
 from . import codex_cache_shared
+from . import codex_cache_shared_v2
 from .codex_effort import EffortPlan, resolve_effort_plan, runtime_model_metadata, rollout_effort_evidence, verify_reported_selection
 from .evidence import AttemptRecorder, redact
 from .p1_compact import build_transport
@@ -327,17 +328,21 @@ class CodexAppServerClient:
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
         options = self.settings.get("options", {})
         wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "cache-v2")
-        allowed = ("compact-v1", "canonical", "cache-v1", "cache-shared-v1") if pass_no == 1 else ("canonical", "cache-v1", "cache-v2", "cache-shared-v1")
+        allowed = ("compact-v1", "canonical", "cache-v1", "cache-shared-v1", "cache-shared-v2") if pass_no == 1 else ("canonical", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2")
         if wire_format not in allowed:
             label = "Pass-1" if pass_no == 1 else f"P{pass_no}"
             raise PipelineError(f"Unknown Codex {label} wire format: {wire_format!r}")
-        if wire_format in ("cache-v2", "cache-shared-v1"):
-            codec = codex_cache_shared if wire_format == "cache-shared-v1" else codex_cache_v2
+        if wire_format in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+            codec = {"cache-v2": codex_cache_v2, "cache-shared-v1": codex_cache_shared,
+                     "cache-shared-v2": codex_cache_shared_v2}[wire_format]
             developer = codec.load_developer_contract(self.project_root, prompt, pass_no)
             layout, context = codec.encode_input(inputs, pass_no)
             return {
                 "model": self.model, "effort": self.settings.get("reasoning_effort"),
-                "developer_instructions": developer, "input": layout.text,
+                "developer_instructions": developer,
+                "input": layout.active_pass_message if wire_format == "cache-shared-v2" else layout.text,
+                **({"injected_items": [codex_cache_shared_v2.user_message(x) for x in layout.injected_messages]}
+                   if wire_format == "cache-shared-v2" else {}),
                 "output_schema": copy.deepcopy(codec.TRANSPORT_SCHEMA),
                 "pass_no": pass_no, "wire_format": wire_format, "codec_context": context.as_dict(),
                 "cache_diagnostics": codec.diagnostics(
@@ -389,11 +394,13 @@ class CodexAppServerClient:
         # The installed app-server exposes usage after a turn, not a no-turn
         # token counter. UTF-8 bytes are a conservative upper bound for packing.
         count = len(body["developer_instructions"].encode("utf-8")) + len(body["input"].encode("utf-8"))
+        count += sum(len(content["text"].encode("utf-8")) for item in body.get("injected_items", [])
+                     for content in item["content"])
         reserve = int(self.settings["planning_output_reserve"])
         margin = int(self.settings.get("options", {}).get("context_margin_tokens", 2048))
         required = count + reserve + margin
         if recorder:
-            if body.get("wire_format") in ("cache-v2", "cache-shared-v1"):
+            if body.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
                 recorder.codec_context(body["codec_context"])
             if body.get("cache_diagnostics"):
                 recorder.cache_layout(body["cache_diagnostics"])
@@ -518,6 +525,17 @@ class CodexAppServerClient:
                 "environments": [], "runtimeWorkspaceRoots": [], "outputSchema": body["output_schema"],
             },
         }
+        if body.get("wire_format") == "cache-shared-v2":
+            transport_plan["injections"] = [{"method": "thread/inject_items", "params": {"items": [copy.deepcopy(item)]}}
+                                            for item in body["injected_items"]]
+            # Application-owned messages only. Codex can additionally add its
+            # platform-owned sandbox/environment wrappers. This is evidence,
+            # not a raw Responses request or extra app-server parameters.
+            transport_plan["message_plan"] = [
+                {"origin": "thread/start.baseInstructions", "text": base},
+                {"origin": "thread/start.developerInstructions", "text": body["developer_instructions"]},
+                *copy.deepcopy(body["injected_items"]), codex_cache_shared_v2.user_message(body["input"]),
+            ]
         recorder.transport_request(transport_plan, body["output_schema"])
         started = time.monotonic()
         proc: subprocess.Popen | None = None
@@ -577,7 +595,13 @@ class CodexAppServerClient:
             # Replace the pre-submission plan with the exact physical turn,
             # including the provider-assigned ID. Diagnostics never enter RPC.
             transport_plan["turn"] = turn_params
+            for injection in transport_plan.get("injections", []):
+                injection["params"]["threadId"] = rpc.state["thread_id"]
             recorder.transport_request(transport_plan, body["output_schema"])
+            for injection in transport_plan.get("injections", []):
+                # Each raw user ResponseItem is appended without a model turn.
+                # Failure stops this attempt; never emulate with extra turns.
+                rpc.request(injection["method"], injection["params"], deadline)
             turn_result = rpc.request("turn/start", turn_params, deadline)
             turn = turn_result.get("turn") or {}
             rpc.state["turn_id"] = turn.get("id") or rpc.state["turn_id"]
