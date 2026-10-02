@@ -12,6 +12,7 @@ from .reader import ReaderService
 from .workflow import WorkflowQueries
 from .web import WebWorkspaceService
 from .analysis_reset import AnalysisResetService
+from .source_preload import SourcePreloadQueries
 
 
 class Application:
@@ -29,3 +30,4 @@ class Application:
         self.workflow = WorkflowQueries(dependencies, self.publishing)
         self.web = WebWorkspaceService(dependencies)
         self.analysis_reset = AnalysisResetService(dependencies)
+        self.source_preload = SourcePreloadQueries(dependencies)

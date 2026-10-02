@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -48,7 +49,7 @@ test('1000 sections, 2000 terms, stream bursts, offline/refocus and one shared E
  await page.waitForFunction(()=>document.querySelectorAll('.review-term-row').length===1)
  assert.equal(await search.inputValue(),'Term 1999')
  assert.equal(await search.evaluate(n=>document.activeElement===n),true)
- await page.screenshot({path:'/tmp/intelitex-browser-evidence/large-review.png',fullPage:true})
+ await page.screenshot({path:testEvidence('intelitex-browser-evidence/large-review.png'),fullPage:true})
  const elapsed=performance.now()-before
  assert.ok(elapsed<10000,`large-data navigation and filtering took ${elapsed}ms`)
  await context.setOffline(true)

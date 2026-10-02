@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { readFile, mkdir } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
@@ -5,7 +6,7 @@ import test from 'node:test'
 import { chromium } from 'playwright'
 
 const dist = resolve('dist')
-const output = '/tmp/intelitex-p1-cost-evidence'
+const output = testEvidence('intelitex-p1-cost-evidence')
 const metadata = { title: 'Offline Book', creators: [], language: 'en', source_language: 'en',
   target_language: 'pl', label: null, format: 'EPUB', word_count: 120,
   lifecycle: { archived: false, revision: 'life' } }

@@ -106,7 +106,7 @@ USAGE_FIELDS = {
     'UsageByUnitResult': 'scope units warning',
     'UnitUsage': 'unit_id chapter_id chunk_id analysis_unit_id unit_index passes input_tokens cached_input_tokens cache_write_input_tokens output_tokens reasoning_output_tokens total_tokens elapsed_seconds',
     'PassUsage': 'pass_no task_key provider profile requested_model reported_model physical_attempt_count provider_call_count unknown_provider_call_count retry_count failed_attempt_count failed_before_submission_count accepted_attempt_id recovered_from_existing_attempt result_status usage_status usage_source preflight_input input_tokens cached_input_tokens cache_write_input_tokens output_tokens reasoning_output_tokens total_tokens elapsed_seconds cost attempts',
-    'AttemptUsage': 'attempt_id attempt_number generation_status validation_status acceptance_status provider_contacted accepted_checkpoint checkpoint_source_for_recovery usage_status usage_source reported_model input_tokens cached_input_tokens cache_write_input_tokens output_tokens reasoning_output_tokens total_tokens elapsed_seconds preflight_input cost',
+    'AttemptUsage': 'attempt_id physical_record_id attempt_number generation_status validation_status acceptance_status provider_contacted accepted_checkpoint checkpoint_source_for_recovery usage_status usage_source reported_model requested_model reported_effort requested_effort selection_status scope_id slot_id generation input_tokens cached_input_tokens cache_write_input_tokens output_tokens reasoning_output_tokens total_tokens elapsed_seconds preflight_input cost',
     'UsageAggregate': 'value known_attempts unknown_attempts',
     'PreflightInput': 'value unit quality method',
     'CostEstimate': 'status amount currency estimate_type note',
@@ -117,4 +117,65 @@ def usage(value):
     if isinstance(value, tuple):
         return [usage(v) for v in value]
     fields = USAGE_FIELDS.get(type(value).__name__)
-    return {key: usage(getattr(value, key)) for key in fields.split()} if fields else value
+    result = {key: usage(getattr(value, key)) for key in fields.split()} if fields else value
+    if type(value).__name__ == 'PassUsage' and value.pass_no == 0:
+        # Internal ledger identities can contain relative artifact paths. P0's
+        # public drilldown uses stable opaque identities, keeping that layout private.
+        from ..util import digest
+        identifiers = {}
+        for attempt in result['attempts']:
+            opaque = 'pa_' + (attempt['physical_record_id'] or digest(attempt['attempt_id']))
+            identifiers[attempt['attempt_id']] = opaque
+            attempt['attempt_id'] = opaque
+        result['accepted_attempt_id'] = identifiers.get(result['accepted_attempt_id'])
+    return result
+
+
+PRELOAD_SUMMARY = 'state source_scopes required accepted needing_execution pending running failed unverifiable not_applicable unresolved retained physical_attempts session_warnings denominator'
+PRELOAD_TARGET = ('target_id chapter_id scope_id source_sha256 source_map_sha256 label source_words source_utf8_bytes source_blocks planning_state profiles '
+                  'provider model effort baseline_state session_state relevance slot_id generation thread_id '
+                  'accepted_at selection_verified_at last_verified_at reported_model reported_effort acknowledgement '
+                  'verification_scope native_check can_run reason')
+
+
+def preload_target(value):
+    result = pick(value, PRELOAD_TARGET)
+    result['consumers'] = [pick(c, 'pass_no unit_id saved_output') for c in value['consumers']]
+    for field in ('scope_id', 'slot_id', 'thread_id'):
+        identifier = result.get(field)
+        if identifier is not None and (not isinstance(identifier, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', identifier)):
+            result[field] = None
+    if type(result.get('generation')) is not int or result['generation'] < 1:
+        result['generation'] = None
+    for field in ('accepted_at', 'last_verified_at', 'selection_verified_at'):
+        if not isinstance(result.get(field), str):
+            result[field] = None
+    return safe_json(result)
+
+
+def source_preload(value):
+    result = pick(value, 'format_version workspace_id execution_mode applicable prepared planning_state observed_at revision intent_revision reason history_truncated')
+    result['summary'] = pick(value['summary'], PRELOAD_SUMMARY)
+    result['chapters'] = [{**pick(c, 'chapter_id title processing reason'), 'summary': pick(c['summary'], PRELOAD_SUMMARY),
+                           'targets': [preload_target(t) for t in c['targets']]} for c in value['chapters']]
+    result['assignments'] = [pick(a, 'pass_no profile provider model effort') for a in value['assignments']]
+    result['history'] = []
+    for history in value['history']:
+        row = pick(history, 'slot_id scope_id chapter_id generation model effort state reason')
+        for field in ('slot_id', 'scope_id', 'chapter_id', 'model', 'effort'):
+            if not isinstance(row.get(field), str):
+                row[field] = None
+        for field in ('slot_id', 'scope_id', 'chapter_id'):
+            if row[field] is not None and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', row[field]):
+                row[field] = None
+        if type(row.get('generation')) is not int or row['generation'] < 1:
+            row['generation'] = None
+        result['history'].append(row)
+    return safe_json(result)
+
+
+def source_preload_preview(value):
+    result = pick(value, 'target_id page next_page source_kind available reason truncated')
+    result['source'] = [pick(b, 'id text') for b in value['source']]
+    result['session'] = preload_target(value['session'])
+    return result

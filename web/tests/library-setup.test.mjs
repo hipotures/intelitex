@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { readFile, mkdir } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
@@ -5,7 +6,7 @@ import test from 'node:test'
 import { chromium } from 'playwright'
 
 const dist = resolve('dist')
-const output = '/tmp/intelitex-library-setup-evidence'
+const output = testEvidence('intelitex-library-setup-evidence')
 const profile = { name: 'codex-luna-low', stable_palette_index: 0, provider: 'codex', model: 'gpt-5.6-luna', enabled: true,
   source_languages: null, target_languages: null }
 const localProfile = { name: 'local', stable_palette_index: 1, provider: 'llamacpp', model: null, enabled: true,

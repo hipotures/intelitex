@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -97,8 +98,8 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   const saved = await page.request.get(`${config.url}/api/workspaces/prepared/review`)
   const savedReview = await saved.json()
   assert.equal(savedReview.terms.find(term => term.id === firstId).custom, 'Relay custom')
-  await mkdir('/tmp/intelitex-review-navigation-evidence', { recursive: true })
-  await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/next-dark-1440.png', animations: 'disabled' })
+  await mkdir(testEvidence('intelitex-review-navigation-evidence'), { recursive: true })
+  await page.screenshot({ path: testEvidence('intelitex-review-navigation-evidence/next-dark-1440.png'), animations: 'disabled' })
 
   await page.locator('#reviewPrevBtn').click()
   await page.locator('.review-detail-heading h2').getByText('Relay', { exact: true }).waitFor()
@@ -133,7 +134,7 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   await page.getByRole('button', { name: 'Bulk accept remaining in this view (1)' }).click()
   await page.getByRole('dialog', { name: 'Bulk accept remaining terms?' }).waitFor()
   await page.getByRole('dialog', { name: 'Bulk accept remaining terms?' }).getByText('Pending / technology').waitFor()
-  await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/bulk-confirm-dark-1440.png', animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-review-navigation-evidence/bulk-confirm-dark-1440.png'), animations: 'disabled' })
   await page.getByRole('dialog', { name: 'Bulk accept remaining terms?' }).getByRole('button', { name: 'Bulk accept 1 term' }).click()
   await page.getByText('1 term bulk accepted. Current choices and notes kept.').waitFor()
   await page.getByText('1 bulk accepted', {exact:false}).first().waitFor()
@@ -141,7 +142,7 @@ test('Review Next saves once, advances without waiting for workspace refresh, an
   assert.equal(await page.getByRole('button', { name: 'Bulk accept remaining in this view (0)' }).isDisabled(), true)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
-  await page.screenshot({ path: '/tmp/intelitex-review-navigation-evidence/draft-light-390.png', fullPage: true, animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-review-navigation-evidence/draft-light-390.png'), fullPage: true, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   assert.equal(await page.locator('.review-detail-footer').evaluate(footer =>
     [...footer.querySelectorAll('button')].every(button => button.getBoundingClientRect().right <= footer.getBoundingClientRect().right - 10)), true,

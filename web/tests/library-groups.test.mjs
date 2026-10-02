@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -57,7 +58,7 @@ test('All shows nested groups, optional types, global sorting and nested source 
     page.waitForResponse(response => response.url().includes('sort=language') && response.status() === 200),
     page.getByLabel('Sort Library').selectOption('language'),
   ])
-  const output = '/tmp/intelitex-library-groups-evidence'
+  const output = testEvidence('intelitex-library-groups-evidence')
   await mkdir(output, { recursive: true })
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 })

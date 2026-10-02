@@ -61,6 +61,8 @@ def native_mock(tmp_path, monkeypatch):
                 state['arrived'].set()
                 state['release'].wait(10)
             output = codec.READY if n == 0 else codec.encode_output(RESULTS[n], n, codec.context_for(inputs_for(n), n))
+            if state.get('output_factory'):
+                output = state['output_factory'](envelope)
             output = copy.deepcopy(state['overrides'].get(len(state['calls']), output))
             if len(state['calls']) in state['invalid']:
                 output['t' if n in (3, 5) else 'c'] = []

@@ -64,6 +64,14 @@ class AttemptUsage:
     elapsed_seconds: float | None
     preflight_input: PreflightInput | None
     cost: CostEstimate | None
+    physical_record_id: str | None = None
+    requested_model: str | None = None
+    requested_effort: str | None = None
+    reported_effort: str | None = None
+    selection_status: str | None = None
+    scope_id: str | None = None
+    slot_id: str | None = None
+    generation: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,10 +148,73 @@ class _AttemptRecord:
 
 def _optional_json(path: Path) -> Any | None:
     try:
+        if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+            return None
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     return value
+
+
+def _saved_selection_status(project, directory, response):
+    """Use durable R2 receipts for applied provenance, without native discovery."""
+    from .util import digest
+    receipt = _optional_json(directory / 'selection.verification.json')
+    if not isinstance(receipt, dict) or receipt.get('status') not in ('verified', 'rejected', 'held'):
+        return None
+    if receipt['status'] != 'verified':
+        return receipt['status']
+    try:
+        for name in ('attempt.json', 'request.semantic.json', 'request.transport.json', 'answer.txt'):
+            path = directory / name
+            if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+                return None
+        manifest = project / response['session_manifest']
+        if '..' in manifest.parts or not manifest.is_relative_to(project):
+            return None
+        record = _optional_json(manifest)
+        if (not isinstance(record, dict) or not isinstance(record.get('submissions'), list)
+                or not all(isinstance(s, dict) for s in record['submissions'])):
+            return None
+        owned = [s for s in record['submissions'] if s.get('attempt') == str(directory.relative_to(project))]
+        if len(owned) != 1:
+            return None
+        from .source_sessions import _submission_binding
+        binding = _submission_binding(project, record, owned[0])
+        binding['answer_sha256'] = digest((directory / 'answer.txt').read_bytes())
+        if (receipt.get('version') != 1 or receipt.get('binding') != binding
+                or response.get('selection_verification') != receipt
+                or any(response.get(k) != receipt.get(k) for k in ('reported_model', 'reported_effort'))):
+            return None
+        from .codex_effort import verify_reported_selection
+        verify_reported_selection(binding['requested_model'], binding['requested_effort'],
+                                  receipt.get('reported_model'), receipt.get('reported_effort'))
+        if not receipt.get('reported_model') or binding['requested_effort'] is not None and receipt.get('reported_effort') is None:
+            return None
+        return 'verified'
+    except (PipelineError, OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _damaged_p0_manifest(project, path):
+    """Retain physical accounting when only the attempt index is damaged.
+
+    Immutable semantic evidence may supply provenance, never acceptance. Source
+    and slot identities come from the confined P0 artifact layout, not settings.
+    """
+    parts = path.relative_to(project).parts
+    if (len(parts) != 8 or parts[0] != 'artifacts' or parts[2] != 'sources' or parts[4] != 'pass0'
+            or not re.fullmatch(r'[0-9a-f]{64}', parts[3]) or not re.fullmatch(r'[0-9a-f]{64}', parts[5])
+            or not re.fullmatch(r'attempt_\d+', parts[6])):
+        return None
+    semantic = _optional_json(path.parent / 'request.semantic.json')
+    semantic = semantic if isinstance(semantic, dict) else {}
+    profile = semantic.get('resolved_profile')
+    profile = profile if isinstance(profile, dict) else {}
+    identity = {'task_key': 'pass0/' + parts[3], 'task_fingerprint': parts[5], 'pass_no': 0,
+                'unit_id': parts[3], 'chapter_id': parts[1], 'scope_id': parts[3], 'slot_id': parts[5],
+                'provider': profile.get('provider'), 'requested_model': profile.get('model')}
+    return {'identity': identity, 'lifecycle': {}, 'evidence_complete': False}
 
 
 def _integer(value: Any) -> int | None:
@@ -290,10 +361,15 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
     records: list[_AttemptRecord] = []
     current_catalog: tuple[dict[str, Any], Path] | None = None
     from .artifacts import attempt_manifests
-    for manifest_path in attempt_manifests(project):
+    manifests = set(attempt_manifests(project))
+    manifests.update(p / 'attempt.json' for p in project.glob('artifacts/*/sources/*/pass0/*/attempt_*')
+                     if p.is_dir() and not p.is_symlink())
+    for manifest_path in sorted(manifests):
         manifest = _optional_json(manifest_path)
         if not isinstance(manifest, dict):
-            continue
+            manifest = _damaged_p0_manifest(project, manifest_path)
+            if manifest is None:
+                continue
         identity = manifest.get("identity") if isinstance(manifest.get("identity"), dict) else {}
         raw_pass = identity.get("pass_no", identity.get("pass"))
         try:
@@ -372,6 +448,11 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
             attempt_number = int(match.group(1)) if match else None
         attempt_id = str(identity.get("attempt_id") or f"{task_key}:{relative}")
         is_recovery_source = relative in recovered_sources
+        from .util import digest
+        semantic_value = _optional_json(manifest_path.parent / 'request.semantic.json')
+        semantic = semantic_value if isinstance(semantic_value, dict) else {}
+        resolved_value = semantic.get('resolved_profile')
+        resolved = resolved_value if isinstance(resolved_value, dict) else {}
         values = usage_json if reported else {}
         attempt = AttemptUsage(
             attempt_id=attempt_id, attempt_number=attempt_number,
@@ -389,6 +470,13 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
             total_tokens=_integer(values.get("total_tokens")),
             elapsed_seconds=_number(response.get("elapsed_seconds")),
             preflight_input=_preflight(manifest, response, context), cost=_cost(pricing, usage_json),
+            physical_record_id=digest({'task': task_key, 'physical_evidence': relative}),
+            requested_model=identity.get('requested_model'),
+            requested_effort=semantic.get('reasoning_effort', resolved.get('reasoning_effort')),
+            reported_effort=response.get('reported_effort'),
+            selection_status=_saved_selection_status(project, manifest_path.parent, response) if pass_no == 0 else None,
+            scope_id=identity.get('scope_id') or response.get('scope_id'),
+            slot_id=identity.get('slot_id') or response.get('slot_id'), generation=_integer(identity.get('generation')),
         )
         records.append(_AttemptRecord(
             unit_id, chapter_id, chunk_id, analysis_unit_id, unit_index, pass_no, task_key,

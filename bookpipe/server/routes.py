@@ -14,6 +14,11 @@ def is_analysis_preview_path(parts):
             and parts[3:5] == ['analysis', 'units'] and parts[6] == 'preview')
 
 
+def is_preload_preview_path(parts):
+    return (len(parts) == 7 and parts[:2] == ['api', 'workspaces']
+            and parts[3:5] == ['source-preload', 'targets'] and parts[6] == 'preview')
+
+
 def dispatch(service, method, parts, body=None, query=None):
     supervisor = service.supervisor
     mutation = method != 'GET'
@@ -57,6 +62,16 @@ def dispatch(service, method, parts, body=None, query=None):
             if len(tail) == 2 and tail[0] == 'sections':
                 return response(200, service.configure(ident, body, tail[1]))
         if method == 'GET':
+            if tail == ['source-preload']:
+                return response(200, service.source_preload(ident))
+            if len(tail) == 4 and tail[:2] == ['source-preload', 'targets'] and tail[3] == 'preview':
+                page = query.get('page', '0') if query is not None else '0'
+                if (query is not None and set(query) - {'page'} or not page.isascii()
+                        or not page.isdecimal() or len(page) > 5):
+                    raise ValueError('Invalid preview page.')
+                from .serialization import source_preload_preview
+                return response(200, source_preload_preview(service.application.source_preload.preview(
+                    service.workspaces.resolve(ident), tail[2], int(page))))
             if tail == ['publication', 'selection']:
                 return response(200, service.publication_selection(ident))
             if len(tail) == 4 and tail[:2] == ['analysis', 'units'] and tail[3] == 'preview':

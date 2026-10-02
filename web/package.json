@@ -14,8 +14,8 @@
     "test": "npm run build && npm run test:unit && npm run test:browser",
     "lint": "eslint src",
     "test:unit": "vitest run src",
-    "test:browser": "node --test tests/*.test.mjs",
-    "test:e2e": "node --test tests/*.test.mjs",
+    "test:browser": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:e2e": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:visual": "node tests/visual.mjs"
   },
   "dependencies": {

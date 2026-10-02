@@ -28,10 +28,19 @@ class JobSpec:
     rerun: bool = False
     target_language: str = "pl"
     import_root: str | None = None
+    preload_target_id: str | None = None
+    expected_preload_revision: str | None = None
 
     def __post_init__(self):
-        if self.operation not in {"analyze", "translate", "publish"}:
-            raise ValueError("Unsupported operation; use analyze, translate or publish.")
+        if self.operation not in {"preload", "analyze", "translate", "publish"}:
+            raise ValueError("Unsupported operation; use preload, analyze, translate or publish.")
+        if self.operation == 'preload':
+            if (not isinstance(self.preload_target_id, str) or not re.fullmatch(r'pt_[0-9a-f]{64}', self.preload_target_id)
+                    or not isinstance(self.expected_preload_revision, str) or not re.fullmatch(r'[0-9a-f]{64}', self.expected_preload_revision)
+                    or self.profile is not None or self.chunk_limit != 0):
+                raise ValueError('Preload requires a current target and intent revision; configuration is inherited.')
+        elif self.preload_target_id is not None or self.expected_preload_revision is not None:
+            raise ValueError('Preload target fields apply only to preload.')
         if self.profile is not None and (not isinstance(self.profile, str) or not re.fullmatch(r"[\w.-]{1,128}", self.profile)):
             raise ValueError("Invalid profile name.")
         if type(self.chunk_limit) is not int or self.chunk_limit < 0:

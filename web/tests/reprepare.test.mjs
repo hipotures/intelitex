@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { readFile, mkdir } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
@@ -11,7 +12,7 @@ async function toggleLightDark(page) {
 }
 
 const dist = resolve('dist')
-const output = '/tmp/intelitex-reprepare-evidence'
+const output = testEvidence('intelitex-reprepare-evidence')
 const profile = { name: 'local', stable_palette_index: 0, provider: 'llamacpp', model: null, enabled: true }
 const otherProfile = { ...profile, name: 'local-other', stable_palette_index: 1 }
 const passes = Object.fromEntries([1, 2, 3, 4, 5].map(n => [String(n), {

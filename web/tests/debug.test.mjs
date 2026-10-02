@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -5,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
-const evidence = '/tmp/intelitex-debug-evidence'
+const evidence = testEvidence('intelitex-debug-evidence')
 const regions = ['HDR', 'WRK', 'WHT', 'ACT', 'WLS', 'WRC', 'LIB', 'BKC']
 const rects = page => page.evaluate(ids => Object.fromEntries(ids.map(id => {
   const element = document.querySelector(`[data-ui-debug-id="${id}"]`)

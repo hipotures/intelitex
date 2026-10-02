@@ -21,12 +21,28 @@ reasoning_output_tokens recalculate_request_tokens repair_count
 replace_successful_outputs requested_model run_current run_total section_number
 source status target_language task_key total_tokens unit_id unit_index
 state
+scope_id slot_id parent_consumer_pass
+physical_record_id
 """.split())
 
 
 # Older registries may still contain these fields. Scrub both replay and job
 # snapshots as well as excluding them from newly emitted progress metadata.
 PATH_FIELDS = frozenset({"project", "output_path", "recovery_path", "review_path"})
+
+
+def safe_progress_values(values):
+    result = {key: value for key, value in values.items()
+              if key in PROGRESS_FIELDS and (value is None or type(value) in {str, int, float, bool})}
+    for key in ('scope_id', 'slot_id', 'physical_record_id'):
+        value = result.get(key)
+        if value is not None and (not isinstance(value, str) or '..' in value
+                                 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', value)):
+            result.pop(key, None)
+    if 'parent_consumer_pass' in result and (type(result['parent_consumer_pass']) is not int
+                                           or result['parent_consumer_pass'] not in range(1, 6)):
+        result.pop('parent_consumer_pass')
+    return result
 
 
 def public_envelope(envelope: dict) -> dict:
@@ -36,16 +52,14 @@ def public_envelope(envelope: dict) -> dict:
     public['event']['message'] = ''
     public['event']['values'] = {
         key: ('Operation failed; inspect locally.' if key == 'error' else value)
-        for key, value in event.get('values', {}).items()
-        if key in PROGRESS_FIELDS and (value is None or type(value) in {str, int, float, bool})
+        for key, value in safe_progress_values(event.get('values', {})).items()
     }
     return public
 
 
 def progress_value(event: ProgressEvent) -> dict:
     value = asdict(event)
-    value["values"] = {key: item for key, item in event.values.items()
-                       if key in PROGRESS_FIELDS and (item is None or type(item) in {str, int, float, bool})}
+    value["values"] = safe_progress_values(event.values)
     if "error" in value["values"]:
         value["values"]["error"] = "Operation failed; inspect project evidence locally."
     value["message"] = ""  # Free-form human text can contain provider responses.

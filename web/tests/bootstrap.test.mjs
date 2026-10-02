@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -5,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
-const evidence = '/tmp/intelitex-browser-evidence'
+const evidence = testEvidence('intelitex-browser-evidence')
 const wait = async (fn, description) => {
  const end=Date.now()+45000
  while(Date.now()<end) { if(await fn()) return; await new Promise(r=>setTimeout(r,100)) }

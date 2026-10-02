@@ -1,0 +1,175 @@
+import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+import test from 'node:test'
+import { chromium } from 'playwright'
+import { testEvidence } from './paths.mjs'
+import { preloadFixture, preloadPage, readyPreload } from './preload-fixture.mjs'
+
+const output = testEvidence('intelitex-p0-browser-evidence')
+
+test('Manual P0 opens a single initial P1 action before the saved plan exists', { timeout: 60000 }, async t => {
+  const fixture = await preloadFixture(), browser = await chromium.launch()
+  t.after(() => browser.close())
+  const { page, mutations, errors, state } = await preloadPage(browser, fixture, 'accepted')
+  await page.goto('http://localhost/work/workspaces/book')
+  const analyse = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
+  await analyse.waitFor()
+  assert.equal(await analyse.isDisabled(), false)
+  await analyse.click()
+  await page.getByRole('button', { name: 'Run first P1 unit · Chapter 1' }).click()
+  await page.getByRole('button', { name: 'Run P1 unit', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Run this P1 unit?' }).waitFor({ state: 'hidden' })
+  assert.equal(mutations.length, 1)
+  assert.equal(mutations[0].value.operation, 'analyze')
+  assert.equal(mutations[0].value.unit_id, 'ch0001_a001')
+  // Acknowledgement recovery after reload cannot submit a duplicate first unit.
+  await page.evaluate(key => sessionStorage.setItem('intelitex.pending.offline-preload.book.analysis.ch0001_a001', key), mutations[0].value.request_key)
+  await page.reload()
+  await page.getByRole('button', { name: 'Run first P1 unit · Chapter 1' }).click()
+  await page.getByRole('button', { name: 'Run P1 unit', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Run this P1 unit?' }).waitFor({ state: 'hidden' })
+  assert.equal(mutations.length, 1)
+  assert.equal(state.pipeline.analysis.planned, false)
+  assert.deepEqual(errors, [])
+})
+
+test('P0 opens before P1, preserves URL selection and guards mutations without blocking navigation', { timeout: 60000 }, async t => {
+  await mkdir(output, { recursive: true })
+  const fixture = await preloadFixture(), browser = await chromium.launch()
+  t.after(() => browser.close())
+  const { page, state, workspace, requests, mutations, errors, job, refresh } = await preloadPage(browser, fixture)
+  await page.goto('http://localhost/work/workspaces/book')
+  await page.locator('[data-ui-debug-id="SCT"]').waitFor()
+  assert.deepEqual(await page.locator('.phase-rail .phase').evaluateAll(nodes => nodes.map(n => n.querySelector('.phase-name')?.textContent)),
+    ['Prepare', 'Preload · P0', 'Analyse · P1', 'Review', 'Translate', 'Publish'])
+  assert.deepEqual(await page.locator('.sections-table thead th').allTextContents(), ['Section','Processing','P0','P1','P2','P3','P4','P5'])
+  await page.getByRole('button', { name: /Pipeline models/ }).click()
+  assert.equal(await page.locator('.model-slot select').count(), 5)
+  await page.locator('.sections-table tbody tr').nth(1).locator('.preload-cell-link').click()
+  assert.match(page.url(), /preload\?chapter=ch0002/)
+  assert.equal(await page.locator('.drawer.open').count(), 0)
+  await page.locator('[data-ui-debug-id="PNV"] .translate-preview-text').first().waitFor()
+  assert.equal(await page.locator('.phase-metric').count(), 5)
+  assert.deepEqual(await page.locator('.phase-metric-value').allTextContents(), ['—','—','—','—','—'])
+  await page.getByText('Source to preload — P0 has not run', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('heading', { name: 'Polish', exact: true }).count(), 1)
+  assert.equal(await page.locator('[data-ui-debug-id="PNV"] script').count(), 0)
+  assert.equal(await page.getByText('Clear P1', { exact: true }).count(), 0)
+  const rows = page.locator('[data-ui-debug-id="PNU"] tbody tr')
+  assert.match(await rows.first().innerText(), /Whole chapter.*words.*UTF-8 bytes/)
+  assert.doesNotMatch((await rows.allTextContents()).join(' '), /P2\/P3|[a-f0-9]{12}/)
+  assert.equal(await rows.last().getByRole('button', { name: /^Preload source for / }).isDisabled(), false)
+  await rows.first().getByRole('button', { name: /P0: pending; preview/ }).click()
+  const chosen = new URL(page.url()).searchParams.get('preloadTarget')
+  await page.reload(); await page.locator('[data-ui-debug-id="PNV"] .translate-preview-text').first().waitFor()
+  assert.equal(new URL(page.url()).searchParams.get('preloadTarget'), chosen)
+  await rows.nth(3).getByRole('button', { name: /P0: pending; preview/ }).click()
+  const second = new URL(page.url()).searchParams.get('preloadTarget')
+  await page.goBack(); assert.equal(new URL(page.url()).searchParams.get('preloadTarget'), chosen)
+  await page.goForward(); assert.equal(new URL(page.url()).searchParams.get('preloadTarget'), second)
+  const previewButton = rows.nth(3).getByRole('button', { name: /P0: pending; preview/ })
+  await previewButton.focus(); await refresh()
+  assert.equal(await previewButton.evaluate(node => node === document.activeElement), true)
+  assert.equal(new URL(page.url()).searchParams.get('preloadTarget'), second)
+  await page.getByRole('button', { name: 'Load next 5 blocks' }).click()
+  await page.waitForFunction(() => document.querySelectorAll('[data-ui-debug-id="PNV"] .translate-preview-block').length === 9)
+  assert.equal(await page.locator('[data-ui-debug-id="PNV"] .translate-preview-block').count(), 9)
+  await page.screenshot({ path: output + '/pending-chapter-2.png', fullPage: true })
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await page.getByText('Offline. Showing the last available snapshot; Run is unavailable.').waitFor()
+  assert.equal(await rows.getByRole('button', { name: /^Preload source for / }).first().isDisabled(), true)
+  await rows.first().getByRole('button', { name: /preview/ }).click()
+  assert.equal(new URL(page.url()).searchParams.get('chapter'), 'ch0001')
+  await page.reload(); await page.locator('[data-ui-debug-id="PNU"] tbody tr').first().waitFor()
+  workspace().metadata.lifecycle.archived = true; state.pipeline.metadata.lifecycle.archived = true
+  await refresh(); assert.equal(await rows.getByRole('button', { name: /^Preload source for / }).first().isDisabled(), true)
+  state.pipeline.active_job = job; state.pipeline.busy = true; workspace().active_job = job
+  await refresh(); assert.equal(await rows.getByRole('button', { name: /^Preload source for / }).first().isDisabled(), true)
+  await rows.nth(2).getByRole('button', { name: /preview/ }).click()
+  assert.equal(new URL(page.url()).searchParams.get('chapter'), 'ch0002')
+  await readyPreload(page, '?preloadTarget=pt_' + 'f'.repeat(64))
+  await page.getByText('The selected source target is no longer current. Showing an available source target.').waitFor()
+  // A real section with no P0 must not silently preview a different chapter.
+  state.inventory.chapters[1].targets = []
+  state.inventory.chapters[1].reason = 'Excluded from processing.'
+  await readyPreload(page)
+  await page.goto('http://localhost/work/workspaces/book/preload?chapter=ch0002')
+  await page.locator('[data-ui-debug-id="PNV"]').getByText('Excluded from processing.', { exact: true }).waitFor()
+  assert.equal(await page.locator('[data-ui-debug-id="PNV"] .translate-preview-text').count(), 0)
+  workspace().prepared = false
+  requests.length = 0
+  await page.reload(); await page.getByText('Prepare required', { exact: true }).waitFor()
+  assert.equal(requests.some(r => /\/(pipeline|usage|source-preload)$/.test(r.path)), false)
+  assert.deepEqual(mutations, []); assert.deepEqual(errors, [])
+})
+
+test('P0 physical totals, confirmed Play, lost response receipt, Stop and provisional reconciliation', { timeout: 60000 }, async t => {
+  const fixture = await preloadFixture(), browser = await chromium.launch()
+  t.after(() => browser.close())
+  const { page, state, workspace, mutations, errors, job, receipts, event, refresh } = await preloadPage(browser, fixture, 'accepted')
+  await readyPreload(page)
+  assert.deepEqual((await page.locator('.phase-metric-value').allTextContents()).slice(0, 4), ['200','0','0','10'])
+  assert.equal(await page.locator('.phase-metric-value').last().textContent(), '$0.0003 · partial')
+  await page.locator('[data-ui-debug-id="PNC"] > .phase-detail-card-body > details > summary').click()
+  for (const heading of ['Current inherited assignments','Recorded P0 summary','Usage by model/profile','Usage by chapter','Usage by source unit/session'])
+    await page.getByRole('heading', { name: heading, exact: true }).waitFor()
+  assert.equal(await page.locator('[data-ui-debug-id="PNC"] .profile-swatch').count() > 5, true)
+  assert.equal(await page.getByText(/2 physical attempts · 2 submitted · 0 unknown/).count(), 1)
+  assert.equal(await page.locator('.preload-readiness').count(), 1)
+  assert.equal(await page.locator('.preload-readiness').getByText(/READY/).count(), 1)
+  const metrics = await page.locator('.phase-metric-value').allTextContents()
+  await page.locator('[data-ui-debug-id="PNU"] tbody tr').nth(1).getByRole('button', { name: /preview/ }).click()
+  assert.deepEqual(await page.locator('.phase-metric-value').allTextContents(), metrics)
+  await page.screenshot({ path: output + '/accepted-usage.png', fullPage: true })
+  state.loseResponse = true
+  await page.locator('[data-ui-debug-id="PNU"] tbody tr').first().getByRole('button', { name: /^Preload source for / }).click()
+  await page.getByRole('heading', { name: 'Run this P0 unit?' }).waitFor()
+  const run = page.getByRole('button', { name: 'Run P0 unit', exact: true })
+  await run.evaluate(node => { node.click(); node.click() })
+  await page.getByRole('heading', { name: 'Run this P0 unit?' }).waitFor({ state: 'hidden' })
+  assert.equal(mutations.length, 1)
+  assert.equal(mutations[0].value.operation, 'preload')
+  assert.equal(mutations[0].value.preload_target_id, fixture.accepted.inventory.chapters[0].targets[0].target_id)
+  assert.equal(mutations[0].value.expected_preload_revision, fixture.accepted.inventory.intent_revision)
+  assert.match(mutations[0].value.request_key, /^[\w-]+$/)
+  await page.reload(); await page.locator('[data-ui-debug-id="PNU"] tbody tr').first().waitFor()
+  assert.equal(mutations.length, 1)
+  // A lost reply can change readiness/revision before the browser reloads. The
+  // stable target receipt must be resolved without posting the new revision.
+  const pendingKey = 'p0-persisted-before-reload'
+  receipts.set(pendingKey, job)
+  await page.evaluate(({ target, key }) => sessionStorage.setItem(`intelitex.pending.offline-preload.book.preload.${target}`,
+    JSON.stringify({ key, revision: 'a'.repeat(64) })), { target: fixture.accepted.inventory.chapters[0].targets[0].target_id, key: pendingKey })
+  await page.reload(); await page.locator('[data-ui-debug-id="PNU"] tbody tr').first().waitFor()
+  await page.locator('[data-ui-debug-id="PNU"] tbody tr').first().getByRole('button', { name: /^Preload source for / }).click()
+  await page.getByRole('button', { name: 'Run P0 unit', exact: true }).click()
+  await page.getByRole('heading', { name: 'Run this P0 unit?' }).waitFor({ state: 'hidden' })
+  assert.equal(mutations.length, 1)
+  state.pipeline.active_job = job; state.pipeline.busy = true; workspace().active_job = job
+  await refresh(); await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  assert.equal(mutations.at(-1).path, '/api/jobs/p0-browser-job/stop')
+  const target = state.inventory.chapters[0].targets[0]
+  state.usage = structuredClone(fixture.pending.usage)
+  target.baseline_state = 'running'; state.inventory.summary.state = 'running'
+  await refresh()
+  const v = { pass_no: 0, scope_id: target.scope_id, slot_id: target.slot_id, chapter_id: target.chapter_id, parent_consumer_pass: 1 }
+  await event('source_preload_started', v)
+  const saved = fixture.accepted.usage.units.flatMap(u => u.passes).flatMap(p => p.attempts)[0]
+  await event('provider_usage_update', { ...v, physical_record_id: saved.physical_record_id, input_tokens: 100, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 })
+  await page.locator('.phase-metric-value').getByText('100', { exact: true }).waitFor()
+  await event('provider_usage_update', { ...v, physical_record_id: saved.physical_record_id, input_tokens: 150, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 })
+  await page.locator('.phase-metric-value').getByText('150', { exact: true }).waitFor()
+  await event('provider_usage_update', { ...v, physical_record_id: saved.physical_record_id, input_tokens: 150, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 })
+  await page.waitForTimeout(200)
+  assert.equal(await page.locator('.phase-metric-value').first().textContent(), '150')
+  await event('source_preload_completed', v, { ...job, workspace_id: 'foreign', job_id: 'foreign-job' })
+  assert.equal(await page.locator('.phase-metric-value').first().textContent(), '150')
+  state.usage = fixture.accepted.usage
+  await event('source_preload_completed', v)
+  await event('job_state', { state: 'succeeded' })
+  state.pipeline.active_job = null; state.pipeline.busy = false; workspace().active_job = null
+  await refresh()
+  await page.locator('.phase-metric-value').getByText('200', { exact: true }).waitFor()
+  assert.equal(await page.locator('.p1-counting').count(), 0)
+  assert.deepEqual(errors, [])
+})

@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -33,9 +34,27 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('response', response => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`) })
 
+  await page.goto(`${config.url}/work/workspaces/prepared/translate`)
+  await page.getByText('Complete P1 for the whole book before translation.', { exact: false }).waitFor()
+  const passRuns = page.locator('[data-ui-debug-id="PSC"] .translate-pass-run')
+  assert.ok(await passRuns.count() > 0)
+  assert.equal(await passRuns.evaluateAll(nodes => nodes.every(node => node.disabled)), true)
+  // Even an inconsistent/stale approval snapshot cannot bypass whole-book P1.
+  await page.route('**/api/workspaces/prepared/pipeline', async route => {
+    const response = await route.fetch(), body = await response.json()
+    body.approved = true
+    await route.fulfill({ response, json: body })
+  })
+  await page.reload()
+  await page.getByText('Complete P1 for the whole book before translation.', { exact: false }).waitFor()
+  assert.equal(await passRuns.evaluateAll(nodes => nodes.every(node => node.disabled)), true)
+  await page.unroute('**/api/workspaces/prepared/pipeline')
   await page.goto(`${config.url}/work/workspaces/prepared`)
   await page.getByRole('button', { name: 'Run', exact: true }).click()
   await page.getByRole('button', { name: 'Open Review', exact: true }).waitFor()
+  await page.goto(`${config.url}/work/workspaces/prepared/translate`)
+  await page.getByText('Confirm and approve Review before translation.', { exact: false }).waitFor()
+  assert.equal(await passRuns.evaluateAll(nodes => nodes.every(node => node.disabled)), true)
   const review = await (await page.request.get(`${config.url}/api/workspaces/prepared/review`)).json()
   const bulk = await (await page.request.post(`${config.url}/api/workspaces/prepared/review/bulk-review`,
     { data: { revision: review._revision, term_ids: review.terms.map(term => term.id) } })).json()
@@ -89,8 +108,8 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   await page.getByRole('button', { name: `Run again ${chunkId} P2` }).waitFor()
   await page.getByRole('button', { name: `${chunkId} P2: verified saved result; preview` }).click()
   await page.getByText('Semantic checks', { exact: true }).waitFor()
-  await mkdir('/tmp/intelitex-translate-evidence', { recursive: true })
-  await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-dark-1440.png', animations: 'disabled' })
+  await mkdir(testEvidence('intelitex-translate-evidence'), { recursive: true })
+  await page.screenshot({ path: testEvidence('intelitex-translate-evidence/translate-dark-1440.png'), animations: 'disabled' })
   const scrollStyle = await page.locator('.translate-preview-scroll').evaluate(element => getComputedStyle(element).scrollbarWidth)
   assert.equal(scrollStyle, 'thin')
   await page.getByRole('button', { name: 'M+H' }).click()
@@ -124,13 +143,13 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   assert.notEqual(riskColors.high, riskColors.label)
   assert.notEqual(riskColors.medium, riskColors.high)
   assert.notEqual(riskColors.mediumBar, riskColors.highBar)
-  await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-risk-dark-1440.png', animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-translate-evidence/translate-risk-dark-1440.png'), animations: 'disabled' })
   const untouchedChunk = pipeline.units[1].id
   await page.locator('.translate-chunk-choice').filter({ hasText: untouchedChunk }).click()
   await page.getByText('Source text · no saved passes yet.').waitFor()
   assert.equal(await page.locator('.translate-preview-head.source-only').evaluate(element => getComputedStyle(element).borderBottomWidth), '0px')
   assert.equal(await page.locator('.translate-preview-segment').count(), 0)
-  await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-source-only-dark-1440.png', animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-translate-evidence/translate-source-only-dark-1440.png'), animations: 'disabled' })
   await page.locator('.translate-chunk-choice').filter({ hasText: chunkId }).click()
   await page.getByRole('button', { name: `Run again ${chunkId} P2` }).click()
   const rerun = page.getByRole('dialog', { name: 'Run this pass again?' })
@@ -141,7 +160,7 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   await page.locator('.translate-preview-segment.risk-medium').waitFor()
   await page.locator('.translate-preview-segment.risk-high').waitFor()
-  await page.screenshot({ path: '/tmp/intelitex-translate-evidence/translate-light-390.png', fullPage: true, animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-translate-evidence/translate-light-390.png'), fullPage: true, animations: 'disabled' })
   assert.deepEqual(errors, [])
   assert.deepEqual(failures, [])
 })

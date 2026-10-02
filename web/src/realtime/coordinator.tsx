@@ -28,7 +28,7 @@ export function Realtime() {
         const path = String(q.queryKey[1])
         return q.queryKey[0] === scope && q.getObserversCount() > 0 && !path.startsWith('/api/library') && !path.includes('/reader/chapters/') &&
           (all || isWorkspaceList(path) || changed.some(id => matchesWorkspaceResource(path, id) &&
-            /\/(pipeline|summary|usage|activity|analysis-reset|translation\/|analysis\/|reader\/progress)/.test(path)))
+            /\/(pipeline|summary|usage|activity|source-preload|analysis-reset|translation\/|analysis\/|reader\/progress)/.test(path)))
       }
       // Revalidating large Reader/Review queries must not hold the connection in
       // "Reconnecting" or prevent read-only navigation while their responses load.

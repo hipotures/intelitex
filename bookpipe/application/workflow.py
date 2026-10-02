@@ -146,4 +146,11 @@ class WorkflowQueries:
                     'excluded_sections': [{'id': c['id'], 'title': c.get('title'), 'role': c.get('role')}
                                           for c in book.get('non_narrative_sections', [])],
                     'publication': publication, 'actions': actions}
+            if include_usage:
+                from .source_preload import SourcePreloadQueries
+                preload, _ = SourcePreloadQueries(self.dependencies).build(
+                    root, store, book=source_book, plan=plan if files.is_file(root / 'analysis_plan.json') else None,
+                    usage=usage_report)
+                result['source_preload'] = preload['summary']
+                result['source_preload_sections'] = {c['chapter_id']: c['summary'] for c in preload['chapters']}
             return result, source_book, usage_report, config

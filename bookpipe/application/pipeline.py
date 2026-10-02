@@ -363,6 +363,8 @@ class PipelineService:
         became_complete = False
         with scope:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            if not scope.store.get('analysis_done'):
+                raise PipelineError('Run analyze to completion first. Translation does not trigger analysis implicitly.')
             if not approval_current(scope.store, self.dependencies.files):
                 raise PipelineError('Confirm and approve the latest terminology before translation.')
             book = effective_book(book, root)

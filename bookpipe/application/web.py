@@ -95,6 +95,12 @@ class WebWorkspaceService:
             mode = processing(book, config, ident)
             eligible = mode != 'excluded'
             passes = {}
+            summary = pipeline.get('source_preload_sections', {}).get(ident)
+            if summary is not None:
+                passes['0'] = {'state': summary['state'], 'completed': summary['accepted'],
+                               'required': summary['required'], 'retained': summary['retained'],
+                               'unresolved': summary['unresolved'], 'session_warnings': summary['session_warnings'],
+                               'denominator': summary['denominator']}
             for number in range(1, 6):
                 if number == 1:
                     states = [u['state'] for u in pipeline['analysis']['units'] if u['chapter_id'] == ident]

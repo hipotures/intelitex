@@ -77,6 +77,7 @@ class AttemptRecorder:
             key: self.identity.get(key) for key in (
                 "pass_no", "task_key", "attempt_number", "chapter_id", "unit_id",
                 "chunk_id", "analysis_unit_id", "unit_index", "provider", "profile", "requested_model",
+                "scope_id", "slot_id", "parent_consumer_pass", "physical_record_id",
             )
         })
         self.manifest: dict[str, Any] = {
@@ -111,7 +112,8 @@ class AttemptRecorder:
         obj.identity = obj.manifest["identity"]
         obj.progress_values = MappingProxyType({key: obj.identity.get(key) for key in (
             "pass_no", "task_key", "attempt_number", "chapter_id", "unit_id", "chunk_id",
-            "analysis_unit_id", "unit_index", "provider", "profile", "requested_model")})
+            "analysis_unit_id", "unit_index", "provider", "profile", "requested_model",
+            "scope_id", "slot_id", "parent_consumer_pass", "physical_record_id")})
         obj.order = 0
         log = directory / "transport.jsonl"
         if log.is_file():

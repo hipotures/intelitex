@@ -519,6 +519,7 @@ class Runner:
         provider.resolved_profile["pipeline_execution"] = self.settings["pipeline_execution"]
         scope = scope_for(self.store, key, inputs, unit_context)
         manager = PersistentSourceSessionManager(self.store, provider, scope)
+        manager.consumer_unit_id = unit_context.unit_id if unit_context else key.split('/', 1)[1]
         provider.source_manager = manager
         return manager
 
@@ -991,6 +992,17 @@ def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> l
     saved = store.root / "analysis_plan.json"
     if saved.exists():
         return read_json(saved)
+    units = calculate_analysis_plan(book, client, settings)
+    atomic_json(saved, units)
+    return units
+
+
+def calculate_analysis_plan(book: dict, client: Any, settings: dict) -> list[dict]:
+    """Pure packing calculation; the caller supplies local counting facts.
+
+    Preview and execution share every budget, cached-count and split rule. This
+    function never constructs a provider, persists a plan or locks membership.
+    """
     source_budget = client.context - settings["memory_tokens"] - settings["passes"]["1"]["max_tokens"] - 6000
     source_budget = int(source_budget * 0.8)
     if settings.get("analysis_source_limit", 0):
@@ -1024,7 +1036,6 @@ def analysis_plan(store: Store, book: dict, client: Client, settings: dict) -> l
         for idx, group in enumerate(groups, 1):
             units.append({"id": f"{chapter['id']}_a{idx:03d}", "chapter_id": chapter["id"],
                           "chapter_number": chapter["number"], "part": idx, "parts": len(groups), "blocks": group})
-    atomic_json(saved, units)
     return units
 
 

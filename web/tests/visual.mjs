@@ -1,14 +1,30 @@
+import { testEvidence } from './paths.mjs'
+import { verifyPreloadVisual } from './preload-visual.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { mkdir,readFile,writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import pixelmatch from 'pixelmatch'
 import { PNG } from 'pngjs'
-const output='/tmp/intelitex-visual-evidence'
+const output=testEvidence('intelitex-visual-evidence')
 await mkdir(output,{recursive:true})
+const referencePath=process.env.INTELITEX_V33_REFERENCE ?? resolve('../.agents/skills/intelitex-web/assets/intelitex_workspace_mockup_v33.html')
+if (existsSync(referencePath)) await legacyVisual()
+else {
+ const browser=await chromium.launch()
+ try {
+  const preloadResults=await verifyPreloadVisual(browser,output+'/preload')
+  const legacy={status:'unrun',reason:'The optional immutable v33 reference HTML is absent. Set INTELITEX_V33_REFERENCE to the approved asset to run pixel comparisons.'}
+  await writeFile(output+'/report.json',JSON.stringify({browser:browser.version(),legacy,preloadResults},null,2))
+  console.log(JSON.stringify({legacy,preloadComparisons:preloadResults.length}))
+ } finally { await browser.close() }
+}
+
+async function legacyVisual() {
 const server=spawn('uv',['run','--group','dev','python','tests/web_fixture_server.py'],{cwd:'..',stdio:['pipe','pipe','inherit']})
 const lines=createInterface({input:server.stdout})
 const config=await new Promise((resolve,reject)=>{lines.on('line',line=>{try{const data=JSON.parse(line);if(data.url)resolve(data)}catch{}});server.once('exit',reject)})
@@ -17,7 +33,7 @@ try {
  const reference=await browser.newPage({viewport:{width:1440,height:1000}})
  const actual=await browser.newPage({viewport:{width:1440,height:1000},colorScheme:'dark'})
  const errors=[];actual.on('pageerror',e=>errors.push(e.message));actual.on('console',m=>{if(m.type()==='error')errors.push(m.text())})
- const referenceURL=pathToFileURL(resolve('../.agents/skills/intelitex-web/assets/intelitex_workspace_mockup_v33.html')).href
+ const referenceURL=pathToFileURL(referencePath).href
  await reference.goto(referenceURL)
  await reference.screenshot({path:output+'/original-work-dark-1440.png',fullPage:true,animations:'disabled'})
  await reference.locator('.workspace-row').first().click()
@@ -62,7 +78,8 @@ try {
    await referenceView.locator('.book-card').first().waitFor()
    await actual.setViewportSize({width,height})
    await actual.goto(config.url+'/work');await actual.locator('.book-card').first().waitFor()
-   if(await actual.locator('html').getAttribute('data-theme')!==theme)await actual.getByRole('button',{name:'Toggle theme'}).click()
+   for(let tries=0;tries<3 && await actual.locator('html').getAttribute('data-theme')!==theme;tries++)await actual.getByRole('button',{name:/Theme: .*\. Switch theme/}).click()
+   assert.equal(await actual.locator('html').getAttribute('data-theme'),theme)
    await actual.locator('.workspace-state').waitFor({state:'attached'})
    await actual.evaluate(()=>document.fonts.ready);await referenceView.evaluate(()=>document.fonts.ready)
    // Disable only visual transition timing, equally on both pages.
@@ -83,6 +100,8 @@ try {
   }
  }
  assert.deepEqual(errors,[])
- await writeFile(output+'/report.json',JSON.stringify({browser:browser.version(),unmasked:true,results,consoleErrors:errors},null,2))
+ const preloadResults=await verifyPreloadVisual(browser,output+'/preload')
+ await writeFile(output+'/report.json',JSON.stringify({browser:browser.version(),unmasked:true,results,preloadResults,consoleErrors:errors},null,2))
  console.log(JSON.stringify(results,null,2))
 } finally { await browser.close();server.stdin.end('quit\n') }
+}

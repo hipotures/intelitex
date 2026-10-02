@@ -49,8 +49,16 @@ class ReadStore:
         relative = row['result_path']
         identity = (relative, row['result_hash'])
         if identity not in self._results:
+            path = self.root / relative
+            if Path(relative).is_absolute() or '..' in Path(relative).parts:
+                raise PipelineError('Unsafe checkpoint artifact binding.')
+            for component in (path, *path.parents):
+                if component == self.root:
+                    break
+                if component.is_symlink():
+                    raise PipelineError('Unsafe checkpoint artifact binding.')
             try:
-                raw = (self.root / relative).read_bytes()
+                raw = path.read_bytes()
             except OSError as exc:
                 raise PipelineError('Checkpoint missing or changed: ' + relative) from exc
             if digest(raw) != row['result_hash']:

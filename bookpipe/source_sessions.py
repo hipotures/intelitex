@@ -197,6 +197,12 @@ def verify_saved_source_selection(store, attempt):
 
 
 class PersistentSourceSessionManager:
+    def preload_values(self):
+        """Opaque correlation only; never expose native paths or task text."""
+        return {"pass_no": 0, "chapter_id": self.scope.chapter_id, "scope_id": self.scope.scope_id,
+                "slot_id": self.slot_id, "parent_consumer_pass": getattr(self, "consumer_pass", None),
+                "unit_id": getattr(self, "consumer_unit_id", None)}
+
     def __init__(self, store, provider, scope):
         self.store, self.provider, self.scope = store, provider, scope
         self.proc = self.rpc = self.lease = None
@@ -536,7 +542,7 @@ class PersistentSourceSessionManager:
                 raise PipelineError("Native source-session P0 is missing; restore native state or explicitly rebuild.")
             self.proof(turns[0])
             return
-        self.provider.ui.emit(ProgressEvent(kind="source_preload_started", values={"pass_no": 0, "scope_id": self.scope.scope_id}))
+        self.provider.ui.emit(ProgressEvent(kind="source_preload_started", values=self.preload_values()))
         p0_fp = self.slot_id
         root = self.source_root / "pass0" / p0_fp
         active = self.record.get("active")
@@ -559,6 +565,10 @@ class PersistentSourceSessionManager:
             recorder = AttemptRecorder(directory, {"pass": 0, "pass_no": 0, "task_key": "pass0/" + self.scope.scope_id,
                 "task_fingerprint": p0_fp, "unit_id": self.scope.scope_id, "chapter_id": self.scope.chapter_id,
                 "scope_id": self.scope.scope_id, "parent_consumer_stage": self.consumer_pass,
+                "slot_id": self.slot_id, "generation": self.generation,
+                "parent_consumer_pass": self.consumer_pass,
+                "physical_record_id": digest({"task": "pass0/" + self.scope.scope_id,
+                                              "physical_evidence": str(directory.relative_to(self.store.root))}),
                 "provider": "codex", "profile": self.provider.profile_name, "requested_model": self.provider.model,
                 "attempt_number": number, "attempt_id": f"{p0_fp[:20]}-{number:03d}"})
             recorder.semantic({"task_key": "pass0/" + self.scope.scope_id, "task_fingerprint": p0_fp,
@@ -590,7 +600,7 @@ class PersistentSourceSessionManager:
         self.transition("baseline_ready", p0_status="ready", p0_turn_id=turns[0]["id"], baseline_digest=baseline,
                         p0_attempt=str(directory.relative_to(self.store.root)), active=None, cleanup_required=False,
                         native_context_window=read_json(directory / "usage.json").get("model_context_window"))
-        self.provider.ui.emit(ProgressEvent(kind="source_preload_completed", values={"pass_no": 0, "scope_id": self.scope.scope_id}))
+        self.provider.ui.emit(ProgressEvent(kind="source_preload_completed", values=self.preload_values()))
         if meta.get("usage_status") == "unavailable":
             with self.store.db:
                 self.store.set("observability_hold", {"attempt": str(directory.relative_to(self.store.root)),

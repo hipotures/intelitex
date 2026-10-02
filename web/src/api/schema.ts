@@ -24,7 +24,9 @@ export const librarySchema = z.object({ configured: z.boolean(), sources: z.arra
 export const libraryPageSchema = librarySchema.extend({ next_cursor: nullableText })
 export type LibraryPage = z.infer<typeof libraryPageSchema>
 const action = z.object({ allowed: z.boolean(), reason: nullableText })
-const pass = z.object({ state: text, runtime_state: z.literal('running').optional(), completed: count, required: count, retained: count, provenance: z.array(z.object({ profile: nullableText, provider: nullableText, model: nullableText, stable_palette_index: count.nullable() })) })
+const pass = z.object({ state: text, runtime_state: z.literal('running').optional(), completed: count, required: count, retained: count,
+  unresolved: count.optional(), session_warnings: count.optional(), denominator: text.optional(),
+  provenance: z.array(z.object({ profile: nullableText, provider: nullableText, model: nullableText, stable_palette_index: count.nullable() })) })
 export const sectionSchema = z.object({ id: text, ordinal: count, title: nullableText, fallback_excerpt: text,
   content_type: text, processing: z.enum(['full','translate','excluded']), profiles: z.record(text, nullableText), passes: z.record(text, pass) })
 export const configSchema = z.object({ revision: text, sections: z.record(text, z.unknown()), pass_profiles: z.record(text, nullableText) })
@@ -37,7 +39,33 @@ export const publicationSelectionSchema = z.object({ revision: text, excluded_se
   diagnostic: z.object({ section_ids: z.array(text), message: text }).nullable().optional() })
 const summary = z.object({ total: count, reviewed: count, unreviewed: count, uncertain: count, confirmed: z.boolean(), categories: z.record(text, count) })
 const reviewImpact = z.object({ changed_term_ids: z.array(text), affected_chunks: z.array(z.object({ chunk_id: text, term_ids: z.array(text) })) })
+export const preloadSummarySchema = z.object({ state: text, source_scopes: count, required: count, accepted: count,
+  needing_execution: count, pending: count, running: count, failed: count, unverifiable: count, not_applicable: count,
+  unresolved: count, retained: count, physical_attempts: count, session_warnings: count, denominator: text })
+export const preloadTargetSchema = z.object({ target_id: text, chapter_id: text, scope_id: nullableText,
+  source_sha256: nullableText, source_map_sha256: nullableText, label: text, planning_state: text,
+  source_words: count, source_utf8_bytes: count, source_blocks: count,
+  profiles: z.array(text), provider: nullableText, model: nullableText, effort: nullableText,
+  consumers: z.array(z.object({ pass_no: count, unit_id: text, saved_output: z.boolean() })),
+  baseline_state: text, session_state: text, relevance: text, slot_id: nullableText, generation: count.nullable(),
+  thread_id: nullableText, accepted_at: nullableText, selection_verified_at: nullableText, last_verified_at: nullableText,
+  reported_model: nullableText, reported_effort: nullableText, acknowledgement: nullableText,
+  verification_scope: text, native_check: text, can_run: z.boolean(), reason: nullableText })
+export const sourcePreloadSchema = z.object({ format_version: z.literal(1), workspace_id: text, execution_mode: text,
+  applicable: z.boolean(), prepared: z.boolean(), planning_state: text, observed_at: text, revision: text,
+  intent_revision: text, reason: nullableText, summary: preloadSummarySchema,
+  chapters: z.array(z.object({ chapter_id: text, title: nullableText, processing: text, reason: nullableText, summary: preloadSummarySchema,
+    targets: z.array(preloadTargetSchema) })),
+  assignments: z.array(z.object({ pass_no: count, profile: text, provider: text, model: nullableText, effort: nullableText })),
+  history: z.array(z.object({ slot_id: nullableText, scope_id: nullableText, chapter_id: nullableText, generation: count.nullable(),
+    model: nullableText, effort: nullableText, state: text, reason: text })), history_truncated: z.boolean() })
+export const preloadPreviewSchema = z.object({ target_id: text, page: count, next_page: count.nullable(),
+  source_kind: z.enum(['planned','recorded']), available: z.boolean(), reason: nullableText, truncated: z.boolean(),
+  source: z.array(z.object({ id: text, text })), session: preloadTargetSchema })
+export type SourcePreload = z.infer<typeof sourcePreloadSchema>
+export type PreloadTarget = z.infer<typeof preloadTargetSchema>
 export const pipelineSchema = z.object({ workspace_id: text, stage: text, active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), publishing: z.boolean(), busy: z.boolean(), metadata,
+  source_preload: preloadSummarySchema.optional(),
   artifacts: z.object({ terminology: z.boolean(), book_memory: z.boolean() }), preparation: z.object({ source_id: text, checks: z.array(text) }),
   progress: workflowProgress,
   analysis: z.object({ complete: z.boolean(), membership_locked: z.boolean(), planned: z.boolean(), units: z.array(z.object({ id: text, chapter_id: text, state: text,
@@ -66,6 +94,7 @@ export const evidenceSchema = z.object({ term_id: text, warnings: z.array(text),
     status: text.optional(), message: text.optional() })) })
 const languageSupport = z.union([z.literal('all'), z.array(text)]).nullable()
 const profile = z.object({ name: text, stable_palette_index: count.nullable(), provider: nullableText, model: nullableText, enabled: z.boolean(), source: text.optional(), provenance: text.optional(),
+  reasoning_effort: nullableText.optional(),
   source_languages: languageSupport.optional(), target_languages: languageSupport.optional() })
 export const profilesSchema = z.object({ source: text, revision: text, assignments: z.record(text, nullableText), profiles: z.array(profile),
   default_profile: text, resolved_passes: z.record(text, profile) })
@@ -88,7 +117,13 @@ const costEstimate = z.object({ status: text, amount: count.nullable(), currency
   estimate_type: nullableText, note: nullableText })
 const usagePass = z.object({ pass_no: count, profile: nullableText, provider: nullableText, requested_model: nullableText, reported_model: nullableText,
   input_tokens: aggregate, cached_input_tokens: aggregate, reasoning_output_tokens: aggregate, output_tokens: aggregate,
-  elapsed_seconds: aggregate, attempts: z.array(z.object({attempt_id:text,attempt_number:count.nullable(),generation_status:text,validation_status:text,acceptance_status:text,reported_model:nullableText,elapsed_seconds:count.nullable()})),
+  task_key: text.optional(), elapsed_seconds: aggregate, attempts: z.array(z.object({attempt_id:text,attempt_number:count.nullable(),generation_status:text,validation_status:text,acceptance_status:text,reported_model:nullableText,elapsed_seconds:count.nullable(),
+    physical_record_id: nullableText.optional(), requested_model: nullableText.optional(), requested_effort: nullableText.optional(),
+    reported_effort: nullableText.optional(), selection_status: nullableText.optional(), scope_id: nullableText.optional(),
+    slot_id: nullableText.optional(), generation: count.nullable().optional(), provider_contacted: z.boolean().nullable().optional(),
+    usage_status: text.optional(), input_tokens: count.nullable().optional(), cached_input_tokens: count.nullable().optional(),
+    cache_write_input_tokens: count.nullable().optional(), output_tokens: count.nullable().optional(),
+    reasoning_output_tokens: count.nullable().optional(), total_tokens: count.nullable().optional(), cost: costEstimate.nullable().optional() })),
   result_status: text, physical_attempt_count: count, provider_call_count: count, unknown_provider_call_count: count,
   failed_attempt_count: count, retry_count: count, cost: costEstimate.nullable() })
 export const usageSchema = z.object({ scope: text, warning: nullableText, units: z.array(z.object({ unit_id: text, chapter_id: nullableText, passes: z.array(usagePass) })) })
