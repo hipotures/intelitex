@@ -12,6 +12,7 @@ class ReadStore:
     # These methods only SELECT and validate immutable checkpoint artifacts.
     p1_reset_records = Store.p1_reset_records
     has_dependent_p1_work = Store.has_dependent_p1_work
+    has_p1_attempt = Store.has_p1_attempt
     close = Store.close
 
     def __init__(self, root: Path):

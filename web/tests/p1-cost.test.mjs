@@ -160,7 +160,7 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
       assert.equal(await page.getByRole('button', { name: 'Run ch0001_a001 P1' }).isDisabled(), true)
       assert.equal(await cost.evaluate(node => getComputedStyle(node).animationName), 'none')
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      while (await page.locator('html').getAttribute('data-theme') !== 'light') await page.getByRole('button', { name: /Theme: .*\. Switch theme/ }).click()
       await page.screenshot({ path: `${output}/complete-light-390.png`, fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.equal(await page.locator('[data-ui-debug-id="PAN"] .diagnostic-scroll').first().evaluate(node => node.scrollWidth <= node.clientWidth), true,

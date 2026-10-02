@@ -54,6 +54,19 @@ class OperationsService:
             book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
             return usage_by_unit_report(root, command.unit_id, book=book)
 
+    def source_sessions(self, project, action="inspect", slot_id=None):
+        from ..source_sessions import session_inventory, retire_session
+        root = project.resolve()
+        if action == "inspect":
+            with ProjectReadScope(self.dependencies, root):
+                load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
+                return ReportResult(session_inventory(root))
+        if action not in {"archive", "rebuild", "purge"}:
+            raise PipelineError("Unsupported source-session maintenance action.")
+        with OperationScope(self.dependencies, root, self.progress) as scope:
+            load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
+            return ReportResult(retire_session(scope.store, slot_id, rebuild=action == "rebuild", purge=action == "purge"))
+
     def import_catalog(self, command: CatalogImportCommand) -> ReportResult:
         return self._offline(command.project, lambda root: import_catalog(command.source, root))
 

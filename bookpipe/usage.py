@@ -289,7 +289,8 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
     recovered_sources = _recovery_sources(project)
     records: list[_AttemptRecord] = []
     current_catalog: tuple[dict[str, Any], Path] | None = None
-    for manifest_path in sorted(project.glob("artifacts/**/attempt_*/attempt.json")):
+    from .artifacts import attempt_manifests
+    for manifest_path in attempt_manifests(project):
         manifest = _optional_json(manifest_path)
         if not isinstance(manifest, dict):
             continue
@@ -300,7 +301,7 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
         except (TypeError, ValueError):
             continue
         task_key = identity.get("task_key")
-        if pass_no not in range(1, 6) or not isinstance(task_key, str):
+        if pass_no not in range(0, 6) or not isinstance(task_key, str):
             continue
         fallback_unit, fallback_chapter, fallback_chunk, fallback_analysis = _legacy_unit(task_key, pass_no)
         unit_id = identity.get("unit_id") or identity.get("chunk_id") or identity.get("analysis_unit_id") or fallback_unit
@@ -342,6 +343,10 @@ def usage_by_unit_report(project: Path, unit_filter: str | None = None, *,
         if reported:
             provider_contacted: bool | None = True
             usage_status = "reported"
+        elif response.get("wire_format") == "source-session-v1":
+            from .evidence import recorded_model_submission
+            provider_contacted = recorded_model_submission(manifest_path.parent)
+            usage_status = "failed_before_submission" if provider_contacted is False else "unavailable"
         elif response.get("status") == "preflight_failed":
             provider_contacted = False
             usage_status = "failed_before_submission"

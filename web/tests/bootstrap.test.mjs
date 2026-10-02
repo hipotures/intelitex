@@ -7,7 +7,7 @@ import { chromium } from 'playwright'
 
 const evidence = '/tmp/intelitex-browser-evidence'
 const wait = async (fn, description) => {
- const end=Date.now()+30000
+ const end=Date.now()+45000
  while(Date.now()<end) { if(await fn()) return; await new Promise(r=>setTimeout(r,100)) }
  throw new Error(`Timed out: ${description}`)
 }
@@ -63,7 +63,7 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  assert.equal(remote.status(),200)
  const conflict=await context.request.patch(config.url+'/api/workspaces/prepared/review/terms/'+review.terms[0].id,{data:{revision:review._revision,custom:'Should not overwrite'}})
  assert.equal(conflict.status(),409)
- await page.getByRole('button',{name:'Reapply my form',exact:true}).waitFor()
+ await wait(()=>page.getByRole('button',{name:'Reapply my form',exact:true}).isVisible(),'periodic reconciliation of an external review edit')
  assert.equal(await custom.inputValue(),'Relay-C')
  assert.equal(await custom.evaluate(n=>document.activeElement===n),true)
  await page.getByRole('button',{name:'Reapply my form',exact:true}).click()
@@ -85,8 +85,8 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  await page.getByRole('link',{name:'Open EPUB'}).waitFor();await page.screenshot({path:evidence+'/publish-dark-1440.png',fullPage:true,animations:'disabled'})
  for (const phase of ['prepare','analyse','translate','publish']) {
   await page.goto(config.url+'/work/workspaces/prepared/'+phase)
-  await page.locator('.phase-detail-grid').waitFor()
-  if (phase === 'translate') await page.locator('.activity-line').first().waitFor()
+  await page.locator('.phase-detail-grid').first().waitFor()
+  if (phase === 'translate') await page.locator('.translate-chunk-table tr.finished').first().waitFor()
   await page.screenshot({path:`${evidence}/phase-${phase}-dark-1440.png`,fullPage:true,animations:'disabled'})
  }
  await page.getByRole('link',{name:'Workspace',exact:true}).click()
@@ -115,7 +115,7 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  for(const width of [1920,1024,820,720,390]) {
   await page.setViewportSize({width,height:width===390?844:1080})
   for(const theme of ['dark','light']) {
-   if(await page.locator('html').getAttribute('data-theme')!==theme)await page.getByRole('button',{name:'Toggle theme'}).click()
+   while(await page.locator('html').getAttribute('data-theme')!==theme)await page.getByRole('button',{name:/Theme: .*\. Switch theme/}).click()
    await page.screenshot({path:`${evidence}/workspace-${theme}-${width}.png`,fullPage:true,animations:'disabled'})
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`horizontal overflow ${width} ${theme}`)
   }
@@ -125,7 +125,7 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  await page.getByText('Configured · not tested',{exact:true}).first().waitFor()
  await page.screenshot({path:evidence+'/settings-light-390.png',fullPage:true,animations:'disabled'})
  await page.keyboard.press('Escape')
- await page.getByRole('button',{name:'Toggle theme'}).click()
+ await page.getByRole('button',{name:/Theme: .*\. Switch theme/}).click()
  for(const [route,name,ready] of [
   ['/work/workspaces/prepared/review','review','.review-layout'],
   ['/reader/prepared','reader','.reader-page'],

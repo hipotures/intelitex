@@ -53,7 +53,7 @@ test('Translate runs one pass, previews output and explains rerun before confirm
   }
   assert.deepEqual([...new Set(widths)], [1520], `Workspace and phase widths differ: ${widths}`)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.goto(`${config.url}/work/workspaces/prepared/translate`)
+  await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByRole('heading', { name: 'Translate', exact: true }).waitFor()
   await page.locator('.translate-detail-grid').waitFor()
   const layout = await page.evaluate(() => {

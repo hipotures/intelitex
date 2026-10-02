@@ -51,6 +51,9 @@ def inherited_settings(previous: Path) -> dict:
     if type(raw.get("format_version", 1)) is not int or raw.get("format_version", 1) not in {1, 2}:
         raise PipelineError("Unsupported predecessor settings.json format_version.")
     defaults = read_json(BUNDLE / "settings.default.json")
+    # Execution mode is an explicit contract, never a read-time migration.
+    if "pipeline_execution" not in raw:
+        defaults.pop("pipeline_execution", None)
     # Profiles and assignments are complete maps, never blended with templates.
     settings = {**defaults, **copy.deepcopy(raw)}
     if "profiles" not in raw:
@@ -134,6 +137,11 @@ def prepare_configuration(previous: Path, root: Path, old_source: str, new_sourc
             if any(Path(source).resolve().is_relative_to(base.resolve()) for base in (previous, Path(old_source))):
                 catalog["import"].pop("source")
     settings = inherited_settings(previous)
+    from .source_sessions import DEFAULT_EXECUTION, validate_execution
+    legacy_predecessor = "pipeline_execution" not in settings
+    if legacy_predecessor:
+        # This is a new-volume creation, not a migration of the predecessor.
+        settings["pipeline_execution"] = copy.deepcopy(DEFAULT_EXECUTION)
     for profile in settings["profiles"].values():
         if profile["provider"] != "codex":
             continue
@@ -146,7 +154,9 @@ def prepare_configuration(previous: Path, root: Path, old_source: str, new_sourc
                                                previous, Path(old_source), root, new_source)
     prompts = {}
     paths = {p.name: p for p in (previous / "prompts").glob("*.txt")}
-    for number in range(1, 6):
+    if legacy_predecessor:
+        paths.setdefault("pass0.txt", BUNDLE / "prompts" / "pass0.txt")
+    for number in range(0 if validate_execution(settings) else 1, 6):
         name = f"pass{number}.txt"
         paths.setdefault(name, previous / "prompts" / name)
     for name, path in sorted(paths.items()):

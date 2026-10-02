@@ -19,7 +19,9 @@ from .p1_compact import decode_output as decode_compact_p1
 from .codex_cache import decode_output as decode_cache_output
 from . import codex_cache_v2
 from . import codex_cache_shared, codex_cache_shared_v2
-from . import codex_parent, codex_pair
+from . import codex_parent, codex_pair, source_session_codec
+from .artifacts import task_root, task_roots
+from .source_sessions import validate_execution, scope_for, PersistentSourceSessionManager
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -403,10 +405,10 @@ def _decode_transport_result(value: Any, wire_format: str, inputs: dict, codec_c
         return decode_compact_p1(value, block_ids)
     if wire_format == "cache-v1":
         return decode_cache_output(value)
-    if wire_format in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+    if wire_format in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
         codec = {"cache-v2": codex_cache_v2, "cache-shared-v1": codex_cache_shared,
-                 "cache-shared-v2": codex_cache_shared_v2}[wire_format]
-        if expected_pass not in ((1, 2, 3, 4, 5) if wire_format in ("cache-shared-v1", "cache-shared-v2") else (2, 3, 4, 5)):
+                 "cache-shared-v2": codex_cache_shared_v2, "source-session-v1": source_session_codec}[wire_format]
+        if expected_pass not in ((1, 2, 3, 4, 5) if wire_format in ("cache-shared-v1", "cache-shared-v2", "source-session-v1") else (2, 3, 4, 5)):
             raise EvidenceError(f"{wire_format} requires the application's expected pass.")
         try:
             context = codec.context_for(inputs, expected_pass)
@@ -500,30 +502,117 @@ def _decode_json_document(raw: str, *, diffusion_thought: bool = False) -> Any:
 
 
 class Runner:
+    def _bind_source(self, provider, key, inputs, unit_context):
+        if getattr(provider, "provider", None) != "codex" or not validate_execution(self.settings):
+            if getattr(provider, "source_manager", None):
+                provider.source_manager.close()
+                provider.source_manager = None
+            return None
+        provider.settings["pipeline_execution"] = self.settings["pipeline_execution"]
+        provider.settings["allow_incomplete_observability"] = self.settings.get("allow_incomplete_observability", False)
+        # Retain the actual durable runtime/transport configuration for cleanup
+        # after profile changes, including directly constructed provider clients.
+        for field in ("runtime_root", "executable", "options", "context_size", "planning_output_reserve"):
+            if field in provider.settings:
+                provider.resolved_profile[field] = copy.deepcopy(provider.settings[field])
+        provider.resolved_profile["request_timeout"] = provider.timeout
+        provider.resolved_profile["pipeline_execution"] = self.settings["pipeline_execution"]
+        scope = scope_for(self.store, key, inputs, unit_context)
+        manager = PersistentSourceSessionManager(self.store, provider, scope)
+        provider.source_manager = manager
+        return manager
+
+    def _domain_acceptance(self, pass_no, key, fingerprint, value, path, inputs, unit_context):
+        if pass_no == 1 and unit_context is not None:
+            plan_path = self.store.root / "analysis_plan.json"
+            if not plan_path.is_file():
+                raise PipelineError("P1 session acceptance requires its immutable analysis plan.")
+            unit = next((u for u in read_json(plan_path) if u["id"] == unit_context.unit_id), None)
+            if unit is None or source_blocks(unit["blocks"]) != inputs["SOURCE_BLOCKS"]:
+                raise PipelineError("P1 canonical source differs from its immutable analysis unit.")
+            self.store.merge_analysis(key, fingerprint, value, unit["blocks"], unit_context.chapter_id)
+            self.store.save_analysis_receipt(unit_context.unit_id, {"key": key, "fingerprint": fingerprint, "path": path})
+
+    def _cleanup_cached_source(self, cached, key, inputs, unit_context):
+        """A clean selected checkpoint is returned without provider work.
+
+        Dirty outcomes are cleaned with their recorded configuration even if
+        the user's selected model has since changed. Cleanup never warms a slot.
+        """
+        relative = cached["meta"].get("session_manifest")
+        if not relative:
+            return
+        path = (self.store.root / relative).resolve()
+        if not path.is_relative_to(self.store.root.resolve()):
+            raise EvidenceError("Invalid saved source-session manifest reference.")
+        record = read_json(path)
+        if record.get("state") == "baseline_ready" and not record.get("active") and not record.get("cleanup_required"):
+            return
+        active = record.get("active") or {}
+        attempt = (self.store.root / active.get("attempt", cached["meta"].get("accepted_attempt", ""))).resolve()
+        if not attempt.is_relative_to(self.store.root.resolve()):
+            raise EvidenceError("Invalid saved source-session attempt reference.")
+        semantic = read_json(attempt / "request.semantic.json")
+        profile = copy.deepcopy(semantic["resolved_profile"])
+        from .codex_transport import CodexAppServerClient
+        provider = CodexAppServerClient({**profile, "resolved_profile": profile,
+            "profile_name": semantic["profile"], "project_root": str(self.store.root)}, self.ui)
+        try:
+            manager = self._bind_source(provider, key, inputs, unit_context)
+            if manager is None or manager.manifest_path != path:
+                raise PipelineError("Accepted session configuration changed; reconcile the recorded slot explicitly.")
+            manager.cleanup_saved()
+        finally:
+            provider.close()
+
+    def run(self, *args, **kwargs):
+        try:
+            return self._run(*args, **kwargs)
+        finally:
+            clients = getattr(self.client, "clients", {}).values() if hasattr(self.client, "clients") else [self.client]
+            for provider in clients:
+                if getattr(provider, "source_manager", None):
+                    provider.source_manager.close()
+
     def __init__(self, store: Store, client: Client, settings: dict, ui: Any):
         self.store, self.client, self.settings, self.ui = store, client, settings, ui
 
     def fingerprint(self, pass_no: int, inputs: dict) -> str:
         prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
         schema = response_schema(pass_no, inputs)
-        return digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+        identity = {"prompt": prompt, "inputs": inputs, "schema": schema}
+        if validate_execution(self.settings):
+            provider = self.client.for_pass(pass_no) if hasattr(self.client, "for_pass") else self.client
+            if getattr(provider, "provider", None) == "codex":
+                identity["source_binding_version"] = "source-session-v1"
+        return digest(identity)
 
-    def run(self, pass_no: int, key: str, inputs: dict, *,
+    def _run(self, pass_no: int, key: str, inputs: dict, *,
             unit_context: InferenceUnitContext | None = None,
             force: bool = False, allow_generate: bool = True) -> tuple[dict, str, str]:
         prompt = (self.store.root / "prompts" / f"pass{pass_no}.txt").read_text(encoding="utf-8")
         schema = response_schema(pass_no, inputs)
-        base_fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+        legacy_fingerprint = digest({"prompt": prompt, "inputs": inputs, "schema": schema})
+        base_fingerprint = self.fingerprint(pass_no, inputs)
         selected = self.store.get('selected_pass:' + key) if pass_no > 1 else None
         fingerprint = (digest({'base': base_fingerprint, 'rerun': uuid4().hex}) if force else
                        selected['fingerprint'] if isinstance(selected, dict) and
                        selected.get('base_fingerprint') == base_fingerprint else base_fingerprint)
         if not force:
             cached = self.store.job(key, fingerprint)
+            if cached is None and base_fingerprint != legacy_fingerprint:
+                # Explicit opt-in preserves successful semantic outputs and
+                # review. An old source-bearing transcript is never P0 evidence.
+                cached = self.store.job(key, legacy_fingerprint)
+                if cached is not None:
+                    fingerprint = legacy_fingerprint
             if cached:
                 validate_result(pass_no, cached["value"], inputs)
                 if pass_no > 1:
                     self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs)
+                if allow_generate and cached["meta"].get("wire_format") == "source-session-v1":
+                    self._domain_acceptance(pass_no, key, fingerprint, cached["value"], cached["path"], inputs, unit_context)
+                    self._cleanup_cached_source(cached, key, inputs, unit_context)
                 return cached["value"], cached["path"], fingerprint
         if not allow_generate:
             raise PipelineError(f'P{pass_no} has no current saved result for this chunk. Run P{pass_no} first.')
@@ -533,11 +622,17 @@ class Runner:
                 "New inference is paused because an earlier completed attempt lacked expected usage evidence. "
                 f"Inspect {hold.get('attempt')} and explicitly set allow_incomplete_observability=true to continue."
             )
-        work = self.store.root / "artifacts" / key / fingerprint[:20]
+        provider = self.client.for_pass(pass_no) if hasattr(self.client, "for_pass") else self.client
+        source_mode = validate_execution(self.settings) and getattr(provider, "provider", None) == "codex"
+        chapter = (unit_context.chapter_id if unit_context else key.split("/", 1)[1].split("_", 1)[0]) if source_mode else None
+        work = task_root(self.store.root, key, chapter) / fingerprint[:20]
         work.mkdir(parents=True, exist_ok=True)
         atomic_json(work / "inputs.json", inputs)
         atomic_text(work / "prompt.txt", prompt)
         provider = self.client.for_pass(pass_no) if hasattr(self.client, "for_pass") else self.client
+        manager = self._bind_source(provider, key, inputs, unit_context)
+        if manager:
+            manager.recover_only()
         # Before generating again, recover a completed compatible response from
         # an older fingerprint if possible. This is especially useful after a
         # validation-only failure in a previous program version.
@@ -552,7 +647,7 @@ class Runner:
         base_semantic = SemanticRequest(
             task_key=key, task_fingerprint=fingerprint, pass_no=pass_no, attempt_no=0,
             trusted_instructions=prompt, input_payload=inputs, output_schema=schema,
-            schema_version=1, profile=getattr(provider, "profile_name", "local"),
+            schema_version=2 if manager else 1, profile=getattr(provider, "profile_name", "local"),
             provider=getattr(provider, "provider", "llamacpp"), requested_model=getattr(provider, "model", None),
             reasoning_effort=getattr(provider, "resolved_profile", {}).get("reasoning_effort"),
             planning_output_reserve=int(getattr(provider, "resolved_profile", {}).get(
@@ -561,17 +656,18 @@ class Runner:
             timeout_seconds=float(getattr(provider, "timeout", self.settings.get("request_timeout", 1200))),
             resolved_profile=getattr(provider, "resolved_profile", {}),
         ).as_dict()
-        key_root = self.store.root / "artifacts" / key
-        for attempt in ([] if force else _compatible_completed_attempts(key_root, recovery_body, base_semantic)):
+        candidates = [] if force else [attempt for root in task_roots(self.store.root, key)
+            for attempt in _compatible_completed_attempts(root, recovery_body, base_semantic)]
+        for attempt in sorted(set(candidates), key=lambda p: p.stat().st_mtime, reverse=True):
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
                 meta = read_json(attempt / "response_meta.json")
                 wire = meta.get("wire_format", "canonical")
                 old_inputs = inputs
                 old_context = None
-                if wire in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+                if wire in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                     codec = {"cache-v2": codex_cache_v2, "cache-shared-v1": codex_cache_shared,
-                             "cache-shared-v2": codex_cache_shared_v2}[wire]
+                             "cache-shared-v2": codex_cache_shared_v2, "source-session-v1": source_session_codec}[wire]
                     if type(meta.get("codec_map_version")) is not int or meta.get("codec_map_version") != codec.MAP_VERSION:
                         raise EvidenceError(f"Unsupported recorded {wire} codec version; no new inference was submitted.")
                     try:
@@ -579,17 +675,24 @@ class Runner:
                         old_context = read_json(attempt / "codec.context.json")
                     except (OSError, ValueError, KeyError) as exc:
                         raise EvidenceError(f"Cannot read saved {wire} codec context: {attempt}; no new inference was submitted.") from exc
-                decoded = (codex_cache_v2.parse_output(raw) if wire in ("cache-v2", "cache-shared-v1", "cache-shared-v2") else
+                decoded = (codex_cache_v2.parse_output(raw) if wire in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1") else
                            _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
                                                  and getattr(provider, "diffusion", False)))
                 value = _decode_transport_result(decoded, wire, old_inputs, old_context, expected_pass=pass_no)
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 validate_result(pass_no, value, inputs)
-                if meta.get("wire_format") in {"cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2"}:
+                if meta.get("wire_format") in {"cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"}:
                     jsonschema.Draft202012Validator(schema).validate(value)
             except EvidenceError:
                 raise
-            except (OSError, json.JSONDecodeError, jsonschema.ValidationError, PipelineError):
+            except OSError:
+                raise
+            except (json.JSONDecodeError, jsonschema.ValidationError, PipelineError) as exc:
+                if manager and manager.record and (manager.record.get("active") or {}).get("attempt") == str(attempt.relative_to(self.store.root)):
+                    recovered_recorder = AttemptRecorder.resume(attempt)
+                    recovered_recorder.finish(generation="completed", validation="failed", metadata=meta,
+                        error={"type": type(exc).__name__, "message": str(exc)})
+                    manager.cleanup_saved()
                 continue
             path = work / "result.json"
             atomic_json(path, value)
@@ -611,6 +714,16 @@ class Runner:
                 }))
             if pass_no > 1:
                 self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
+            if manager:
+                self._domain_acceptance(pass_no, key, fingerprint, value, str(path.relative_to(self.store.root)), inputs, unit_context)
+                recovered_recorder = AttemptRecorder.resume(attempt)
+                recovered_recorder.finish(generation="completed", validation="passed", metadata=meta)
+                recovered_recorder.mark_accepted()
+                if meta.get("usage_status") == "unavailable":
+                    with self.store.db:
+                        self.store.set("observability_hold", {"attempt": str(attempt.relative_to(self.store.root)),
+                                                              "reason": "Recovered output lacks usage evidence."})
+                manager.cleanup_saved()
             return value, str(path.relative_to(self.store.root)), fingerprint
         last_error = ""
         attempts = max(1, int(self.settings.get("json_retries", 1)) + 1)
@@ -655,7 +768,7 @@ class Runner:
             semantic = SemanticRequest(
                 task_key=key, task_fingerprint=fingerprint, pass_no=pass_no, attempt_no=number,
                 trusted_instructions=prompt, input_payload=payload, output_schema=schema,
-                schema_version=1, profile=getattr(provider, "profile_name", "local"),
+                schema_version=2 if manager else 1, profile=getattr(provider, "profile_name", "local"),
                 provider=getattr(provider, "provider", "llamacpp"), requested_model=getattr(provider, "model", None),
                 reasoning_effort=getattr(provider, "resolved_profile", {}).get("reasoning_effort"),
                 planning_output_reserve=int(getattr(provider, "resolved_profile", {}).get(
@@ -722,13 +835,16 @@ class Runner:
                 raw, meta = provider.generate(body, attempt, recorder)
             except BaseException as exc:
                 usage_status = "unknown"
+                from .evidence import recorded_model_submission
+                submitted = recorded_model_submission(attempt) if manager else None
                 if (attempt / "usage.json").is_file():
                     try:
                         usage_status = read_json(attempt / "usage.json").get("status", "unknown")
                     except Exception:
                         pass
-                recorder.finish(generation="failed", validation="not_run",
+                recorder.finish(generation="not_submitted" if submitted is False else "failed", validation="not_run",
                                 metadata={"provider": semantic.provider, "status": "failed", "usage_status": usage_status,
+                                          **({"model_turn_submitted": submitted} if manager else {}),
                                           "wire_format": body.get("wire_format", "canonical"),
                                           **body.get("cache_diagnostics", {}),
                                           "partial_answer": (attempt / "answer.partial.txt").exists()},
@@ -743,20 +859,20 @@ class Runner:
                 translation_timing = pass_no > 1 and getattr(provider, "provider", None) == "codex"
                 if translation_timing:
                     recorder.event("local", "validation_started", {"wire_format": meta.get("wire_format", "canonical")})
-                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                     meta = {**meta, "output_utf8_bytes": len(raw.encode("utf-8")),
                             "canonical_schema_utf8_bytes": len(codex_cache_v2.encode_value(schema).encode("utf-8"))}
                 validation_started = time.monotonic()
                 value = _decode_transport_result(
-                    codex_cache_v2.parse_output(raw) if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2") else
+                    codex_cache_v2.parse_output(raw) if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1") else
                     _decode_json_document(raw, diffusion_thought=getattr(provider, "provider", None) == "vllm"
                                           and getattr(provider, "diffusion", False)),
                     meta.get("wire_format", "canonical"), inputs, body.get("codec_context"), expected_pass=pass_no,
                 )
-                if meta.get("wire_format") in {"compact-v1", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2"}:
+                if meta.get("wire_format") in {"compact-v1", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"}:
                     recorder.decoded_canonical(value)
                 initial_error = None
-                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                     meta["decoded_output_utf8_bytes"] = len(codex_cache_v2.encode_value(value).encode("utf-8"))
                     try:
                         jsonschema.Draft202012Validator(schema).validate(value)
@@ -767,12 +883,12 @@ class Runner:
                 value, repairs = conservative_repair(pass_no, value, inputs)
                 if repairs:
                     atomic_json(attempt / "validation_repairs.json", repairs)
-                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                     jsonschema.Draft202012Validator(schema).validate(value)
                 validate_result(pass_no, value, inputs)
                 if meta.get("wire_format") == "cache-v1":
                     jsonschema.Draft202012Validator(schema).validate(value)
-                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+                if meta.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                     recorder.validation({"initial_validation_error": initial_error, "repairs": repairs,
                                          "final_validation": "passed", "elapsed_seconds": time.monotonic() - validation_started})
                     meta["accepted_output_utf8_bytes"] = len(codex_cache_v2.encode_value(value).encode("utf-8"))
@@ -800,6 +916,8 @@ class Runner:
                 recorder.finish(generation="completed", validation="failed", metadata={**meta,
                                 "validation_error": last_error, "usage_status": meta.get("usage_status", "unknown")},
                                 error={"type": type(exc).__name__, "message": last_error})
+                if manager:
+                    manager.finalize(False)
                 if retry + 1 == attempts:
                     raise PipelineError(f"P{pass_no} failed validation. Artifacts: {attempt}\n{last_error[:1400]}") from exc
                 continue
@@ -830,6 +948,7 @@ class Runner:
                 else:
                     recorder.artifact_json("pair_parent.json", parent)
                     meta.update(pair_parent=parent, pair_parent_status="available")
+            acceptance_started = time.monotonic()
             recorder.finish(generation="completed", validation="passed", metadata={**meta, **measurement_meta,
                             "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
             self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,
@@ -841,6 +960,10 @@ class Runner:
                                                           "reason": "Provider completed without expected usage telemetry."})
             if pass_no > 1:
                 self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
+            if manager:
+                self._domain_acceptance(pass_no, key, fingerprint, value, str(path.relative_to(self.store.root)), inputs, unit_context)
+                manager.timing("acceptance", acceptance_started, recorder)
+                manager.finalize(True)
             return value, str(path.relative_to(self.store.root)), fingerprint
         raise PipelineError("No completed result.")
 

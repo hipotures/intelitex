@@ -49,7 +49,11 @@
       "request_timeout": 1200,
       "credential_env": "LLAMA_API_KEY",
       "seed": 42,
-      "options": {"port": 8080, "thinking": "off", "request_extra": {}}
+      "options": {
+        "port": 8080,
+        "thinking": "off",
+        "request_extra": {}
+      }
     },
     "openai-template": {
       "provider": "openai",
@@ -87,5 +91,12 @@
       "reasoning_effort": null,
       "options": {}
     }
+  },
+  "pipeline_execution": {
+    "version": 1,
+    "codex_mode": "source-session-v1",
+    "source_scope_policy": "exact-existing-unit",
+    "revert_policy": "after-each-attempt",
+    "p0_output_reserve": 256
   }
 }

@@ -56,6 +56,8 @@ class _RpcSession:
         self.progress = progress
         self.lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
         self.next_id = 0
+        self.correlated = False
+        self.pending_turn_events = []
         self.stderr = bytearray()
         self.notifications: list[dict[str, Any]] = []
         self.state: dict[str, Any] = {
@@ -137,6 +139,23 @@ class _RpcSession:
             })
             return message
 
+    def reset_turn(self, recorder, thread_id):
+        """Discard restored snapshots and correlate even pre-response events."""
+        self.recorder = recorder
+        self.correlated = True
+        self.pending_turn_events = []
+        self.state.update(thread_id=thread_id, turn_id=None, terminal=None, terminal_error=None,
+                          final_messages=[], fallback_messages=[], usage_events=[], context_altered=False,
+                          last_emitted_usage=None, turn_submitted=False, turn_settings=None)
+
+    def bind_turn(self, turn_id):
+        if not turn_id:
+            raise PipelineError("Codex turn/start omitted its turn identity.")
+        self.state["turn_id"] = turn_id
+        pending, self.pending_turn_events = self.pending_turn_events, []
+        for message in pending:
+            self.dispatch(message)
+
     def dispatch(self, message: dict[str, Any]) -> None:
         # Server-to-client request: reject explicitly so the server never waits.
         if "id" in message and "method" in message and "result" not in message and "error" not in message:
@@ -150,6 +169,18 @@ class _RpcSession:
             return
         self.notifications.append(message)
         params = message.get("params") or {}
+        if getattr(self, "correlated", False):
+            if params.get("threadId") and params["threadId"] != self.state["thread_id"]:
+                return
+            event_turn = params.get("turnId") or (params.get("turn") or {}).get("id")
+            if event_turn:
+                if not self.state.get("turn_id"):
+                    self.pending_turn_events.append(message)
+                    return
+                if event_turn != self.state["turn_id"]:
+                    return
+            if method in ("item/completed", "turn/completed", "thread/tokenUsage/updated", "error") and not event_turn:
+                return
         if params.get("threadId"):
             self.state["thread_id"] = params["threadId"]
         if params.get("turnId"):
@@ -235,7 +266,9 @@ class CodexAppServerClient:
         self.identity = {"provider": "codex", "requested_model": self.model}
 
     def close(self) -> None:
-        pass
+        manager = getattr(self, "source_manager", None)
+        if manager:
+            manager.close()
 
     @property
     def tokenizer_identity(self) -> dict[str, Any]:
@@ -332,6 +365,15 @@ class CodexAppServerClient:
         return resolve_effort_plan(requested, metadata, feature_available=installed["available"]), evidence
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
+        if getattr(self, "source_manager", None):
+            from . import source_session_codec as codec
+            text, context = codec.encode_input(inputs, pass_no, self.source_manager.scope, prompt)
+            return {"model": self.model, "effort": self.settings.get("reasoning_effort"),
+                    "developer_instructions": codec.DEVELOPER_INSTRUCTIONS, "input": text,
+                    "output_schema": codec.TRANSPORT_SCHEMA, "wire_format": codec.WIRE_FORMAT,
+                    "pass_no": pass_no, "codec_context": context.as_dict(),
+                    "retained_p0_utf8_bytes": len(codec.readiness_message(self.source_manager.scope, self.source_manager.p0_prompt).encode()),
+                    "execution_strategy": codec.WIRE_FORMAT}
         options = self.settings.get("options", {})
         wire_format = options.get("p1_wire_format", "compact-v1") if pass_no == 1 else options.get("translation_wire_format", "cache-v2")
         allowed = ("compact-v1", "canonical", "cache-v1", "cache-shared-v1", "cache-shared-v2") if pass_no == 1 else ("canonical", "cache-v1", "cache-v2", "cache-shared-v1", "cache-shared-v2")
@@ -404,7 +446,11 @@ class CodexAppServerClient:
         count = len(body["developer_instructions"].encode("utf-8")) + len(body["input"].encode("utf-8"))
         count += sum(len(content["text"].encode("utf-8")) for item in body.get("injected_items", [])
                      for content in item["content"])
-        reserve = int(self.settings["planning_output_reserve"])
+        if body.get("wire_format") == "source-session-v1":
+            from . import source_session_codec as codec
+            count += body.get("retained_p0_utf8_bytes", 0) + len(codec.BASE_INSTRUCTIONS.encode())
+            count += len(dumps(body["output_schema"]).encode()) + 4096  # native wrappers + bounded P0 ACK
+        reserve = int(body.get("planning_output_reserve", self.settings["planning_output_reserve"]))
         margin = int(self.settings.get("options", {}).get("context_margin_tokens", 2048))
         parent = body.get("pair_parent")
         history_bytes = parent.get("additional_history_utf8_bytes", 0) if parent else 0
@@ -418,7 +464,7 @@ class CodexAppServerClient:
         count += history_bytes
         required = count + reserve + margin
         if recorder:
-            if body.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2"):
+            if body.get("wire_format") in ("cache-v2", "cache-shared-v1", "cache-shared-v2", "source-session-v1"):
                 recorder.codec_context(body["codec_context"])
             if body.get("cache_diagnostics"):
                 recorder.cache_layout(body["cache_diagnostics"])
@@ -427,6 +473,7 @@ class CodexAppServerClient:
                 "quality": "conservative_estimate", "tokenizer_identity": None,
                 "input_upper_bound": count, "capacity_tokens": self.context,
                 "additional_pair_history_utf8_bytes": history_bytes,
+                "retained_p0_utf8_bytes": body.get("retained_p0_utf8_bytes", 0),
                 "planning_output_reserve": reserve, "enforced_output_cap": None,
                 "safety_margin": margin, "required_upper_bound": required,
                 "silent_truncation": False,
@@ -514,6 +561,8 @@ class CodexAppServerClient:
     def generate(self, body: dict, directory: Path, recorder: AttemptRecorder | None = None) -> tuple[str, dict]:
         if recorder is None:
             raise PipelineError("Codex generation requires an active evidence recorder.")
+        if body.get("wire_format") == "source-session-v1":
+            return self.source_manager.generate(body, directory, recorder)
         executable = shutil.which(self.executable)
         if not executable:
             raise PipelineError(f"Codex executable not found: {self.executable}")

@@ -33,7 +33,12 @@ test('Library card is read-only, setup Save creates distinct drafts, and Prepare
     let libraryRequests = 0
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error' && !(message.text().includes('503') && message.location().url.includes('/api/workspaces/setup'))) errors.push(message.text()) })
-    page.on('requestfailed', request => failed.push(request.url()))
+    page.on('requestfailed', request => {
+      // Profile/language changes cancel obsolete, read-only compatibility checks.
+      if (new URL(request.url()).pathname === '/api/library/compatibility' &&
+          request.failure()?.errorText === 'net::ERR_ABORTED') return
+      failed.push(request.url())
+    })
     await page.addInitScript(() => {
       Object.defineProperty(Crypto.prototype, 'randomUUID', { value: undefined, configurable: true })
       window.EventSource = class { static OPEN = 1; readyState = 1; listeners = {}; constructor() { window.testStream = this }

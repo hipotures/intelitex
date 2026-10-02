@@ -105,6 +105,7 @@ def parser() -> argparse.ArgumentParser:
         ("doctor", "Validate local configuration and Codex protocol without a model turn."),
         ("attempts", "Inspect retained attempt evidence offline."),
         ("usage", "Report retained token accounting offline."),
+        ("source-sessions", "Inspect, archive, explicitly rebuild or purge a private source-session slot; no inference."),
         ("catalog-import", "Validate and atomically activate a model/pricing catalog."),
         ("discover", "Explicitly query a selected provider's live model metadata."),
         ("smoke", "Run one explicitly authorized live structured-output request."),
@@ -114,6 +115,9 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--quiet", action="store_true")
         if name == "attempts":
             command.add_argument("--attempt", help="Project-relative attempt directory; omit to list all.")
+        if name == "source-sessions":
+            command.add_argument("--action", choices=("inspect", "archive", "rebuild", "purge"), default="inspect")
+            command.add_argument("--slot", help="Complete slot ID for explicit maintenance.")
         if name == "usage":
             command.add_argument("--by-unit", action="store_true",
                                  help="Group immutable usage details by P1 analysis unit or P2-P5 chunk.")
@@ -303,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
                         )), ensure_ascii=False, indent=2))
                         return 0
                     report = app.operations.usage(UsageCommand(root))
+                elif args.command == "source-sessions":
+                    report = app.operations.source_sessions(root, args.action, args.slot)
                 elif args.command == "catalog-import":
                     report = app.operations.import_catalog(CatalogImportCommand(root, args.file))
                 elif args.command == "discover":

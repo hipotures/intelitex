@@ -23,7 +23,7 @@ from bookpipe.server.service import ServerService
 from bookpipe.store import Store
 from bookpipe.util import LockConflict, atomic_json, project_lock, reader_lock, read_json
 from test_application import LocalImportPool
-from test_runtime import HELPER, read_sse, request, running, terminal
+from test_runtime import HELPER, read_sse, request, running, terminal, wait_for
 from test_pipeline import server as provider_server, make_epub_source
 
 
@@ -489,7 +489,9 @@ def test_real_import_to_publication_through_one_server(api, provider_server):
         assert code == 202
         result = terminal(service.supervisor, service.supervisor.get(job['job_id']))
         assert result.state == 'succeeded', result
-        return request(server, 'GET', base + '/pipeline')[1]
+        # A terminal progress event may precede worker lease release. Verify
+        # the stable projection before starting the next writer operation.
+        return wait_for(lambda: (snapshot if not (snapshot := request(server, 'GET', base + '/pipeline')[1])['busy'] else None))
     assert run('analyze')['stage'] == 'review'
     draft = request(server, 'POST', base + '/review/prepare', {})[1]
     bulk = request(server, 'POST', base + '/review/bulk-review', {'revision': draft['_revision'], 'term_ids': [t['id'] for t in draft['terms']]})[1]

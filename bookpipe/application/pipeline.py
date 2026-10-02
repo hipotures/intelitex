@@ -13,6 +13,7 @@ from .ports import ApplicationDependencies, ProgressSink
 from .projects import effective_settings, load_valid_book, validate_pass_profiles
 from .review import approval_current
 from ..processing import effective_book
+from ..stages import translation_input
 from .results import PipelineResult
 from .sessions import OperationScope
 
@@ -99,6 +100,17 @@ def execute_analyze(store: Any, book: dict, client: Any, settings: dict,
                 "EXISTING_MEMORY": memory,
             }
             (files.write_json(snapshot_path, inputs) if files else atomic_json(snapshot_path, inputs))
+        provenance_path = store.root / "analysis_inputs" / (unit["id"] + ".provenance.json")
+        if provenance_path.exists():
+            provenance = read_json(provenance_path)
+            if (provenance.get("input_sha256") != digest(inputs) or provenance.get("predecessors") !=
+                    [store.get("analysis:" + prior["id"]) for prior in plan[:unit_index - 1]]):
+                raise PipelineError("Frozen P1 input or accepted predecessor receipts changed; reset analysis before retrying.")
+        else:
+            atomic_json(provenance_path, {"version": 1, "input_sha256": digest(inputs),
+                "predecessors": [store.get("analysis:" + prior["id"]) for prior in plan[:unit_index - 1]],
+                "memory_revision": digest(store.analysis_memory("\n\n".join(b["text"] for b in unit["blocks"]),
+                                                               client.count, settings["memory_tokens"]))})
         key = "pass1/" + unit["id"]
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 1, "task_key": key, "chapter_id": unit["chapter_id"],
@@ -181,9 +193,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
             unit_id=chunk["id"], chapter_id=chapter["id"], chunk_id=chunk["id"],
             unit_index=chunk.get("number") or chunk.get("index_in_chapter"),
         )
-        p2, _, _ = runner.run(2, key, {
-            **common, "SOURCE_SENTENCES": chunk["sentences"],
-        }, unit_context=unit_context)
+        p2, _, _ = runner.run(2, key, translation_input(2, common, chunk["sentences"], {}), unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=1, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -194,7 +204,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 3, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
         }))
-        p3, _, _ = runner.run(3, key, {**common, "SEMANTIC_AUDIT": p2}, unit_context=unit_context)
+        p3, _, _ = runner.run(3, key, translation_input(3, common, chunk["sentences"], {2: p2}), unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=2, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -205,10 +215,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 4, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
         }))
-        p4, _, _ = runner.run(4, key, {
-            **common, "SOURCE_SENTENCES": chunk["sentences"],
-            "POLISH_DRAFT": p3, "SEMANTIC_AUDIT": p2,
-        }, unit_context=unit_context)
+        p4, _, _ = runner.run(4, key, translation_input(4, common, chunk["sentences"], {2: p2, 3: p3}), unit_context=unit_context)
         progress.emit(ProgressEvent(kind="translation_unit_progress", current=3, total=4, values={
             "chapter_id": chapter["id"], "chapter_number": chapter["number"],
             "chapter_total": len(book["chapters"]), "chunk_id": chunk["id"],
@@ -219,9 +226,7 @@ def execute_translate(store: Any, book: dict, client: Any, settings: dict,
         progress.emit(ProgressEvent(kind="pass_started", values={
             "pass_no": 5, "task_key": key, "chapter_id": chapter["id"], "chunk_id": chunk["id"],
         }))
-        _, final_path, _ = runner.run(5, key, {
-            **common, "POLISH_DRAFT": p3, "CORRECTION_LEDGER": p4,
-        }, unit_context=unit_context)
+        _, final_path, _ = runner.run(5, key, translation_input(5, common, chunk["sentences"], {3: p3, 4: p4}), unit_context=unit_context)
         store.finish_chunk(chunk["id"], final_path, dependencies, digest(memory["APPROVED_LEXICON"]))
         # Completing a revision can invalidate a later context consumer. Include
         # newly discovered work in this run, while preserving the requested limit.
@@ -291,15 +296,7 @@ def execute_target_pass(store: Any, book: dict, client: Any, settings: dict,
         unit_index=chunk.get('number') or chunk.get('index_in_chapter'))
     values = {}
     for number in range(2, pass_no + 1):
-        inputs = {**common}
-        if number in (2, 4):
-            inputs['SOURCE_SENTENCES'] = chunk['sentences']
-        if number in (3, 4):
-            inputs['SEMANTIC_AUDIT'] = values[2]
-        if number in (4, 5):
-            inputs['POLISH_DRAFT'] = values[3]
-        if number == 5:
-            inputs['CORRECTION_LEDGER'] = values[4]
+        inputs = translation_input(number, common, chunk['sentences'], values)
         key = f'pass{number}/{chunk_id}'
         if number == pass_no:
             progress.emit(ProgressEvent(kind='pass_started', values={

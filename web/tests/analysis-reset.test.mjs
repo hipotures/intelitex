@@ -42,8 +42,14 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
     const errors = [], failed = []
     let capabilityDelay = true, resetPosts = 0
     page.on('pageerror', error => errors.push(error.message))
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-    page.on('requestfailed', request => failed.push(`${request.url()}: ${request.failure()?.errorText}`))
+    page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} ${message.location().url}`) })
+    page.on('requestfailed', request => {
+      // Clearing P1 unmounts its preview and intentionally aborts an in-flight
+      // React Query request. All other failed requests remain test failures.
+      if (resetPosts === 1 && request.failure()?.errorText === 'net::ERR_ABORTED' &&
+          new URL(request.url()).pathname === '/api/workspaces/w-1/analysis/units/ch0001_a001/preview') return
+      failed.push(`${request.url()}: ${request.failure()?.errorText}`)
+    })
     await page.addInitScript(() => { window.EventSource = class {
       static OPEN = 1; readyState = 1; listeners = {}
       constructor() { window.testStream = this }
@@ -63,6 +69,9 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       else if (path === '/api/workspaces/w-1/pipeline') body = pipeline
       else if (path === '/api/workspaces/w-1/profiles') body = profiles
       else if (path === '/api/workspaces/w-1/usage') body = { scope: 'offline', warning: null, units: [] }
+      else if (path === '/api/workspaces/w-1/analysis/units/ch0001_a001/preview') body = {
+        unit_id: 'ch0001_a001', chapter_id: 'ch0001', available: false,
+        source: [], terms: [], observations: [], page: 0, next_page: null, truncated: false }
       else if (path === '/api/workspaces/w-1/analysis-reset') {
         if (request.method() === 'POST') {
           assert.deepEqual(request.postDataJSON(), { revision: 'p1-planned' })
@@ -123,7 +132,9 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
       assert.equal(resetPosts, 1)
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      await page.getByRole('button', { name: 'Theme: dark. Switch theme' }).click()
+      await page.getByRole('button', { name: 'Theme: sepia. Switch theme' }).click()
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
       await page.screenshot({ path: '/tmp/intelitex-analysis-reset-evidence/workspace-light-390.png', fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.deepEqual(errors, [])

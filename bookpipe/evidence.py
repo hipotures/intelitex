@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from .util import PipelineError, atomic_json, atomic_text
+from .util import PipelineError, atomic_json, atomic_text, read_json
 
 
 ARTIFACT_FORMAT_VERSION = 2
@@ -44,6 +44,20 @@ def redact(value: Any, *, key: str | None = None) -> Any:
 
 class EvidenceError(PipelineError):
     pass
+
+
+def recorded_model_submission(directory: Path) -> bool | None:
+    """A recorded turn/start is possibly submitted even if its reply was lost."""
+    try:
+        for line in (directory / "transport.jsonl").read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            payload = row.get("payload")
+            if (row.get("direction") == "outbound" and isinstance(payload, dict)
+                    and payload.get("method") == "turn/start"):
+                return True
+        return False
+    except (OSError, ValueError):
+        return None  # Missing/corrupt recording cannot prove no submission.
 
 
 class AttemptRecorder:
@@ -86,6 +100,24 @@ class AttemptRecorder:
                 os.fsync(handle.fileno())
         except OSError as exc:
             raise EvidenceError(f"Cannot create attempt evidence: {exc}") from exc
+
+    @classmethod
+    def resume(cls, directory: Path):
+        """Append recovery evidence without replacing a physical attempt's identity."""
+        obj = cls.__new__(cls)
+        obj.directory = directory
+        obj.started_monotonic = time.monotonic()
+        obj.manifest = read_json(directory / "attempt.json")
+        obj.identity = obj.manifest["identity"]
+        obj.progress_values = MappingProxyType({key: obj.identity.get(key) for key in (
+            "pass_no", "task_key", "attempt_number", "chapter_id", "unit_id", "chunk_id",
+            "analysis_unit_id", "unit_index", "provider", "profile", "requested_model")})
+        obj.order = 0
+        log = directory / "transport.jsonl"
+        if log.is_file():
+            for line in log.read_text().splitlines():
+                obj.order = max(obj.order, json.loads(line).get("order", 0))
+        return obj
 
     def preflight(self, measurement: dict[str, Any]) -> None:
         """Persist truthful pre-submission sizing before provider generation."""

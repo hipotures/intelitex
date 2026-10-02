@@ -573,6 +573,7 @@ def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, s
             job = supervisor.start(JobSpec(str(tmp_path), "book", str(root), operation, chunk_limit=limit))
             result = terminal(supervisor, job)
             assert result.state == "succeeded", result
+            wait_for(lambda: not supervisor.owns_project(root))
             return result
         start("analyze")
         review = read_json(root / "terms.review.json")
