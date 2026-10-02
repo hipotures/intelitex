@@ -41,7 +41,7 @@ def configured(root, tmp_path):
 def native_mock(tmp_path, monkeypatch):
     if not shutil.which('codex'):
         pytest.skip('Installed Codex required; mock provider never spends tokens')
-    state = {'calls': [], 'rpc': [], 'invalid': set(), 'overrides': {},
+    state = {'calls': [], 'rpc': [], 'invalid': set(), 'failed': set(), 'overrides': {},
              'hold_pass': None, 'arrived': threading.Event(), 'release': threading.Event()}
 
     class Handler(BaseHTTPRequestHandler):
@@ -72,6 +72,9 @@ def native_mock(tmp_path, monkeypatch):
                       {'type': 'response.completed', 'response': {'id': rid, 'status': 'completed', 'output': [item],
                        'usage': {'input_tokens': 100, 'output_tokens': 5, 'total_tokens': 105,
                                  'input_tokens_details': {'cached_tokens': 0}, 'output_tokens_details': {'reasoning_tokens': 0}}}}]
+            if len(state['calls']) in state['failed']:
+                events = [{'type': 'response.failed', 'response': {'id': rid, 'status': 'failed',
+                           'error': {'code': 'server_error', 'message': 'injected native failure'}}}]
             data = ''.join('event: ' + e['type'] + '\ndata: ' + json.dumps(e) + '\n\n' for e in events).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
@@ -321,6 +324,251 @@ def test_lost_revert_ack_repairs_clean_marker(project, tmp_path, native_mock, mo
     assert len(native_mock['calls']) == 2
     assert sum(m == 'thread/revert' for m, p in native_mock['rpc']) == 1
     assert manifest(project)['state'] == 'baseline_ready'
+
+
+def reconcile_only(root, tmp_path, stage):
+    """Use a fresh manager without allowing a new P0 or consumer inference."""
+    client, settings = configured(root, tmp_path)
+    store = Store(root)
+    try:
+        manager = PersistentSourceSessionManager(store, client, scope_for(store, f'pass{stage}/unit', inputs_for(stage)))
+        manager.recover_only()
+    finally:
+        client.close()
+        store.close()
+
+
+@pytest.mark.parametrize('terminal', ['interrupted', 'failed', 'validation_failed'])
+def test_failed_outcome_lost_revert_ack_recovers_without_inference(project, tmp_path, native_mock, monkeypatch, terminal):
+    from bookpipe.artifacts import attempt_manifests
+    from bookpipe.operations import usage_report
+    from bookpipe.usage import usage_by_unit_report
+
+    run(project, tmp_path, 2)  # An accepted consumer must never be regenerated.
+    p0 = manifest(project)['p0_turn_id']
+    if terminal == 'failed':
+        native_mock['failed'].add(3)
+    elif terminal == 'validation_failed':
+        native_mock['invalid'].add(3)
+    else:
+        native_mock['hold_pass'] = 3
+        drain = codex_transport._RpcSession.drain_until_terminal
+        def interrupt(rpc, deadline):
+            if rpc.recorder.identity.get('pass_no') == 3:
+                assert native_mock['arrived'].wait(10)
+                rpc.request('turn/interrupt', {'threadId': rpc.state['thread_id'], 'turnId': rpc.state['turn_id']}, deadline)
+                native_mock['release'].set()
+            return drain(rpc, deadline)
+        monkeypatch.setattr(codex_transport._RpcSession, 'drain_until_terminal', interrupt)
+    request = codex_transport._RpcSession.request
+    def lose_revert(rpc, method, params, deadline):
+        result = request(rpc, method, params, deadline)
+        if method == 'thread/revert':
+            raise PipelineError('injected lost failed-turn revert acknowledgement')
+        return result
+    if terminal == 'validation_failed':
+        monkeypatch.setattr(codex_transport._RpcSession, 'request', lose_revert)
+        with pytest.raises(PipelineError, match='lost failed-turn revert'):
+            run(project, tmp_path, 3)
+    else:
+        with pytest.raises(PipelineError):
+            run(project, tmp_path, 3)
+        if terminal == 'interrupted':
+            monkeypatch.setattr(codex_transport._RpcSession, 'drain_until_terminal', drain)
+        monkeypatch.setattr(codex_transport._RpcSession, 'request', lose_revert)
+        with pytest.raises(PipelineError, match='lost failed-turn revert'):
+            reconcile_only(project, tmp_path, 3)
+    dirty = manifest(project)
+    assert dirty['state'] == 'reverting' and dirty['cleanup_required']
+    attempt = project / dirty['active']['attempt']
+    outcome = read_json(attempt / 'attempt.json')
+    assert outcome['evidence_complete']
+    assert outcome['lifecycle']['validation'] == ('failed' if terminal == 'validation_failed' else 'not_run')
+    usage = (attempt / 'usage.json').read_bytes()
+    attempts = list(attempt_manifests(project))
+    monkeypatch.setattr(codex_transport._RpcSession, 'request', request)
+    reconcile_only(project, tmp_path, 3)
+    clean = manifest(project)
+    assert clean['state'] == 'baseline_ready' and not clean['cleanup_required']
+    assert clean['p0_turn_id'] == p0 and clean['active'] is None
+    assert (attempt / 'usage.json').read_bytes() == usage
+    assert list(attempt_manifests(project)) == attempts
+    assert sum(g['attempts'] for g in usage_report(project)['groups']) == 3
+    assert sum(p.provider_call_count for u in usage_by_unit_report(project).units for p in u.passes) == 3
+    assert read_json(attempt / 'attempt.json')['lifecycle'] == outcome['lifecycle']
+    assert len(native_mock['calls']) == 3
+    assert sum(m == 'thread/revert' for m, _ in native_mock['rpc']) == 2  # P2 and failed P3 only.
+    store = Store(project)
+    try:
+        assert store.has_job('pass2/unit') and not store.has_job('pass3/unit')
+    finally:
+        store.close()
+    run(project, tmp_path, 2)
+    assert len(native_mock['calls']) == 3
+
+
+@pytest.mark.parametrize('stage', [0, 2])
+@pytest.mark.parametrize('bad', ['model', 'effort', 'missing_effort', 'missing_model'])
+@pytest.mark.parametrize('boundary', ['rejected', 'before_verification', 'old_stop_metadata'])
+def test_selection_rejection_survives_recovery(project, tmp_path, native_mock, monkeypatch, stage, bad, boundary):
+    import bookpipe.source_sessions as sessions
+
+    observe = sessions.rollout_effort_evidence
+    crash = boundary != 'rejected'
+    def selection(path, turn_id):
+        nonlocal crash
+        result = observe(path, turn_id)
+        if len(native_mock['calls']) == (1 if stage == 0 else 2):
+            if crash:
+                crash = False
+                raise KeyboardInterrupt('injected crash before selection verification')
+            result.update({'rollout_model': None} if bad == 'missing_model' else
+                          {'rollout_model': 'wrong-model'} if bad == 'model' else
+                          {'rollout_effort': 'high' if bad == 'effort' else None})
+        return result
+    monkeypatch.setattr(sessions, 'rollout_effort_evidence', selection)
+    with pytest.raises(PipelineError if boundary == 'rejected' else KeyboardInterrupt):
+        run(project, tmp_path, 2)
+    record = manifest(project)
+    attempt = project / record['active']['attempt']
+    assert (attempt / 'answer.txt').is_file() and (attempt / 'native.history.json').is_file()
+    usage = (attempt / 'usage.json').read_bytes()
+    calls = len(native_mock['calls'])
+    if boundary == 'rejected':
+        initial_receipt = (attempt / 'selection.verification.json').read_bytes()
+        assert read_json(attempt / 'attempt.json')['evidence_complete']
+        # Later matching observations must not erase an explicit rejection.
+        monkeypatch.setattr(sessions, 'rollout_effort_evidence', observe)
+    elif boundary == 'old_stop_metadata':
+        # A historical generic completed marker is not a verification receipt.
+        meta = read_json(attempt / 'response_meta.json') if (attempt / 'response_meta.json').exists() else {}
+        atomic_json(attempt / 'response_meta.json', {**meta, 'finish_reason': 'stop', 'status': 'completed',
+                    'wire_format': codec.WIRE_FORMAT, 'codec_map_version': codec.MAP_VERSION,
+                    'session_manifest': str(next(project.glob('artifacts/*/sources/*/sessions/*/manifest.json')).relative_to(project)),
+                    'accepted_attempt': str(attempt.relative_to(project)), 'usage_status': 'reported',
+                    'reported_model': 'gpt-6.1-sol', 'reported_effort': 'low'})
+    with pytest.raises(PipelineError, match='selection|reported|verifiable'):
+        run(project, tmp_path, 2)
+    assert len(native_mock['calls']) == calls
+    assert not any(m == 'thread/revert' for m, _ in native_mock['rpc'])
+    assert (attempt / 'usage.json').read_bytes() == usage
+    receipt = read_json(attempt / 'selection.verification.json')
+    if boundary == 'rejected':
+        assert (attempt / 'selection.verification.json').read_bytes() == initial_receipt
+    assert receipt['status'] == ('held' if bad.startswith('missing_') else 'rejected')
+    assert receipt['binding']['requested_model'] == 'gpt-6.1-sol'
+    assert receipt['binding']['requested_effort'] == 'low'
+    assert receipt['binding']['turn_id'] == manifest(project)['active']['turn_id']
+    evidence = read_json(attempt / 'attempt.json')
+    assert evidence['evidence_complete'] and evidence['lifecycle']['generation'] == 'completed'
+    assert evidence['lifecycle']['validation'] == 'not_run'
+    assert evidence['response']['finish_reason'] == 'selection_' + receipt['status']
+    store = Store(project)
+    try:
+        assert not store.has_job('pass2/unit')
+        if stage == 0:
+            assert not store.has_job('pass0/' + record['scope']['scope_id'])
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('stage', [0, 2])
+def test_matching_selection_recovers_crash_before_verification(project, tmp_path, native_mock, monkeypatch, stage):
+    import bookpipe.source_sessions as sessions
+
+    observe = sessions.rollout_effort_evidence
+    def crash(path, turn_id):
+        if len(native_mock['calls']) == (1 if stage == 0 else 2):
+            raise KeyboardInterrupt('injected pre-verification crash')
+        return observe(path, turn_id)
+    monkeypatch.setattr(sessions, 'rollout_effort_evidence', crash)
+    with pytest.raises(KeyboardInterrupt):
+        run(project, tmp_path, 2)
+    monkeypatch.setattr(sessions, 'rollout_effort_evidence', observe)
+    result, _, _ = run(project, tmp_path, 2)
+    assert result == RESULTS[2] and len(native_mock['calls']) == 2
+    assert manifest(project)['state'] == 'baseline_ready'
+    receipts = list(project.glob('artifacts/**/attempt_*/selection.verification.json'))
+    assert len(receipts) == 2
+    assert all(read_json(p)['status'] == 'verified' for p in receipts)
+
+
+def test_runner_saved_candidate_cannot_bypass_selection_gate(project, tmp_path, native_mock, monkeypatch):
+    import bookpipe.source_sessions as sessions
+
+    save = Store.save_job
+    def crash(store, key, *args):
+        if key == 'pass2/unit':
+            raise KeyboardInterrupt('injected pre-checkpoint crash')
+        return save(store, key, *args)
+    monkeypatch.setattr(Store, 'save_job', crash)
+    with pytest.raises(KeyboardInterrupt):
+        run(project, tmp_path, 2)
+    monkeypatch.setattr(Store, 'save_job', save)
+    record = manifest(project)
+    attempt = project / record['active']['attempt']
+    (attempt / 'selection.verification.json').unlink()
+    assert read_json(attempt / 'response_meta.json')['finish_reason'] == 'stop'
+    # Exercise Runner's separate candidate gate even if native reconciliation
+    # did not run (e.g. a candidate belongs to an older slot).
+    monkeypatch.setattr(PersistentSourceSessionManager, 'recover_only', lambda manager: None)
+    observe = sessions.rollout_effort_evidence
+    monkeypatch.setattr(sessions, 'rollout_effort_evidence', lambda path, turn_id:
+                        {**observe(path, turn_id), 'rollout_effort': None})
+    with pytest.raises(PipelineError, match='selection verification held'):
+        run(project, tmp_path, 2)
+    store = Store(project)
+    try:
+        assert not store.has_job('pass2/unit')
+    finally:
+        store.close()
+    assert len(native_mock['calls']) == 2 and not any(m == 'thread/revert' for m, _ in native_mock['rpc'])
+
+
+@pytest.mark.parametrize('damage', ['missing_history', 'wrong_turn', 'live_status', 'incomplete', 'wrong_task', 'missing_usage', 'wrong_response', 'wrong_p0'])
+def test_removed_failed_suffix_still_requires_matching_evidence(project, tmp_path, native_mock, monkeypatch, damage):
+    run(project, tmp_path, 2)
+    native_mock['failed'].add(3)
+    with pytest.raises(PipelineError):
+        run(project, tmp_path, 3)
+    request = codex_transport._RpcSession.request
+    def lose(rpc, method, params, deadline):
+        result = request(rpc, method, params, deadline)
+        if method == 'thread/revert':
+            raise PipelineError('injected lost revert reply')
+        return result
+    monkeypatch.setattr(codex_transport._RpcSession, 'request', lose)
+    with pytest.raises(PipelineError, match='lost revert reply'):
+        reconcile_only(project, tmp_path, 3)
+    monkeypatch.setattr(codex_transport._RpcSession, 'request', request)
+    attempt = project / manifest(project)['active']['attempt']
+    if damage == 'missing_history':
+        (attempt / 'native.history.json').unlink()
+    elif damage == 'missing_usage':
+        (attempt / 'usage.json').unlink()
+    elif damage == 'wrong_response':
+        meta = read_json(attempt / 'response_meta.json')
+        meta['turn_id'] = 'foreign'
+        atomic_json(attempt / 'response_meta.json', meta)
+    elif damage in ('wrong_turn', 'live_status', 'wrong_p0'):
+        turns = read_json(attempt / 'native.history.json')
+        if damage == 'wrong_p0':
+            turns[0]['id'] = 'foreign'
+        else:
+            turns[-1]['id' if damage == 'wrong_turn' else 'status'] = 'foreign' if damage == 'wrong_turn' else 'inProgress'
+        atomic_json(attempt / 'native.history.json', turns)
+    else:
+        evidence = read_json(attempt / 'attempt.json')
+        if damage == 'incomplete':
+            evidence['evidence_complete'] = False
+        else:
+            evidence['identity']['task_key'] = 'pass3/foreign'
+        atomic_json(attempt / 'attempt.json', evidence)
+    with pytest.raises(PipelineError, match='binding|owned terminal outcome'):
+        reconcile_only(project, tmp_path, 3)
+    assert manifest(project)['cleanup_required'] and manifest(project)['p0_status'] == 'ready'
+    assert len(native_mock['calls']) == 3
+    assert sum(m == 'thread/revert' for m, _ in native_mock['rpc']) == 2
 
 
 def test_ack_without_history_proof_never_marks_ready(project, tmp_path, native_mock, monkeypatch):
@@ -627,6 +875,7 @@ def test_opt_in_preserves_all_legacy_checkpoints_without_preload(project, tmp_pa
 def test_owned_multiple_suffix_revert_is_exclusive_and_idempotent(project, tmp_path):
     from types import SimpleNamespace
     from bookpipe.evidence import AttemptRecorder
+    from bookpipe.util import digest
     store = Store(project)
     client, settings = configured(project, tmp_path)
     try:
@@ -639,16 +888,34 @@ def test_owned_multiple_suffix_revert_is_exclusive_and_idempotent(project, tmp_p
         baseline = turn('p0', source, codec.READY)
         turns = [baseline]
         submissions = []
+        recorders = []
         for n in (2, 3):
             directory = project / 'artifacts' / 'fake' / f'attempt_{n}'
-            recorder = AttemptRecorder(directory, {'pass_no': n})
-            recorder.finish(generation='completed', validation='passed', metadata={})
+            relative = str(directory.relative_to(project))
+            recorder = AttemptRecorder(directory, {'pass_no': n, 'task_key': f'pass{n}/unit',
+                'task_fingerprint': f'fingerprint{n}', 'requested_model': client.model})
+            recorder.semantic({'pass_no': n, 'task_key': f'pass{n}/unit', 'task_fingerprint': f'fingerprint{n}',
+                               'resolved_profile': client.resolved_profile}, codec.TRANSPORT_SCHEMA)
+            recorder.transport_request({'wire_format': codec.WIRE_FORMAT, 'thread_id': 'thread',
+                'session_id': 'session', 'slot_id': manager.slot_id,
+                'turn': {'threadId': 'thread', 'model': client.model, 'effort': client.settings['reasoning_effort'],
+                         'input': [{'type': 'text', 'text': f'owned-task{n}'}]}}, codec.TRANSPORT_SCHEMA)
+            recorder.usage([], {'status': 'unavailable'})
+            recorder.finish(generation='completed', validation='passed', metadata={'accepted_attempt': relative,
+                'thread_id': 'thread', 'session_id': 'session', 'turn_id': f'turn{n}',
+                'scope_id': manager.scope.scope_id, 'slot_id': manager.slot_id, 'status': 'completed'})
+            recorders.append(recorder)
             result = directory / 'result.json'; atomic_json(result, RESULTS[n])
-            store.save_job(f'pass{n}/unit', f'fingerprint{n}', result, {})
-            submissions.append({'turn_id': f'turn{n}', 'text': f'owned-task{n}', 'attempt': str(directory.relative_to(project)),
+            store.save_job(f'pass{n}/unit', f'fingerprint{n}', result, {'accepted_attempt': relative})
+            submissions.append({'intent_id': f'intent{n}', 'pass_no': n, 'input_sha256': digest(f'owned-task{n}'),
+                                'turn_id': f'turn{n}', 'text': f'owned-task{n}', 'attempt': relative,
                                 'task_key': f'pass{n}/unit', 'fingerprint': f'fingerprint{n}'})
             turns.append(turn(f'turn{n}', f'owned-task{n}', RESULTS[n]))
-        manager.record = {'state': 'accepted_cleanup_pending', 'thread_id': 'thread', 'p0_turn_id': 'p0', 'submissions': submissions}
+        for recorder in recorders:
+            recorder.artifact_json('native.history.json', turns)
+        manager.record = {'state': 'accepted_cleanup_pending', 'thread_id': 'thread', 'session_id': 'session',
+            'p0_turn_id': 'p0', 'submissions': submissions, 'compatibility': manager.compatibility,
+            'scope': manager.scope.reference, 'slot_id': manager.slot_id}
         manager.history = lambda: copy.deepcopy(turns)
         calls = []
         def revert(method, params, deadline):

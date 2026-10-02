@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-02",
+  "base_commit": "6d921acd50806c6ef34f833968be8a16157d4c62",
+  "branch": "work/p0-p5-persistent-sessions",
+  "tests": {
+    "python_full": {
+      "passed": 1832,
+      "failed": 0,
+      "warnings": 3,
+      "seconds": 483.99,
+      "source_session_cases_included": 87
+    },
+    "focused_before_final_evidence_flag": {
+      "passed": 111,
+      "failed": 0,
+      "seconds": 117.14
+    },
+    "node": {
+      "passed": 31,
+      "failed": 0,
+      "milliseconds": 492.404651
+    },
+    "r1_before_fix": {
+      "passed": 1,
+      "failed": 2,
+      "deselected": 67,
+      "seconds": 7.84
+    },
+    "r2_old_stop_metadata_before_fix": {
+      "passed": 0,
+      "failed": 6,
+      "deselected": 64,
+      "seconds": 10.46
+    }
+  },
+  "scope_resources": {
+    "focused": {
+      "exit_code": 0,
+      "memory.max": "268435456",
+      "memory.peak": "268435456",
+      "memory.events": "low 0\nhigh 0\nmax 565\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0",
+      "cpu.max": "50000 100000",
+      "cpu.stat": "usage_usec 47732251\nuser_usec 21354239\nsystem_usec 26378011\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 1114\nnr_throttled 621\nthrottled_usec 17430225\nnr_bursts 0\nburst_usec 0"
+    },
+    "full": {
+      "exit_code": 0,
+      "memory.max": "268435456",
+      "memory.peak": "268447744",
+      "memory.events": "low 0\nhigh 0\nmax 7182\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0",
+      "cpu.max": "50000 100000",
+      "cpu.stat": "usage_usec 132732861\nuser_usec 76013762\nsystem_usec 56719099\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 4477\nnr_throttled 1461\nthrottled_usec 43411792\nnr_bursts 0\nburst_usec 0"
+    },
+    "node": {
+      "exit_code": 0,
+      "memory.max": "268435456",
+      "memory.peak": "150421504",
+      "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0",
+      "cpu.max": "50000 100000",
+      "cpu.stat": "usage_usec 363012\nuser_usec 283229\nsystem_usec 79783\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 7\nnr_throttled 6\nthrottled_usec 302225\nnr_bursts 0\nburst_usec 0"
+    }
+  },
+  "commands": {
+    "python_full_inner": ".venv/bin/python -m pytest -q --basetemp=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp/full-suite",
+    "focused_inner": ".venv/bin/python -m pytest -q tests/test_source_sessions.py tests/test_revision_workflow.py tests/test_usage_observability.py",
+    "node_inner": "node --test --test-concurrency=1 tests/*.cjs",
+    "scope_properties": [
+      "MemoryMax=256M",
+      "MemorySwapMax=0",
+      "CPUQuota=50%"
+    ],
+    "resource_runner": "/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/resource_runner.py"
+  },
+  "live_model_calls_during_corrections": 0,
+  "production_operations": [],
+  "unrun": [
+    "Paid/cloud model validation of corrective code",
+    "Frontend TypeScript/unit/browser rerun (frontend and API contracts unchanged)",
+    "Historical extracted-method script rerun (embeds old methods)",
+    "Full-book paid inference",
+    "Provider cache-expiry waiting",
+    "Cloud hard kill",
+    "Production listener/deployment test"
+  ]
+}

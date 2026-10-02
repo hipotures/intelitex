@@ -21,7 +21,7 @@ from . import codex_cache_v2
 from . import codex_cache_shared, codex_cache_shared_v2
 from . import codex_parent, codex_pair, source_session_codec
 from .artifacts import task_root, task_roots
-from .source_sessions import validate_execution, scope_for, PersistentSourceSessionManager
+from .source_sessions import validate_execution, scope_for, PersistentSourceSessionManager, verify_saved_source_selection
 from .progress import ProgressEvent
 from .schemas import SCHEMAS
 from .store import Store
@@ -659,6 +659,10 @@ class Runner:
         candidates = [] if force else [attempt for root in task_roots(self.store.root, key)
             for attempt in _compatible_completed_attempts(root, recovery_body, base_semantic)]
         for attempt in sorted(set(candidates), key=lambda p: p.stat().st_mtime, reverse=True):
+            if read_json(attempt / "response_meta.json").get("wire_format") == "source-session-v1":
+                # Outside semantic-validation retry handling: selection rejection
+                # or missing evidence must hold recovery without new inference.
+                verify_saved_source_selection(self.store, attempt)
             try:
                 raw = (attempt / "answer.txt").read_text(encoding="utf-8").strip()
                 meta = read_json(attempt / "response_meta.json")
@@ -842,14 +846,17 @@ class Runner:
                         usage_status = read_json(attempt / "usage.json").get("status", "unknown")
                     except Exception:
                         pass
-                recorder.finish(generation="not_submitted" if submitted is False else "failed", validation="not_run",
-                                metadata={"provider": semantic.provider, "status": "failed", "usage_status": usage_status,
+                retained_meta = read_json(attempt / "response_meta.json") if manager and (attempt / "response_meta.json").is_file() else {}
+                selection = retained_meta.get("selection_verification", {})
+                selection_rejected = selection.get("status") in {"rejected", "held"}
+                recorder.finish(generation="completed" if selection_rejected else "not_submitted" if submitted is False else "failed", validation="not_run",
+                                metadata={**retained_meta, "provider": semantic.provider, "status": retained_meta.get("status", "failed"), "usage_status": usage_status,
                                           **({"model_turn_submitted": submitted} if manager else {}),
                                           "wire_format": body.get("wire_format", "canonical"),
                                           **body.get("cache_diagnostics", {}),
                                           "partial_answer": (attempt / "answer.partial.txt").exists()},
                                 error={"type": type(exc).__name__, "message": str(exc)},
-                                evidence_complete=(not isinstance(exc, (OSError, EvidenceError))
+                                evidence_complete=(selection_rejected or not isinstance(exc, (OSError, EvidenceError))
                                                    and "rollout" not in str(exc).casefold()))
                 raise
             if (attempt / "usage.json").is_file():

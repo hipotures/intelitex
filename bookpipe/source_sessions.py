@@ -101,6 +101,101 @@ def _birth(pid):
         return None
 
 
+def _submission_binding(root, record, submission):
+    """Bind evidence to the original intent/configuration, never a new profile."""
+    try:
+        directory = (root / submission["attempt"]).resolve()
+        if not directory.is_relative_to(root.resolve()):
+            raise ValueError("attempt escapes project")
+        owned = [s for s in record["submissions"] if s.get("intent_id") == submission["intent_id"]]
+        fields = ("intent_id", "attempt", "task_key", "fingerprint", "pass_no", "turn_id", "text", "input_sha256")
+        if (len(owned) != 1 or any(owned[0].get(k) != submission.get(k) for k in fields)
+                or not submission["turn_id"] or digest(submission["text"]) != submission["input_sha256"]):
+            raise ValueError("submission is not the recorded owned intent")
+        identity = read_json(directory / "attempt.json")["identity"]
+        semantic = read_json(directory / "request.semantic.json")
+        transport = read_json(directory / "request.transport.json")
+        request = transport["turn"]
+        compatibility = record["compatibility"]
+        model, effort = compatibility["model"], compatibility["effort"]
+        profile = semantic["resolved_profile"]
+        if (any(identity[k] != submission[s] or semantic[k] != submission[s] for k, s in (
+                ("task_key", "task_key"), ("task_fingerprint", "fingerprint"), ("pass_no", "pass_no")))
+                or identity["requested_model"] != model or profile["model"] != model
+                or profile.get("reasoning_effort") != effort
+                or semantic.get("requested_model", model) != model
+                or semantic.get("reasoning_effort", effort) != effort
+                or request["model"] != model or request.get("effort") != effort
+                or request["input"] != [{"type": "text", "text": submission["text"]}]
+                or request["threadId"] != record["thread_id"]
+                or transport["thread_id"] != record["thread_id"]
+                or transport["session_id"] != record["session_id"]
+                or transport["slot_id"] != record["slot_id"] or transport["wire_format"] != MODE):
+            raise ValueError("frozen request/task/slot evidence disagrees")
+        return {"intent_id": submission["intent_id"], "attempt": submission["attempt"],
+                "task_key": submission["task_key"], "fingerprint": submission["fingerprint"],
+                "pass_no": submission["pass_no"], "input_sha256": submission["input_sha256"],
+                "thread_id": record["thread_id"], "session_id": record["session_id"],
+                "turn_id": submission["turn_id"], "scope_id": record["scope"]["scope_id"],
+                "slot_id": record["slot_id"], "requested_model": model, "requested_effort": effort}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise EvidenceError(f"Source-session selection/outcome binding is unverifiable: {exc}; evidence held, no new inference.") from exc
+
+
+class SourceSelectionError(EvidenceError):
+    def __init__(self, receipt):
+        self.receipt = receipt
+        super().__init__(f"Source-session selection verification {receipt['status']}: {receipt['reason']}; evidence retained, no new inference.")
+
+
+def verify_source_selection(root, record, submission, recorder, observation=None):
+    """One durable gate for live completion, native recovery and saved candidates."""
+    binding = _submission_binding(root, record, submission)
+    binding["answer_sha256"] = digest((recorder.directory / "answer.txt").read_bytes())
+    path = recorder.directory / "selection.verification.json"
+    if path.exists():
+        receipt = read_json(path)
+        if receipt.get("version") != 1 or receipt.get("binding") != binding or receipt.get("status") not in {"verified", "rejected", "held"}:
+            raise EvidenceError("Source-session selection verification receipt has an invalid binding; recovery held.")
+        if receipt["status"] != "verified":
+            raise SourceSelectionError(receipt)
+    else:
+        observation = observation if observation is not None else rollout_effort_evidence(Path(record["thread_path"]), submission["turn_id"])
+        receipt = {"version": 1, "binding": binding, "reported_model": observation["rollout_model"],
+                   "reported_effort": observation["rollout_effort"], "observation": observation, "verified_at": utc_now()}
+    try:
+        verify_reported_selection(binding["requested_model"], binding["requested_effort"],
+                                  receipt.get("reported_model"), receipt.get("reported_effort"))
+    except PipelineError as exc:
+        receipt.update(status="rejected", reason=str(exc))
+    else:
+        if not receipt.get("reported_model") or binding["requested_effort"] is not None and receipt.get("reported_effort") is None:
+            receipt.update(status="held", reason="Codex did not provide verifiable applied model/effort evidence")
+        else:
+            receipt.update(status="verified", reason="Original requested model and effort verified")
+    if not path.exists():
+        recorder.artifact_json(path.name, receipt)
+    if receipt["status"] != "verified":
+        raise SourceSelectionError(receipt)
+    return receipt
+
+
+def verify_saved_source_selection(store, attempt):
+    """A completed metadata flag cannot substitute for a bound verification receipt."""
+    meta = read_json(attempt / "response_meta.json")
+    try:
+        path = (store.root / meta["session_manifest"]).resolve()
+        if not path.is_relative_to(store.root.resolve()):
+            raise ValueError("manifest escapes project")
+        record = read_json(path)
+        submissions = [s for s in record["submissions"] if s["attempt"] == str(attempt.relative_to(store.root))]
+        if len(submissions) != 1:
+            raise ValueError("saved candidate has no unique original submission")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise EvidenceError(f"Saved source-session selection binding is unavailable: {exc}; recovery held.") from exc
+    return verify_source_selection(store.root, record, submissions[0], AttemptRecorder.resume(attempt))
+
+
 class PersistentSourceSessionManager:
     def __init__(self, store, provider, scope):
         self.store, self.provider, self.scope = store, provider, scope
@@ -379,14 +474,7 @@ class PersistentSourceSessionManager:
             recorder.write_answer(answer)
         self.save_usage(recorder)
         observation = rollout_effort_evidence(Path(self.record["thread_path"]), submission["turn_id"])
-        settings = self.rpc.state.get("turn_settings") or {}
-        reported_model = observation["rollout_model"] or settings.get("model") or self.rpc.state.get("reported_model")
-        reported_effort = observation["rollout_effort"] or settings.get("effort")
-        if reported_effort is None and self.effort_plan.mode == "request_level":
-            reported_effort = self.rpc.state.get("reported_effort")
-        verify_reported_selection(self.provider.model, self.provider.settings.get("reasoning_effort"), reported_model, reported_effort)
-        if self.provider.settings.get("reasoning_effort") and reported_effort is None:
-            raise PipelineError("Codex did not provide verifiable applied effort evidence; session retained for recovery.")
+        reported_model, reported_effort = observation["rollout_model"], observation["rollout_effort"]
         meta = {"provider": "codex", "wire_format": MODE, "codec_map_version": codec.MAP_VERSION,
             "execution_strategy": MODE, "cli_version": self.protocol["cli_version"], "requested_model": self.provider.model,
             "reported_model": reported_model, "reported_effort": reported_effort, **self.effort_plan.metadata(), **observation,
@@ -406,12 +494,26 @@ class PersistentSourceSessionManager:
         recorder.artifact_json("response_meta.json", meta)
         self.timing("inference", started, recorder)
         self.transition("terminal_uncommitted", active={**submission, "terminal_status": terminal.get("status")})
+        if terminal.get("status") == "completed" and answer:
+            meta = self.verify_completion(self.record["active"], recorder, meta, observation)
+            recorder.artifact_json("response_meta.json", meta)
         if self.rpc.state["context_altered"]:
             self.transition("recovery_required", reason="compaction/context alteration")
             raise PipelineError("Native source history was compacted; preserve evidence and rebuild explicitly.")
         if terminal.get("status") != "completed" or not answer or self.rpc.state.get("terminal_error"):
             raise PipelineError("Codex source-session turn did not complete with a final answer; evidence retained for recovery.")
         return answer, meta
+
+    def verify_completion(self, submission, recorder, meta, observation=None):
+        try:
+            receipt = verify_source_selection(self.store.root, self.record, submission, recorder, observation)
+        except SourceSelectionError as exc:
+            rejected = {**meta, "selection_verification": exc.receipt,
+                        "finish_reason": "selection_" + exc.receipt["status"]}
+            recorder.finish(generation="completed", validation="not_run", metadata=rejected)
+            self.transition("recovery_required", reason="selection verification " + exc.receipt["status"])
+            raise
+        return {**meta, "selection_verification": receipt}
 
     def save_usage(self, recorder):
         events = self.rpc.state.get("usage_events", [])
@@ -472,6 +574,8 @@ class PersistentSourceSessionManager:
             value = self.provider.preflight(body, recorder)
             recorder.preflight({"value": value, "unit": "utf8_bytes", "quality": "conservative_upper_bound"})
             answer, meta = self.submit(text, 0, directory, recorder)
+        if meta.get("finish_reason") != "stop" or meta.get("selection_verification", {}).get("status") != "verified":
+            raise PipelineError("P0 readiness requires completed, selection-verified native evidence.")
         codec.decode_output(json.loads(answer), 0)
         turns = self.history()
         if len(turns) != 1:
@@ -530,7 +634,8 @@ class PersistentSourceSessionManager:
             if not (directory / "answer.txt").is_file():
                 from .util import atomic_text
                 atomic_text(directory / "answer.txt", answer.rstrip() + "\n")
-        if not (directory / "response_meta.json").is_file() or read_json(directory / "response_meta.json").get("finish_reason") != "stop":
+        recorder = AttemptRecorder.resume(directory)
+        if not (directory / "usage.json").is_file():
             # Recover physical usage ONLY from correlated recorded inbound events.
             # Resume's cumulative snapshot must never be billed to the old turn.
             usage_events = []
@@ -545,21 +650,28 @@ class PersistentSourceSessionManager:
                             usage_events.append(params["tokenUsage"])
             previous = self.rpc.state["usage_events"]
             self.rpc.state["usage_events"] = usage_events
-            recorder = AttemptRecorder.resume(directory)
             self.save_usage(recorder)
             self.rpc.state["usage_events"] = previous
-            observation = rollout_effort_evidence(Path(self.record["thread_path"]), turn["id"])
-            meta = {"provider": "codex", "wire_format": MODE, "codec_map_version": codec.MAP_VERSION,
-                    "finish_reason": "stop" if turn["status"] == "completed" else turn["status"],
-                    "status": turn["status"], "thread_id": self.record["thread_id"], "session_id": self.record["session_id"],
-                    "turn_id": turn["id"], "scope_id": self.scope.scope_id, "slot_id": self.slot_id,
-                    "source_message_utf8_bytes_added": len(active["text"].encode()) if active["pass_no"] == 0 else 0,
-                    "reported_model": observation["rollout_model"], "reported_effort": observation["rollout_effort"],
-                    "cli_version": self.protocol["cli_version"], "recovered_native": True,
-                    "session_manifest": str(self.manifest_path.relative_to(self.store.root)),
-                    "accepted_attempt": str(directory.relative_to(self.store.root)),
-                    "usage_status": "reported" if usage_events else "unavailable"}
-            recorder.finish(generation="completed" if turn["status"] == "completed" else "failed", validation="not_run", metadata=meta)
+        observation = rollout_effort_evidence(Path(self.record["thread_path"]), turn["id"])
+        previous_meta = read_json(directory / "response_meta.json") if (directory / "response_meta.json").is_file() else {}
+        meta = {**previous_meta, "provider": "codex", "wire_format": MODE, "codec_map_version": codec.MAP_VERSION,
+                "finish_reason": "stop" if turn["status"] == "completed" else turn["status"],
+                "status": turn["status"], "thread_id": self.record["thread_id"], "session_id": self.record["session_id"],
+                "turn_id": turn["id"], "scope_id": self.scope.scope_id, "slot_id": self.slot_id,
+                "source_message_utf8_bytes_added": len(active["text"].encode()) if active["pass_no"] == 0 else 0,
+                "requested_model": self.record["compatibility"]["model"],
+                "requested_effort": self.record["compatibility"]["effort"],
+                "reported_model": observation["rollout_model"], "reported_effort": observation["rollout_effort"],
+                "cli_version": self.protocol["cli_version"], "recovered_native": True,
+                "session_manifest": str(self.manifest_path.relative_to(self.store.root)),
+                "accepted_attempt": str(directory.relative_to(self.store.root)),
+                "usage_status": read_json(directory / "usage.json")["status"]}
+        if turn["status"] == "completed":
+            if not answer:
+                raise EvidenceError("Completed native turn lacks final answer evidence; recovery held.")
+            meta = self.verify_completion(active, recorder, meta, observation)
+        validation = recorder.manifest.get("lifecycle", {}).get("validation", "not_run")
+        recorder.finish(generation="completed" if turn["status"] == "completed" else "failed", validation=validation, metadata=meta)
         if active["pass_no"] and self.store.job(active["task_key"], active["fingerprint"]):
             self.transition("accepted_cleanup_pending", active=active, cleanup_required=True)
         elif active["pass_no"] and turn["status"] != "completed":
@@ -576,11 +688,7 @@ class PersistentSourceSessionManager:
             # or our local clean marker was lost. Its removed turn is no longer
             # expected in active history; verify the durable outcome instead.
             active = self.record.get("active") or {}
-            evidence = read_json(self.store.root / active["attempt"] / "attempt.json") if active else {}
-            if not active or not evidence.get("evidence_complete") or not (
-                    self.store.job(active["task_key"], active["fingerprint"]) or
-                    evidence.get("lifecycle", {}).get("validation") == "failed"):
-                raise PipelineError("Removed native suffix lacks a durable accepted/failed outcome.")
+            self.durable_cleanup_outcome(active)
             self.cleanup()
             return "clean"
         if self.record.get("active"):
@@ -601,6 +709,45 @@ class PersistentSourceSessionManager:
             self.transition("baseline_ready", cleanup_required=False, active=None)
         return "clean"
 
+    def durable_cleanup_outcome(self, submission, native_turn=None):
+        """Prove an owned terminal outcome even after native revert removed it."""
+        binding = _submission_binding(self.store.root, self.record, submission)
+        directory = self.store.root / submission["attempt"]
+        try:
+            evidence = read_json(directory / "attempt.json")
+            history = read_json(directory / "native.history.json")
+            meta = read_json(directory / "response_meta.json")
+            if not history or history[0].get("id") != self.record["p0_turn_id"]:
+                raise ValueError("terminal evidence has a foreign P0 boundary")
+            self.proof(history[0])
+            matches = [t for t in history if t.get("id") == submission["turn_id"]]
+            if (submission["pass_no"] == 0 or not evidence.get("evidence_complete")
+                    or evidence.get("lifecycle", {}).get("evidence") != "complete" or len(matches) != 1
+                    or self.user_text(matches[0]) != [submission["text"]]
+                    or matches[0].get("status") not in {"completed", "failed", "interrupted"}
+                    or native_turn is not None and native_turn != matches[0]
+                    or submission.get("terminal_status", matches[0]["status"]) != matches[0]["status"]):
+                raise ValueError("missing matching owned terminal evidence")
+            lifecycle, status = evidence["lifecycle"], matches[0]["status"]
+            if (any(meta.get(k) != binding[k] for k in ("thread_id", "session_id", "turn_id", "scope_id", "slot_id"))
+                    or meta.get("accepted_attempt") != submission["attempt"] or meta.get("status") != status
+                    or evidence.get("response") != meta):
+                raise ValueError("terminal response metadata has a different ownership/outcome binding")
+            if status in {"failed", "interrupted"}:
+                if lifecycle.get("generation") != "failed" or lifecycle.get("validation") != "not_run":
+                    raise ValueError("native failure lacks a durable failure outcome")
+            else:
+                if lifecycle.get("generation") != "completed":
+                    raise ValueError("completed turn lacks a durable completed outcome")
+                job = self.store.job(submission["task_key"], submission["fingerprint"])
+                accepted = job and job["meta"].get("accepted_attempt") == submission["attempt"]
+                if not (accepted and lifecycle.get("validation") == "passed" or lifecycle.get("validation") == "failed"):
+                    raise ValueError("completed output needs canonical acceptance or validation failure")
+            # Usage must be preserved, including explicit unavailability.
+            read_json(directory / "usage.json")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise EvidenceError(f"Cannot clean source session without a durable owned terminal outcome: {exc}.") from exc
+
     def cleanup(self):
         cleanup_started = time.monotonic()
         self.provider.ui.emit(ProgressEvent(kind="source_session_cleanup_required", values={"scope_id": self.scope.scope_id}))
@@ -615,14 +762,7 @@ class PersistentSourceSessionManager:
                     turn.get("status") not in ("completed", "failed", "interrupted")):
                 self.transition("recovery_required", reason="unknown or active native suffix")
                 raise PipelineError("Unknown/foreign or active turn in source session; no blind revert is permitted.")
-            attempt = self.store.root / submission["attempt"]
-            manifest = read_json(attempt / "attempt.json")
-            if not manifest.get("evidence_complete"):
-                raise PipelineError("Cannot revert before terminal evidence is durably complete.")
-            if turn.get("status") == "completed" and not (
-                self.store.job(submission["task_key"], submission["fingerprint"]) or
-                manifest.get("lifecycle", {}).get("validation") == "failed"):
-                raise PipelineError("Completed source-session output needs canonical acceptance before revert.")
+            self.durable_cleanup_outcome(submission, turn)
         if len(turns) > 1:
             boundary = turns[1]["id"]
             self.transition("reverting", revert_boundary=boundary, cleanup_required=True)

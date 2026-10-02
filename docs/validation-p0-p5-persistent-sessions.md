@@ -6,6 +6,10 @@ PRD reviewed baseline: `e4b622fc447c1df71028aa114cff6fdbd41d7204`.
 This report and the implementation are committed together. Nothing was merged,
 deployed, or restarted in the production checkout.
 
+The subsequent review corrections and **final 1,832-test complete green run**
+are documented in [the recovery review validation](validation-p0-p5-recovery-review.md).
+The results below record the original implementation validation at `6d921ac`.
+
 ## Delivered behavior
 
 The explicit new execution mode implements P0 and all five semantic stages.
