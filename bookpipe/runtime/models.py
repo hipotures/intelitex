@@ -8,6 +8,11 @@ from .protocol import public_envelope
 
 ACTIVE = frozenset({"starting", "running", "stopping"})
 TERMINAL = frozenset({"succeeded", "failed", "cancelled", "abandoned"})
+STAGE_EVENTS = frozenset({
+    'pass_started', 'source_preload_started', 'source_preload_completed', 'preload_target_completed',
+    'analysis_progress', 'analysis_unit_progress', 'translation_progress', 'translation_unit_progress',
+    'publication_started',
+})
 
 
 def now() -> str:
@@ -90,6 +95,9 @@ class Job:
     sequence: int = 0
     last_event: dict | None = None
     error: dict | None = None
+    # A progress boundary must outlive the bounded, noisy activity tail. Private
+    # registry state; public views project only the relevant stage/cell status.
+    stage_event: dict | None = None
 
     def public(self) -> dict:
         value = {key: getattr(self, key) for key in (
@@ -111,6 +119,7 @@ class Job:
             'output_length_limit': 'The model reached its output-token limit without finishing the answer. The partial response was not accepted; saved passes remain available.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
+            'analysis_memory_limit': 'P1 cannot start this unit because its required terminology memory exceeds memory_tokens. Increase the workspace memory limit, then retry. Saved analysis remains available; no model call was made for this unit.',
         }
         error_code = self.error.get('code') if self.error else None
         if isinstance(error_code, str) and error_code in safe_errors:

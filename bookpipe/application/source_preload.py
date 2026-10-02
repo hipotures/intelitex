@@ -44,7 +44,7 @@ def confined(root, path):
     path = Path(path)
     if not path.is_absolute():
         path = root / path
-    if '..' in path.parts or not path.is_relative_to(root):
+    if not path.is_relative_to(root) or '..' in path.parts or 'codex-home' in path.relative_to(root).parts:
         raise EvidenceError('Unsafe workspace evidence binding.')
     for component in (path, *path.parents):
         if component == root:
@@ -81,6 +81,9 @@ def compact_summary(targets, unresolved=0, *, retained=0, attempts=0):
             'not_applicable': sum(t['relevance'] == 'satisfied' for t in targets),
             'unresolved': unresolved, 'retained': retained, 'physical_attempts': attempts,
             'session_warnings': sum(t['session_state'] not in ('not_created', 'clean') for t in required),
+            'unfinished_consumers': sum(t['session_state'] == 'consumer_active' for t in required),
+            'cleanup_pending_sessions': sum(t['session_state'] == 'cleanup_pending' for t in required),
+            'recovery_required_sessions': sum(t['session_state'] == 'recovery_required' for t in required),
             'denominator': 'current compatible P0 session targets; unresolved planning groups counted separately'}
 
 
@@ -88,6 +91,15 @@ def source_size(blocks):
     return {'source_words': sum(len(b['text'].split()) for b in blocks),
             'source_utf8_bytes': sum(len(b['text'].encode('utf-8')) for b in blocks),
             'source_blocks': len(blocks)}
+
+
+def view_summaries(targets):
+    result = {}
+    for name in ('analysis', 'translation'):
+        selected = [target for target in targets if (name == 'analysis' and target['relevance'] == 'unresolved') or any(
+            (consumer['pass_no'] == 1) == (name == 'analysis') for consumer in target['consumers'])]
+        result[name] = compact_summary(selected, sum(t['relevance'] == 'unresolved' for t in selected))
+    return result
 
 
 def saved_acceptance(root, store, record, scope):
@@ -234,8 +246,7 @@ class SourcePreloadQueries:
                              'schema': digest(codec.TRANSPORT_SCHEMA), 'p0_prompt': digest(prompt) if prompt else None,
                              'sandbox': 'read-only', 'runtime_contract': 1}
             ident = 'pt_' + digest({'compatibility': compatibility,
-                                    'executable_configuration': profile.get('executable') or 'codex',
-                                    'runtime_configuration': profile.get('runtime_root')})
+                                    'executable_configuration': profile.get('executable') or 'codex'})
             if ident not in targets:
                 part, parts = (unit.get('part', 1), unit.get('parts', 1)) if number == 1 else chunk_parts[unit['id']]
                 label = 'Whole chapter' if chapter_scopes.get(chapter) == scope.scope_id else f'Part {part} of {parts}'
@@ -259,8 +270,7 @@ class SourcePreloadQueries:
                         if attempt:
                             try:
                                 saved_profile = read_json(confined(root, root / attempt / 'request.semantic.json'))['resolved_profile']
-                                if ((saved_profile.get('executable') or 'codex') != (profile.get('executable') or 'codex')
-                                        or saved_profile.get('runtime_root') != profile.get('runtime_root')):
+                                if (saved_profile.get('executable') or 'codex') != (profile.get('executable') or 'codex'):
                                     continue
                             except (PipelineError, OSError, ValueError, KeyError, TypeError):
                                 pass  # Keep the candidate localized as unverifiable below.
@@ -386,6 +396,7 @@ class SourcePreloadQueries:
                  'observed_at': utc_now(), 'revision': digest(intent), 'intent_revision': digest(intent),
                  'reason': None if applicable else 'legacy_mode',
                  'summary': compact_summary(rows, len(unresolved), retained=len(history), attempts=attempts),
+                 'views': view_summaries(rows),
                  'chapters': groups, 'assignments': defaults, 'history': history[:100],
                  'history_truncated': len(history) > 100}
         return value, bindings

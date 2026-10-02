@@ -61,10 +61,13 @@ class OperationsService:
             with ProjectReadScope(self.dependencies, root):
                 load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
                 return ReportResult(session_inventory(root))
-        if action not in {"archive", "rebuild", "purge"}:
+        if action not in {"archive", "rebuild", "purge", "migrate"}:
             raise PipelineError("Unsupported source-session maintenance action.")
         with OperationScope(self.dependencies, root, self.progress) as scope:
             load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files, readonly=True)
+            if action == 'migrate':
+                from ..source_runtime import migrate_project
+                return ReportResult(migrate_project(scope.store, slot_id))
             return ReportResult(retire_session(scope.store, slot_id, rebuild=action == "rebuild", purge=action == "purge"))
 
     def import_catalog(self, command: CatalogImportCommand) -> ReportResult:

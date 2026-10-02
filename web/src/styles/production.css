@@ -315,7 +315,20 @@ body:has(dialog.drawer[open])::before { display:none; }
 .preload-work-grid .usage-table th { width:auto; }.preload-work-grid .usage-table td { white-space:normal;overflow-wrap:anywhere; }
 .preload-preview-pair { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px; }
 .preload-readiness { padding:12px; }.preload-readiness dd { overflow-wrap:anywhere; }
-.preload-session-warning { display:block;color:var(--text-dim);font-size:10px;padding:0 8px 5px; }
+.preload-session-warning { display:block;color:var(--text-dim);font-size:12px;padding:4px 0;white-space:normal; }
+.preload-session-warning summary { cursor:pointer; }
+.preload-session-warning p { text-align:left;line-height:1.5;white-space:normal; }
+.preload-progress { display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px;margin:8px 0 14px;font-size:12px; }
+.preload-progress > span { color:var(--text-dim); }
+.preload-progress button { text-align:left;background:none;border:0;color:var(--accent);font:inherit;cursor:pointer; }
+.preload-unit-id { color:var(--text); }
+.preload-state-label { display:block;margin-bottom:4px;font-size:11px;color:var(--text-dim); }
+.preload-state-label.accepted { color:var(--green); }
+.preload-state-label.running { color:var(--accent); }
+.preload-work-grid .analyse-unit-table tr.working td { background:var(--accent-soft); }
+.phase.partial,.phase-status-badge.partial { background:var(--green-soft); }
+.phase.partial .phase-icon { color:var(--green);border-color:var(--green); }
+.preload-session-explanation { font-size:12px;line-height:1.6;overflow-wrap:anywhere;user-select:text; }
 .preload-freshness { margin-bottom:10px; }.preload-attempts { margin:10px 0; }
 .preload-attempts summary { font-size:12px;cursor:pointer;overflow-wrap:anywhere; }
 .preload-detail-page .phase-metric-value small { display:block;font-size:10px;color:var(--text-dim); }

@@ -64,6 +64,8 @@ def test_pristine_reads_are_pure_and_equivalent_to_execution(preload_book, monke
         assert value['planning_state'] == 'prospective'
         assert value['summary']['required'] == 2  # one exact source shared by all five passes
         assert value['summary']['state'] == 'pending'
+        assert value['views']['analysis']['required'] == 2
+        assert value['views']['translation']['required'] == 2
         assert len(target(value)['consumers']) == 5
         assert target(value)['slot_id'] is None
         preview = app.source_preload.preview(root, target(value)['target_id'])
@@ -110,18 +112,22 @@ def test_aliases_efforts_eligibility_and_legacy(preload_book):
 
 
 @pytest.mark.parametrize('manual', [False, True])
-def test_whole_book_analysis_barrier_and_source_preload_order(preload_book, native_mock, monkeypatch, manual):
-    """Installed native runtime, twelve loopback turns maximum; no cloud/auth."""
+@pytest.mark.parametrize('separate_translation', [False, True])
+def test_whole_book_analysis_barrier_and_source_preload_order(preload_book, native_mock, monkeypatch, manual, separate_translation):
+    """Installed native runtime, fourteen loopback turns maximum; no cloud/auth."""
     import json
     from bookpipe import source_session_codec as codec
     from bookpipe.application.commands import AnalyzeCommand, ApproveCommand, TranslateCommand
     from bookpipe.engine import Runner
 
-    app, root, _ = preload_book
+    app, root, settings = preload_book
+    if separate_translation:
+        settings['profiles']['translation-test'] = {**settings['profiles']['preload-test'], 'reasoning_effort': 'high'}
+        settings['pass_profiles'] = {str(n): 'translation-test' for n in range(2, 6)}
+        atomic_json(root / 'settings.json', settings)
     inventory = app.source_preload.inventory(root)
     chapters = inventory['chapters']
-    units = [next(c['unit_id'] for c in t['consumers'] if c['pass_no'] == 1)
-             for chapter in chapters for t in chapter['targets']]
+    units = [c['unit_id'] for chapter in chapters for t in chapter['targets'] for c in t['consumers'] if c['pass_no'] == 1]
     source_chapters = {t['scope_id']: c['chapter_id'] for c in chapters for t in c['targets']}
     actual_inputs = {}
     original = Runner.run
@@ -184,19 +190,31 @@ def test_whole_book_analysis_barrier_and_source_preload_order(preload_book, nati
         app.pipeline.analyze(AnalyzeCommand(root))
         expected = [('ch0001', 0), ('ch0001', 1), ('ch0002', 0), ('ch0002', 1)]
     assert turns() == expected
+    if separate_translation:
+        # Pending translation configurations are intentional and must not be
+        # mistaken for skipped earlier analysis chapters in the P0 inventory.
+        for chapter in app.source_preload.inventory(root)['chapters']:
+            analysis, translation = chapter['targets']
+            assert analysis['baseline_state'] == 'accepted'
+            assert translation['baseline_state'] == 'pending'
+            assert all(c['pass_no'] > 1 for c in translation['consumers'])
+        sections = app.web.section_summaries(root, app.workflow.pipeline(root))
+        assert all(s['passes']['0']['state'] == 'completed' for s in sections)
+        assert all(s['passes']['0']['completed'] == s['passes']['0']['required'] == 1 for s in sections)
     with pytest.raises(PipelineError, match='approve'):
         app.pipeline.translate(TranslateCommand(root))
     assert turns() == expected
     app.review.approve(ApproveCommand(root), confirm_review=True)
     app.pipeline.translate(TranslateCommand(root))
-    assert turns() == expected + [(chapter, n) for chapter in ('ch0001', 'ch0002') for n in range(2, 6)]
-    assert len(native_mock['calls']) == 12
+    assert turns() == expected + [(chapter, n) for chapter in ('ch0001', 'ch0002')
+                                 for n in ([0, 2, 3, 4, 5] if separate_translation else range(2, 6))]
+    assert len(native_mock['calls']) == (14 if separate_translation else 12)
     # Preloaded P0 is reused by later consumers; cache measurement stays factual.
     from bookpipe.usage import usage_by_unit_report
     groups = [p for u in usage_by_unit_report(root).units for p in u.passes]
-    assert sum(p.physical_attempt_count for p in groups if p.pass_no == 0) == 2
+    assert sum(p.physical_attempt_count for p in groups if p.pass_no == 0) == (4 if separate_translation else 2)
     assert all(p.cached_input_tokens.value == 0 for p in groups)
-    assert app.source_preload.inventory(root)['summary']['accepted'] == 2
+    assert app.source_preload.inventory(root)['summary']['accepted'] == (4 if separate_translation else 2)
 
 
 def test_native_target_only_reuse_selection_receipt_and_held_state(preload_book, native_mock):
@@ -296,6 +314,8 @@ def test_unresolved_nonlocal_planner_and_known_translation_targets(preload_book)
     value = app.source_preload.inventory(root)
     assert value['planning_state'] == 'unresolved'
     assert value['summary']['unresolved'] == 1
+    assert value['views']['analysis']['unresolved'] == 1
+    assert value['views']['translation']['unresolved'] == 0
     assert value['summary']['required'] == 2
     unresolved = next(t for t in value['chapters'][0]['targets'] if t['planning_state'] == 'unresolved')
     assert unresolved['scope_id'] is None and not unresolved['can_run']
@@ -458,7 +478,7 @@ def test_worker_refuses_changed_or_held_intent_without_another_turn(preload_book
     assert not (root / 'analysis_plan.json').exists()
 
 
-def test_native_configuration_is_compared_without_executable_discovery(preload_book, native_mock, monkeypatch):
+def test_legacy_runtime_root_does_not_relocate_source_sessions(preload_book, native_mock, monkeypatch):
     app, root, settings = preload_book
     inventory = app.source_preload.inventory(root)
     app.source_preload.run(PreloadCommand(root, target(inventory)['target_id'], inventory['intent_revision']), app.pipeline.progress)
@@ -466,8 +486,9 @@ def test_native_configuration_is_compared_without_executable_discovery(preload_b
     atomic_json(root / 'settings.json', settings)
     monkeypatch.setattr('shutil.which', lambda *args: pytest.fail('Read projection performed executable discovery'))
     current = app.source_preload.inventory(root)
-    assert current['summary']['accepted'] == 0 and current['summary']['retained'] == 1
-    assert target(current)['baseline_state'] == 'pending'
+    assert current['summary']['accepted'] == 1 and current['summary']['retained'] == 0
+    assert target(current)['baseline_state'] == 'accepted'
+    assert target(current)['target_id'] == target(inventory)['target_id']
     assert len(native_mock['calls']) == 1
 
 
@@ -545,7 +566,7 @@ def test_safe_p0_metadata_preserves_zero_and_rejects_native_paths():
 
 
 @pytest.mark.parametrize('operation', ['analyze', 'translate', 'preload'])
-def test_runtime_p0_stage_is_correlated_and_cleanup_does_not_light_it(api, operation):
+def test_runtime_p0_stage_is_correlated_and_cleanup_does_not_light_it(api, operation, monkeypatch):
     from bookpipe.runtime.models import Job
     app, root, service, _ = api
     settings = read_json(root / 'settings.json'); settings['default_profile'] = 'codex-sol-medium'
@@ -555,6 +576,8 @@ def test_runtime_p0_stage_is_correlated_and_cleanup_does_not_light_it(api, opera
     registry.save(job)
     current = service.source_preload('book')
     chosen = target(current)
+    chosen['slot_id'] = 'slot-current'
+    monkeypatch.setattr(app.source_preload, 'inventory', lambda _: copy.deepcopy(current))
     values = {'pass_no': 0, 'scope_id': chosen['scope_id'], 'slot_id': 'slot-current',
               'chapter_id': chosen['chapter_id'], 'parent_consumer_pass': 1 if operation == 'analyze' else 3}
     registry.append(job.job_id, {'kind': 'source_preload_started', 'values': values})
@@ -562,10 +585,20 @@ def test_runtime_p0_stage_is_correlated_and_cleanup_does_not_light_it(api, opera
     assert pipeline['source_preload']['state'] == 'running'
     assert pipeline['sections'][0]['passes']['0']['runtime_state'] == 'running'
     assert not any('runtime_state' in pipeline['sections'][0]['passes'][str(n)] for n in range(1, 6))
+    # Long-running inference evicts the start event from the bounded activity
+    # tail; stage status and the exact target must survive both GET and reload.
+    for _ in range(125):
+        registry.append(job.job_id, {'kind': 'provider_waiting', 'values': {}})
+    assert len(registry.recent_events(workspace_root=str(root.parent), workspace_id=root.name, job_id=job.job_id)) == 120
+    assert service.pipeline('book')['sections'][0]['passes']['0']['runtime_state'] == 'running'
+    inventory = service.source_preload('book')
+    assert target(inventory)['baseline_state'] == 'running'
+    assert inventory['summary']['running'] == 1 and inventory['summary']['accepted'] == 0
     registry.append(job.job_id, {'kind': 'source_preload_completed', 'values': values})
     pipeline = service.pipeline('book')
     assert pipeline['source_preload']['state'] != 'running'
     assert 'runtime_state' not in pipeline['sections'][0]['passes']['0']
+    assert target(service.source_preload('book'))['baseline_state'] == 'pending'  # completion event is not acceptance
     if operation != 'preload':
         assert pipeline['sections'][0]['passes'][str(values['parent_consumer_pass'])]['runtime_state'] == 'running'
     registry.append(job.job_id, {'kind': 'source_session_cleanup_completed', 'values': {**values, 'pass_no': 3}})

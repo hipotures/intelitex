@@ -101,6 +101,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'output_length_limit'
         elif 'has no current saved result for this chunk' in message:
             code = 'missing_prerequisite'
+        elif message.startswith('Directly relevant analysis memory exceeds memory_tokens.'):
+            code = 'analysis_memory_limit'
         elif 'already has a saved result' in message:
             code = 'pass_already_saved'
         else:

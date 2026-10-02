@@ -41,7 +41,8 @@ const summary = z.object({ total: count, reviewed: count, unreviewed: count, unc
 const reviewImpact = z.object({ changed_term_ids: z.array(text), affected_chunks: z.array(z.object({ chunk_id: text, term_ids: z.array(text) })) })
 export const preloadSummarySchema = z.object({ state: text, source_scopes: count, required: count, accepted: count,
   needing_execution: count, pending: count, running: count, failed: count, unverifiable: count, not_applicable: count,
-  unresolved: count, retained: count, physical_attempts: count, session_warnings: count, denominator: text })
+  unresolved: count, retained: count, physical_attempts: count, session_warnings: count, denominator: text,
+  unfinished_consumers: count.optional(), cleanup_pending_sessions: count.optional(), recovery_required_sessions: count.optional() })
 export const preloadTargetSchema = z.object({ target_id: text, chapter_id: text, scope_id: nullableText,
   source_sha256: nullableText, source_map_sha256: nullableText, label: text, planning_state: text,
   source_words: count, source_utf8_bytes: count, source_blocks: count,
@@ -54,6 +55,7 @@ export const preloadTargetSchema = z.object({ target_id: text, chapter_id: text,
 export const sourcePreloadSchema = z.object({ format_version: z.literal(1), workspace_id: text, execution_mode: text,
   applicable: z.boolean(), prepared: z.boolean(), planning_state: text, observed_at: text, revision: text,
   intent_revision: text, reason: nullableText, summary: preloadSummarySchema,
+  views: z.object({ analysis: preloadSummarySchema.optional(), translation: preloadSummarySchema.optional() }).optional(),
   chapters: z.array(z.object({ chapter_id: text, title: nullableText, processing: text, reason: nullableText, summary: preloadSummarySchema,
     targets: z.array(preloadTargetSchema) })),
   assignments: z.array(z.object({ pass_no: count, profile: text, provider: text, model: nullableText, effort: nullableText })),

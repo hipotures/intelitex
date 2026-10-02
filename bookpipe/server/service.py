@@ -13,7 +13,7 @@ from datetime import datetime
 import re
 import threading
 from ..application.imports import ImportDisabled, ImportQueries, confined_source, workspace_destination
-from ..runtime.models import ImportJobSpec, JobSpec
+from ..runtime.models import ImportJobSpec, JobSpec, STAGE_EVENTS
 from . import serialization as dto
 
 
@@ -40,6 +40,14 @@ class ServerService:
         self._summary_cache = {}
         roots = [None, *(self.workspaces.resolve(i) for i in self.workspaces.list())]
         self.catalog.register_profiles(p['name'] for root in roots for p in self.application.workflow.settings(root)['profiles'])
+
+    def _active_stage(self, active, events):
+        if not active or active.state != 'running':
+            return None
+        from ..runtime.protocol import public_envelope
+        # Older job records can still supply a boundary from their recent tail.
+        stage = active.stage_event or next((e for e in reversed(events) if e['event']['kind'] in STAGE_EVENTS), None)
+        return public_envelope(stage)['event'] if stage else None
 
     def _book_summary(self, root):
         """Reuse immutable book-derived listing fields; read lifecycle/setup on every request."""
@@ -481,17 +489,15 @@ class ServerService:
         events = self.supervisor.registry.recent_events(workspace_root=self.supervisor.workspace_root,
                     workspace_id=workspace_id, job_id=active.job_id, limit=120) if active else []
         # Runtime activity decorates cells without changing durable checkpoint counts.
-        boundaries = [e['event'] for e in events if e['event']['kind'] in {
-            'pass_started', 'source_preload_started', 'source_preload_completed', 'preload_target_completed',
-            'analysis_progress', 'analysis_unit_progress', 'translation_progress', 'translation_unit_progress', 'publication_started'}]
-        if active and active.state == 'running' and boundaries and boundaries[-1]['kind'] in {'pass_started', 'source_preload_started', 'source_preload_completed'}:
-            current = boundaries[-1]['values']
+        stage = self._active_stage(active, events)
+        if stage and stage['kind'] in {'pass_started', 'source_preload_started', 'source_preload_completed'}:
+            current = stage['values']
             section = next((s for s in result['sections'] if s['id'] == current.get('chapter_id')), None)
-            number = current.get('parent_consumer_pass') if boundaries[-1]['kind'] == 'source_preload_completed' else current.get('pass_no')
-            if active.operation != 'preload' or boundaries[-1]['kind'] == 'source_preload_started':
+            number = current.get('parent_consumer_pass') if stage['kind'] == 'source_preload_completed' else current.get('pass_no')
+            if active.operation != 'preload' or stage['kind'] == 'source_preload_started':
                 if section and str(number) in section['passes']:
                     section['passes'][str(number)]['runtime_state'] = 'running'
-            if boundaries[-1]['kind'] == 'source_preload_started':
+            if stage['kind'] == 'source_preload_started':
                 result['source_preload']['state'] = 'running'
         publication_events = [e for e in events if e['event']['kind'].startswith('publication_')]
         publishing = bool(active and (active.operation == 'publish' or
@@ -555,12 +561,10 @@ class ServerService:
         active = self.supervisor.active_for_project(root)
         events = self.supervisor.registry.recent_events(workspace_root=self.supervisor.workspace_root,
             workspace_id=workspace_id, job_id=active.job_id, limit=120) if active else []
-        boundaries = [e['event'] for e in events if e['event']['kind'] in {
-            'source_preload_started', 'source_preload_completed', 'pass_started', 'preload_target_completed'}]
-        if (active and active.state == 'running' and boundaries and boundaries[-1]['kind'] == 'source_preload_started'
-                and boundaries[-1]['values'].get('pass_no') == 0):
-            values = boundaries[-1]['values']
-            from ..application.source_preload import compact_summary
+        stage = self._active_stage(active, events)
+        if (stage and stage['kind'] == 'source_preload_started' and stage['values'].get('pass_no') == 0):
+            values = stage['values']
+            from ..application.source_preload import compact_summary, view_summaries
             for chapter in value['chapters']:
                 for target in chapter['targets']:
                     if (target['scope_id'] == values.get('scope_id') and target['chapter_id'] == values.get('chapter_id')
@@ -569,6 +573,7 @@ class ServerService:
                 chapter['summary'] = compact_summary(chapter['targets'], chapter['summary']['unresolved'])
             value['summary'] = compact_summary([t for c in value['chapters'] for t in c['targets']],
                 value['summary']['unresolved'], retained=value['summary']['retained'], attempts=value['summary']['physical_attempts'])
+            value['views'] = view_summaries([t for c in value['chapters'] for t in c['targets']])
         return dto.source_preload(value)
 
     def review(self, workspace_id, operation='load', payload=None, term_id=None):

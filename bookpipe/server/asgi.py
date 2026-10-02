@@ -137,13 +137,16 @@ def create_app(service, allowed_hosts, *, frontend=None):
             if request.method not in {'GET', 'HEAD'}:
                 raise KeyError()
             if re.fullmatch(r'assets/[A-Za-z0-9_.-]+\.(?:js|css|woff2)', path):
-                target = (assets / path).resolve(strict=True)
-                if not target.is_relative_to(assets) or target.is_symlink():
-                    raise KeyError()
+                target = assets / path
                 mime = 'text/javascript' if target.suffix == '.js' else 'text/css' if target.suffix == '.css' else 'font/woff2'
-            elif path == '' or re.fullmatch(r'(?:work(?:/workspaces/[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/(?:prepare|analyse|review|translate|publish))?)?|reader(?:/source/[^/\\]{1,255}|/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?)', path):
+            elif path == '' or re.fullmatch(r'(?:work(?:/workspaces/[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/(?:prepare|preload|analyse|review|translate|publish))?)?|reader(?:/source/[^/\\]{1,255}|/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?)', path):
                 target, mime = assets / 'index.html', 'text/html'
             else:
+                raise KeyError()
+            if any(part.is_symlink() for part in (target, *target.parents)):
+                raise KeyError()
+            target = target.resolve(strict=True)
+            if not target.is_relative_to(assets) or 'codex-home' in target.parts:
                 raise KeyError()
             data = await run_in_threadpool(target.read_bytes)
             headers = {**HEADERS, 'Cache-Control': 'public, max-age=31536000, immutable'} if path.startswith('assets/') else HEADERS

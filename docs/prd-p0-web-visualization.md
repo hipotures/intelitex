@@ -14,7 +14,7 @@ The requested experience is the P1 page adapted to P0, not a new dashboard, a JS
 
 This document supersedes only the web-UI deferral in `docs/prd-p0-p5-persistent-sessions.md`. The source-session architecture, lazy P0 execution, original dependency graph, outcome-first revert policy, and recovery fixes remain authoritative. Read that PRD, `AGENTS.md`, and both source-session validation reports before implementation.
 
-Implement in the existing dedicated worktree for this branch. Do not switch, modify, merge into, deploy, restart, or probe the production `main` checkout. Use a fresh test workspace and isolated runtime/service directories. The currently translating production book is not a test fixture. This PRD authorizes implementation and offline validation, not paid/cloud inference or production operations.
+Implement in the existing dedicated worktree for this branch. Do not switch, modify, merge into, deploy, restart, or probe the production `main` checkout. Use a fresh test workspace with its own chapter-local private Codex homes and isolated service state. The currently translating production book is not a test fixture. This PRD authorizes implementation and offline validation, not paid/cloud inference or production operations.
 
 The commit adding this PRD is documentation-only. Codex subsequently implements the scope below and records actual validation results in `docs/validation-p0-web-visualization.md`.
 
@@ -88,6 +88,10 @@ Do not clone the Clear P1 panel, call analysis reset, or offer automatic P0 dele
 Do not use chapter ID as a slot ID, conflate P1 unit IDs with P0 scope IDs, or set `slot_id = scope_id`. Use an opaque deterministic projected target ID, with nullable actual slot/generation fields. Once execution creates a slot, reconcile its association without duplicating the projected row.
 
 Store remains checkpoint authority. Immutable source packages, existing session manifests, P0 receipts, selection-verification receipts, and physical-attempt evidence remain execution/evidence authorities. The new DTO is a read projection, not another writable registry. Do not create an unrelated UI database or persist a preview plan as execution truth.
+
+The default P0 list mirrors P1. Its progress denominator counts analysis targets only. The workspace chapter P0 cell follows the same analysis preparation whenever the chapter has P1 targets; translate-only chapters use their applicable P0 targets. Accepted P0 is green, independent of model palette colors. Future translation targets do not make already loaded analysis source appear partially loaded. A separate translation list exposes the existing chunk targets, including translate-only sections, with its own authoritative summary. Lifetime P0 usage continues to include all targets. Changing views does not change source scopes, sessions, scheduling or prerequisites.
+
+Private native state lives at `PROJECT/artifacts/<chapter>/codex-home/<scope[:12]>/<slot[:12]>/`, with full identities retained in manifests and collision checks. It must never be returned by these APIs or traversed by artifact/usage enumeration, including the narrowly authorized `home/auth.json` link to configured shared credentials and the private backup of an older auth copy. Read-only inventory does not migrate homes; execution or explicit offline maintenance performs migration under locks.
 
 ### 4.2 Inventory before execution
 
@@ -167,7 +171,7 @@ Use the existing phase-page frame and shared layout/style tokens. Prefer a small
 | Analyse heading and status | `Preload · P0`; baseline status plus a separate session-availability notice when needed. |
 | Whole-book analysis summary | Source preload summary with chapters/scopes/session targets, accepted counts, and explicit unresolved planning. No entity count. |
 | Input / Cache / Reason / Output / Cost cards | Same five cards, positions, sizing, number formatting, loading/partial behavior, and tooltip treatment; pass 0 only. |
-| Analysis units table | `Source preload units`, grouped in source chapter order, with target label, state/preview button, and targeted Play. |
+| Analysis units table | Default `Analysis units`: the same analysis units and order as P1, with unit ID, word/UTF-8 byte counts, state/preview and targeted Play. Keep future translation fragments in a separate selectable list, never interleaved with analysis. |
 | P1 preview | `P0 preview`; the selected scope's exact source and saved preload acknowledgement/metadata. |
 | P1 costs and tokens accordion | `P0 costs and tokens`, including the breakdowns in section 6. |
 | Recent execution | Same card with P0-correlated activity and useful consumer/session context. |

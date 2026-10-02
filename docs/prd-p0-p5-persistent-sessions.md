@@ -198,17 +198,25 @@ Preserve all historical pass-first paths. Do not mass-move existing artifacts, r
 
 ### 7.2 Private runtime
 
-Keep live credentials and native state outside publicly served artifact paths and outside the source/repository working directory. Reuse `runtime_root` with a stable layout, for example:
+Persistent source-session-v1 native state belongs to the book workspace, chapter-first. The canonical durable location is:
 
 ```text
-RUNTIME_ROOT/PROJECT_UUID/ch0001/SCOPE_ID/SLOT_ID/
+PROJECT/artifacts/ch0001/codex-home/SCOPE_SHORT/SLOT_SHORT/
   home/                    # CODEX_HOME and private authorized auth
-  sqlite/                  # CODEX_SQLITE_HOME; preserve native DB and WAL state
-  work/                    # empty, isolated, stable cwd
+  sqlite/                  # CODEX_SQLITE_HOME; native DB, WAL and SHM state
+  work/                    # stable isolated cwd
   owner.lock
 ```
 
-The current default under the user's XDG state directory may remain, but the timestamp/PID attempt suffix must not define persistent identity. Persist the binding between project, scope, slot and runtime path. All runtime directories are private; auth files remain mode 0600 and directories mode 0700.
+Following the explicit short-name correction, `SCOPE_SHORT` and `SLOT_SHORT` are the first 12 hexadecimal characters of the full existing scope and slot identities. Preserve full identities in the session manifest and private runtime identity record; reject collisions instead of sharing state. This changes directory spelling only, never source boundaries, slot compatibility, generation, thread/session/P0 IDs, prompts, or accepted results. Store `runtime_layout_version: 2` and `runtime_path_encoding: "short-12"`.
+
+`runtime_root` and XDG state settings cannot relocate source-session-v1. Legacy transports retain their own runtime behavior. Runtime paths must be deterministically derived from the project/chapter/scope/slot binding, with no timestamps/PIDs, traversal or symlink directory components. The only permitted private-file symlink is `home/auth.json`, bound exactly to the explicitly configured owner-private regular `options.auth_source`; no arbitrary link is accepted. Validate the complete manifest, Store inventory and runtime identity before use. Several scopes and incompatible slots remain isolated under each chapter.
+
+Homes are private even though they are inside artifacts: no HTTP/static/DTO/evidence enumeration may expose credentials, SQLite or native rollouts. Ignore `codex-home/` in Git, including a project inside another repository. Keep runtime directories private (0700) and credentials private (0600). With `options.auth_source` configured, `home/auth.json` is an absolute link to that shared file, so re-login/atomic credential replacement is visible on cold resume and native refresh writes reach the shared target. Never copy stale auth on resume or overwrite the shared source. Convert an older private auth copy only under the slot lease after proving the native owner exited, preserving its refreshed bytes as private `home/.auth-before-shared-link.json`. Missing/unsafe/mismatched auth targets fail before inference; they do not trigger a new P0.
+
+Migrate non-retired version-1 external runtimes offline, under the session maintenance and ownership locks, refusing live app-server owners. Validate the original configured root and exact PROJECT_UUID/chapter/scope/slot hierarchy. Copy all native files into a private temporary sibling, verify content and permissions, fsync, atomically publish the destination, commit the manifest, then retire/remove the old directory. A durable migration journal reconciles every interruption boundary without inference or a second writable runtime. The same mechanism shortens earlier full-length workspace-local paths. Never delete the only verified copy. Unknown native storage formats fail closed.
+
+Codex 0.160.0 uses an authoritative SQLite selected-rollout path. Preserve the original index/WAL/SHM privately and rebase only its operational rollout/cwd/project-root paths in the destination copy. Preserve rollout contents, thread history and selection, including a lost-revert-acknowledgement discrepancy; ordinary R1/R2 reconciliation still decides recovery after migration.
 
 Closing a transport, ending a worker, pausing, reloading or hitting a validation error must never `rmtree` this runtime. Keep ephemeral model discovery separate. Distinguish `close_process`, `release_session`, `archive_session` and explicit destructive purge. No automatic cleanup of active or recoverable homes.
 
@@ -384,7 +392,7 @@ Closing a worker must stop or intentionally hand off its owned process group whi
 
 Honor stop/pause/reload at the existing durable boundaries. Once stop is requested, finishing P0 must not automatically start P1, and finishing a pass must not start another pass or another chapter. Cleanup may finish locally/RPC-only after acceptance when safe. If interrupted during cleanup, leave a recoverable marker. Do not start extra model turns to clean a session.
 
-Preserve the current no-tools/thin-inference isolation: private auth source only, no inherited user config, skills, memories, plugins, project instructions, tools, roots or shell access. Recheck isolation on resumed runtimes and after runtime upgrades. Do not replace refreshed private auth on every turn with an older source token; authentication refresh/bootstrap must be lock-protected and deliberate.
+Preserve the current no-tools/thin-inference isolation: private auth source only, no inherited user config, skills, memories, plugins, project instructions, tools, roots or shell access. Recheck isolation on resumed runtimes and after runtime upgrades. Use only the configured shared auth link; do not replace refreshed credentials with per-session copies. Link installation/conversion must be lock-protected and deliberate, with no native owner active.
 
 Native source and model output are sensitive book content. Do not expose homes, credentials, private absolute paths, raw prompts or native logs through workflow progress or generic web artifact endpoints. Add explicit private-path exclusion tests.
 
@@ -462,7 +470,7 @@ The steps below are one complete deliverable. Do not stop after the initial P0 s
 
 ### Step 1 - Establish isolation and baseline
 
-Verify the current branch/worktree and reviewed baseline. Inspect `AGENTS.md`, current diff and relevant tests. Use a new scratch workspace, separate runtime root and separate server ports/state from production. Record the installed Codex version and generated RPC schema support. Run the baseline offline regression suite before changing behavior when the environment supports it.
+Verify the current branch/worktree and reviewed baseline. Inspect `AGENTS.md`, current diff and relevant tests. Use a new scratch workspace with chapter-local runtimes and separate server ports/state from production. Record the installed Codex version and generated RPC schema support. Run the baseline offline regression suite before changing behavior when the environment supports it.
 
 ### Step 2 - Define typed contracts and stage graph
 
@@ -588,7 +596,7 @@ git status --short --branch
 
 These commands do not switch or merge the original checkout. The command assumes that the new local branch and destination directory do not already exist; inspect `git worktree list`/local branches before resolving a name conflict, and never use a forced reset as a shortcut.
 
-Use separate book project paths, runtime root, server/supervisor state, sockets, PID files and ports for testing. Worktrees isolate code, not arbitrary external translation data or services. Never repoint or restart the service currently serving `main` as part of this implementation.
+Use separate book project paths (including their chapter-local runtimes), server/supervisor state, sockets, PID files and ports for testing. Worktrees isolate code, not arbitrary external translation data or services. Never repoint or restart the service currently serving `main` as part of this implementation.
 
 ## 19. Definition of done
 

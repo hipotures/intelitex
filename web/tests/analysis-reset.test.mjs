@@ -118,6 +118,8 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       await page.reload()
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
       const savedP1 = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
+      // The workspace shell mounts before the refreshed pipeline snapshot.
+      await savedP1.and(page.locator('button:not([disabled])')).waitFor()
       assert.equal(await savedP1.isEnabled(), true, 'saved P1 work opens its diagnostic detail')
       await savedP1.click()
       await page.locator('[data-ui-debug-id="PAC"]').getByRole('button', { name: 'Clear P1' }).waitFor()

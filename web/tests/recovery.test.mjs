@@ -21,8 +21,11 @@ test('1000 sections, 2000 terms, stream bursts, offline/refocus and one shared E
  await page.goto(url+'/work/workspaces/prepared')
  await page.getByRole('button',{name:'Run',exact:true}).click()
  await page.getByRole('button',{name:'Open Review',exact:true}).waitFor()
- const original=await (await context.request.get(url+'/api/workspaces/prepared/pipeline')).json()
  const review=await (await context.request.get(url+'/api/workspaces/prepared/review')).json()
+ // Analysis completion can precede publishing the Review draft. Freeze the
+ // mocked pipeline only after reading that draft, or it disables Review reads.
+ const original=await (await context.request.get(url+'/api/workspaces/prepared/pipeline')).json()
+ assert.equal(original.review.prepared,true)
  const terms=Array.from({length:2000},(_,i)=>({...review.terms[0],id:`T${String(i+1).padStart(6,'0')}`,source:`Term ${String(i+1).padStart(4,'0')}`,custom:'',reviewed:false}))
  await page.route('**/api/workspaces/prepared/review/terms/*/evidence',route=>route.fulfill({json:{term_id:new URL(route.request().url()).pathname.split('/').at(-2),entries:[],warnings:[],choice_pending_approval:false}}))
  await page.route('**/api/workspaces/prepared/review',route=>route.fulfill({json:{...review,terms}}))

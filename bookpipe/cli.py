@@ -105,7 +105,7 @@ def parser() -> argparse.ArgumentParser:
         ("doctor", "Validate local configuration and Codex protocol without a model turn."),
         ("attempts", "Inspect retained attempt evidence offline."),
         ("usage", "Report retained token accounting offline."),
-        ("source-sessions", "Inspect, archive, explicitly rebuild or purge a private source-session slot; no inference."),
+        ("source-sessions", "Inspect, migrate, archive, explicitly rebuild or purge a private source-session slot; no inference."),
         ("catalog-import", "Validate and atomically activate a model/pricing catalog."),
         ("discover", "Explicitly query a selected provider's live model metadata."),
         ("smoke", "Run one explicitly authorized live structured-output request."),
@@ -116,7 +116,7 @@ def parser() -> argparse.ArgumentParser:
         if name == "attempts":
             command.add_argument("--attempt", help="Project-relative attempt directory; omit to list all.")
         if name == "source-sessions":
-            command.add_argument("--action", choices=("inspect", "archive", "rebuild", "purge"), default="inspect")
+            command.add_argument("--action", choices=("inspect", "archive", "rebuild", "purge", "migrate"), default="inspect")
             command.add_argument("--slot", help="Complete slot ID for explicit maintenance.")
         if name == "usage":
             command.add_argument("--by-unit", action="store_true",

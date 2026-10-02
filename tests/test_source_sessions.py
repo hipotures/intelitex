@@ -585,10 +585,11 @@ def test_ack_without_history_proof_never_marks_ready(project, tmp_path, native_m
     assert len(native_mock['calls']) == 2
 
 
-def test_private_auth_is_not_replaced_and_lease_refuses_second_owner(project, tmp_path):
+def test_shared_auth_link_refresh_and_lease_refuses_second_owner(project, tmp_path):
     client, settings = configured(project, tmp_path)
     auth = tmp_path / 'authorized-auth.json'
     auth.write_text('{"fake":"original"}')
+    auth.chmod(0o600)
     client.settings['options']['auth_source'] = str(auth)
     store = Store(project)
     try:
@@ -596,14 +597,20 @@ def test_private_auth_is_not_replaced_and_lease_refuses_second_owner(project, tm
         first = PersistentSourceSessionManager(store, client, scope)
         first.acquire()
         private = first.home / 'auth.json'
+        assert private.is_symlink() and private.readlink() == auth
         assert private.stat().st_mode & 0o777 == 0o600
         private.write_text('{"fake":"refreshed"}')
+        assert auth.read_text() == '{"fake":"refreshed"}'
         second = PersistentSourceSessionManager(store, client, scope)
         with pytest.raises(PipelineError, match='busy'):
             second.acquire()
         first.close()
+        replacement = tmp_path / 'replacement-auth.json'
+        replacement.write_text('{"fake":"relogged-in"}')
+        replacement.chmod(0o600)
+        replacement.replace(auth)
         second.acquire()
-        assert private.read_text() == '{"fake":"refreshed"}'
+        assert private.is_symlink() and private.read_text() == '{"fake":"relogged-in"}'
         second.close()
     finally:
         store.close()

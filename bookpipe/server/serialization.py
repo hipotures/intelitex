@@ -131,7 +131,7 @@ def usage(value):
     return result
 
 
-PRELOAD_SUMMARY = 'state source_scopes required accepted needing_execution pending running failed unverifiable not_applicable unresolved retained physical_attempts session_warnings denominator'
+PRELOAD_SUMMARY = 'state source_scopes required accepted needing_execution pending running failed unverifiable not_applicable unresolved retained physical_attempts session_warnings unfinished_consumers cleanup_pending_sessions recovery_required_sessions denominator'
 PRELOAD_TARGET = ('target_id chapter_id scope_id source_sha256 source_map_sha256 label source_words source_utf8_bytes source_blocks planning_state profiles '
                   'provider model effort baseline_state session_state relevance slot_id generation thread_id '
                   'accepted_at selection_verified_at last_verified_at reported_model reported_effort acknowledgement '
@@ -156,6 +156,8 @@ def preload_target(value):
 def source_preload(value):
     result = pick(value, 'format_version workspace_id execution_mode applicable prepared planning_state observed_at revision intent_revision reason history_truncated')
     result['summary'] = pick(value['summary'], PRELOAD_SUMMARY)
+    result['views'] = {name: pick(summary, PRELOAD_SUMMARY) for name, summary in value.get('views', {}).items()
+                       if name in ('analysis', 'translation')}
     result['chapters'] = [{**pick(c, 'chapter_id title processing reason'), 'summary': pick(c['summary'], PRELOAD_SUMMARY),
                            'targets': [preload_target(t) for t in c['targets']]} for c in value['chapters']]
     result['assignments'] = [pick(a, 'pass_no profile provider model effort') for a in value['assignments']]

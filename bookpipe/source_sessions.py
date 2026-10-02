@@ -22,6 +22,7 @@ from .codex_effort import rollout_effort_evidence, verify_reported_selection
 from .evidence import AttemptRecorder, EvidenceError, recorded_model_submission, utc_now
 from .progress import ProgressEvent
 from .util import PipelineError, atomic_json, digest, file_lock, read_json
+from . import source_runtime
 
 MODE = codec.WIRE_FORMAT
 DEFAULT_EXECUTION = {"version": 1, "codex_mode": MODE, "source_scope_policy": "exact-existing-unit",
@@ -44,6 +45,8 @@ def validate_execution(settings):
 
 def scope_for(store, key, inputs, unit_context=None):
     chapter = unit_context.chapter_id if unit_context else key.split("/", 1)[1].split("_", 1)[0]
+    source_runtime.identifier(chapter)
+    source_runtime.no_links(store.root.absolute() / 'artifacts' / chapter / 'sources')
     book = read_json(store.root / "book.json") if (store.root / "book.json").is_file() else {}
     revision = book.get("source_fingerprint", "scratch-source-v1")
     scope = codec.resolve_scope(inputs["SOURCE_BLOCKS"], chapter, revision)
@@ -227,12 +230,7 @@ class PersistentSourceSessionManager:
         self.source_root = store.root / "artifacts" / scope.chapter_id / "sources" / scope.scope_id
         self.directory = self.source_root / "sessions" / self.slot_id
         self.manifest_path = self.directory / "manifest.json"
-        configured = provider.settings.get("runtime_root")
-        state = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
-        runtime_base = Path(configured).expanduser() if configured else state / "intelitex" / "codex"
-        self.runtime = (runtime_base / store.get("source_project_uuid") / scope.chapter_id / scope.scope_id / self.slot_id).resolve()
-        if self.runtime.is_relative_to(store.root.resolve()) or self.runtime.is_relative_to(Path(__file__).resolve().parents[1]):
-            raise PipelineError("Private source-session runtime_root must be outside the workspace and repository.")
+        self.runtime = source_runtime.runtime_path(store.root, scope.chapter_id, scope.scope_id, self.slot_id)
         self.home, self.sqlite, self.work = (self.runtime / n for n in ("home", "sqlite", "work"))
 
     @property
@@ -260,39 +258,39 @@ class PersistentSourceSessionManager:
         os.chmod(self.manifest_path, 0o600)
 
     def acquire(self):
+        source_runtime.no_links(self.manifest_path.absolute())
         existed = self.manifest_path.is_file()
         self.record = read_json(self.manifest_path) if existed else {
             "version": 1, "project_uuid": self.store.get("source_project_uuid"), "scope": self.scope.reference,
             "slot_id": self.slot_id, "generation": self.generation, "compatibility_id": self.compatibility_id, "compatibility": self.compatibility,
-            "runtime": str(self.runtime), "state": "absent", "p0_status": "absent", "submissions": []}
-        if (self.record.get("compatibility") != self.compatibility or self.record.get("runtime") != str(self.runtime)):
+            "runtime": str(self.runtime), "runtime_layout_version": source_runtime.LAYOUT_VERSION, "runtime_path_encoding": "short-12",
+            "state": "absent", "p0_status": "absent", "submissions": []}
+        source_runtime.binding(self.store, self.manifest_path, self.record)
+        if self.record.get("compatibility") != self.compatibility:
             raise PipelineError("Source-session binding mismatch; preserve evidence and explicitly rebuild in a new generation.")
         if self.record.get("retired") or (self.record.get("state") == "recovery_required" and
                 self.record.get("reason") == "compaction/context alteration"):
             raise PipelineError("Source session is retired or compacted; explicitly rebuild its generation before new inference.")
+        if existed:
+            self.record = source_runtime.migrate_runtime(self.store, self.manifest_path,
+                auth_source=self.provider.settings.get('options', {}).get('auth_source'))
+        if self.record.get('runtime') != str(self.runtime):
+            raise PipelineError('Source-session runtime binding mismatch; no external fallback allowed.')
         if existed and self.record.get("thread_id") and any(not p.is_dir() for p in (self.home, self.sqlite, self.work)):
             raise PipelineError("Durable native source-session state is missing. Restore the complete private runtime including SQLite/WAL; no automatic P0 rebuild.")
+        source_runtime.protect_git(self.store.root, self.scope.chapter_id)
         for path in (self.runtime, self.home, self.sqlite, self.work):
-            path.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(path, 0o700)
+            source_runtime.private_directory(path)
+        source_runtime.no_links(self.runtime / 'owner.lock')
         self.lease = file_lock(self.runtime, "owner.lock", "Source session is busy; another owner holds its lease.")
         self.lease.__enter__()
         try:
-            owner = self.record.get("process_owner")
-            if owner and _birth(owner["pid"]) == owner.get("birth"):
-                raise PipelineError("Source session has a surviving app-server owner; reconcile that process before retrying. No duplicate submission.")
+            os.chmod(self.runtime / 'owner.lock', 0o600)
+            source_runtime.bind_directory(self.runtime, (self.store.get('source_project_uuid'), self.scope.chapter_id,
+                                                       self.scope.scope_id, self.slot_id))
+            source_runtime._idle(self.record)
             auth = self.provider.settings.get("options", {}).get("auth_source")
-            if auth and not (self.home / "auth.json").exists():
-                source = Path(auth).expanduser().resolve()
-                if not source.is_file():
-                    raise PipelineError("Configured authorized Codex authentication source is unavailable.")
-                temporary = self.home / ".auth.tmp"
-                with source.open("rb") as src, temporary.open("wb") as dst:
-                    os.chmod(temporary, 0o600)
-                    shutil.copyfileobj(src, dst)
-                    dst.flush()
-                    os.fsync(dst.fileno())
-                os.replace(temporary, self.home / "auth.json")
+            source_runtime.install_auth_link(self.home, auth)
             self.transition(self.record["state"])
         except BaseException:
             self.close()
@@ -301,7 +299,8 @@ class PersistentSourceSessionManager:
     def connect(self, recorder):
         connected_at = time.monotonic()
         from . import codex_transport as transport
-        self.proc = subprocess.Popen(transport.app_server_argv(self.executable), stdin=subprocess.PIPE,
+        argv = transport.app_server_argv(self.executable) + ['-c', 'cli_auth_credentials_store="file"']
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.work,
             env=self.provider._process_env(self.home, self.sqlite), start_new_session=True)
         self.transition(self.record["state"], process_owner={"pid": self.proc.pid, "birth": _birth(self.proc.pid)})
@@ -915,7 +914,7 @@ def session_inventory(root):
         record = read_json(path)
         rows.append({"manifest": str(path.relative_to(root)), **{k: record.get(k) for k in (
             "version", "scope", "slot_id", "generation", "state", "p0_status", "thread_id", "session_id",
-            "p0_turn_id", "cleanup_required", "retained_active_turns", "last_verified_at", "retired")},
+            "p0_turn_id", "cleanup_required", "retained_active_turns", "last_verified_at", "retired", "runtime_layout_version")},
             "model": record.get("compatibility", {}).get("model"),
             "effort": record.get("compatibility", {}).get("effort")})
     return {"format_version": 1, "sessions": rows, "model_turn": False}
@@ -960,16 +959,23 @@ def retire_session(store, slot_id, *, rebuild=False, purge=False):
     if len(paths) != 1:
         raise PipelineError("Source-session slot is missing or ambiguous.")
     path = paths[0]
-    record = read_json(path)
-    runtime = Path(record['runtime'])
-    expected = (store.get('source_project_uuid'), path.parts[-6], record['scope']['scope_id'], slot_id)
-    if tuple(runtime.parts[-4:]) != expected or runtime.is_symlink() or runtime.resolve().is_relative_to(store.root.resolve()):
-        raise PipelineError("Unsafe private runtime binding; no maintenance performed.")
+    record = read_json(source_runtime.no_links(path.absolute()))
+    expected, identity = source_runtime.binding(store, path, record)
+    if not record.get('retired'):
+        record = source_runtime.migrate_runtime(store, path)
+    runtime = source_runtime.no_links(Path(record['runtime']))
+    if record.get('runtime_layout_version', 1) == 1:
+        source_runtime._old_path(store, record, identity, record['runtime'])
+    elif record.get('runtime_layout_version') != 2 or runtime != expected:
+        raise PipelineError('Unsafe private runtime binding; no maintenance performed.')
     if purge and not record.get('retired'):
         raise PipelineError("Archive or rebuild the slot before an explicit destructive purge.")
     if not runtime.is_dir() and purge:
         raise PipelineError("Private runtime already missing; retain the retired manifest as evidence.")
+    source_runtime.no_links(runtime / 'owner.lock')
     with file_lock(runtime, 'owner.lock', 'Source session is busy; maintenance refuses active owners.'):
+        if record.get('runtime_layout_version') == 2:
+            source_runtime.verify_directory(runtime, identity)
         owner = record.get('process_owner')
         if owner and _birth(owner['pid']) == owner.get('birth'):
             raise PipelineError("Source session has a live app-server owner; maintenance refused.")

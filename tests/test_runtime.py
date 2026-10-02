@@ -673,9 +673,12 @@ def test_malformed_protocol_and_launch_failure_do_not_leave_active_jobs(runtime)
     assert failed.state == "failed" and failed.error["type"] == "WorkerProtocolError"
     # Terminal state is visible before supervised process/descendant cleanup can
     # release ownership. A new mutating job must wait for that release.
-    if supervisor.owns_project(root / "a"):
-        with pytest.raises(JobConflict):
-            supervisor.start(spec(root))
+    with supervisor.lock:
+        # Observe and assert under the same lifecycle mutex: cleanup may finish
+        # between separate calls, legitimately permitting the next worker.
+        if supervisor.owns_project(root / "a"):
+            with pytest.raises(JobConflict):
+                supervisor.start(spec(root))
     for owned in list(supervisor.owned.values()):
         if owned.monitor:
             owned.monitor.join(timeout=5)
@@ -803,3 +806,22 @@ def test_owned_remains_until_stop_cleanup_finishes_and_shutdown_waits(runtime, m
     assert shutdown_done.is_set() and not supervisor.owned
     assert not owned.monitor.is_alive() and not owned.stopper.is_alive()
     assert supervisor.get(job.job_id).state == "cancelled"
+
+
+def test_analysis_memory_limit_has_actionable_safe_failure(tmp_path):
+    from types import SimpleNamespace
+    from bookpipe.runtime.worker import execute
+    from bookpipe.runtime.models import Job, JobSpec
+    from bookpipe.runtime.protocol import decode
+    from bookpipe.util import PipelineError
+    (tmp_path / 'w').mkdir()
+    frames = []
+    def fail(_sink):
+        raise PipelineError('Directly relevant analysis memory exceeds memory_tokens. Increase the limit or use smaller analysis sections.')
+    assert execute(JobSpec(str(tmp_path), 'w', str(tmp_path / 'w'), 'analyze'),
+                   SimpleNamespace(send=frames.append), fail) == 1
+    safe = decode(json.dumps(frames[0]) + '\n')
+    assert safe['error']['code'] == 'analysis_memory_limit'
+    public = Job('j', str(tmp_path), 'w', str(tmp_path / 'w'), 'analyze', state='failed', error=safe['error']).public()
+    assert 'Increase the workspace memory limit' in public['error']['message']
+    assert 'no model call' in public['error']['message']

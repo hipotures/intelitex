@@ -933,13 +933,21 @@ def test_asgi_guards_and_static_route_isolation(api, tmp_path):
     frontend = tmp_path / 'dist'
     frontend.mkdir()
     (frontend / 'index.html').write_text('<html>Intelitex</html>')
+    private = frontend / 'artifacts/ch0001/codex-home/scope/slot/home/auth.json'
+    private.parent.mkdir(parents=True)
+    private.write_text('private-runtime-sentinel')
+    (frontend / 'assets').mkdir()
+    (frontend / 'assets/leak.js').symlink_to(private)
     app = create_app(service, {'test:80'}, frontend=frontend)
     async def checks():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test:80', headers={'Host': 'test:80'}) as client:
             assert (await client.get('/work/workspaces/book/review')).status_code == 200
+            for method in ('GET', 'HEAD'):
+                response = await client.request(method, '/work/workspaces/book/preload')
+                assert response.status_code == 200 and 'text/html' in response.headers['content-type']
             assert (await client.get('/reader/source/original.epub')).status_code == 200
             assert (await client.get('/reader/source/Book%20One.epub')).status_code == 200
-            for path in ['/api/missing', '/assets/missing.js', '/book.json', '/docs']:
+            for path in ['/api/missing', '/assets/missing.js', '/assets/leak.js', '/book.json', '/docs']:
                 response = await client.get(path)
                 assert response.status_code == 404
                 assert response.headers['content-type'].startswith('application/json')
@@ -953,7 +961,27 @@ def test_asgi_guards_and_static_route_isolation(api, tmp_path):
             for value in ['{"source_id":"book","source_id":"book"}', '{"value":NaN}', '[]']:
                 response = await client.post('/api/workspaces', content=value, headers={'Content-Type': 'application/json'})
                 assert response.status_code == 400
+            (frontend / 'index.html').unlink()
+            (frontend / 'index.html').symlink_to(private)
+            assert (await client.get('/work/workspaces/book/preload')).status_code == 404
     asyncio.run(checks())
+
+
+def test_private_workspace_runtime_is_not_web_content(api):
+    _, root, service, server = api
+    private = root / 'artifacts/ch0001/codex-home/scope/slot'
+    for name in ('home/auth.json', 'home/sessions/rollout.jsonl', 'sqlite/state_5.sqlite'):
+        path = private / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('private-runtime-sentinel')
+        for prefix in ('', '/api/workspaces/book', '/work/workspaces/book'):
+            code, value = request(server, 'GET', prefix + '/' + str(path.relative_to(root)))
+            assert code == 404
+            assert 'private-runtime-sentinel' not in json.dumps(value)
+    for endpoint in ('pipeline', 'usage', 'source-preload'):
+        code, value = request(server, 'GET', '/api/workspaces/book/' + endpoint)
+        assert code == 200
+        assert 'private-runtime-sentinel' not in json.dumps(value)
 
 
 def test_request_receipt_two_tabs_replays_and_conflicting_payload_rejects(api):

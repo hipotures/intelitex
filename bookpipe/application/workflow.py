@@ -147,10 +147,17 @@ class WorkflowQueries:
                                           for c in book.get('non_narrative_sections', [])],
                     'publication': publication, 'actions': actions}
             if include_usage:
-                from .source_preload import SourcePreloadQueries
+                from .source_preload import SourcePreloadQueries, view_summaries
                 preload, _ = SourcePreloadQueries(self.dependencies).build(
                     root, store, book=source_book, plan=plan if files.is_file(root / 'analysis_plan.json') else None,
                     usage=usage_report)
                 result['source_preload'] = preload['summary']
-                result['source_preload_sections'] = {c['chapter_id']: c['summary'] for c in preload['chapters']}
+                result['source_preload_sections'] = {}
+                for chapter in preload['chapters']:
+                    summary = chapter['summary']
+                    if any(t['relevance'] == 'unresolved' or any(c['pass_no'] == 1 for c in t['consumers'])
+                           for t in chapter['targets']):
+                        summary = view_summaries(chapter['targets'])['analysis']
+                        summary['denominator'] = 'P0 targets for this chapter\'s P1 units'
+                    result['source_preload_sections'][chapter['chapter_id']] = summary
             return result, source_book, usage_report, config
