@@ -576,3 +576,6 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 .book-metadata-original { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
 .book-metadata-original span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 .book-metadata-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.workspace-label[title] { cursor:text; }
+.workspace-label.empty { color:var(--muted,#8b93a1);font-weight:400;opacity:.6; }
+.workspace-label-input { font:inherit;color:inherit;background:transparent;border:1px solid var(--accent);border-radius:4px;padding:1px 6px;min-width:180px; }

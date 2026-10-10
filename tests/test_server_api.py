@@ -735,3 +735,22 @@ def test_request_scoped_services_preserve_frozen_manifest_validation(api):
     for suffix in ('review', 'reader', 'reader/markers', 'reader/chapters/ch0001'):
         assert request(server, 'GET', '/api/workspaces/book/' + suffix)[0] == 422
     assert request(server, 'DELETE', '/api/workspaces/book/reader/markers/M000001', {'revision': 'stale'})[0] == 422
+
+
+def test_workspace_label_edit_is_per_workspace_and_validated(api):
+    _, root, service, server = api
+    ident = root.name
+    path = f'/api/workspaces/{ident}/label'
+    assert request(server, 'PATCH', path, {'label': 'x'})[0] == 400  # legacy workspace without workspace.json
+    atomic_json(root / 'workspace.json', {
+        'format_version': 1, 'source_id': 'book', 'source_fingerprint': 'a' * 64,
+        'source_language': 'en', 'target_language': 'pl', 'label': 'old'})
+    status, body = request(server, 'PATCH', path, {'label': '  DEMO  '})
+    assert status == 200 and body == {'label': 'DEMO'}
+    assert read_json(root / 'workspace.json')['label'] == 'DEMO'
+    listing = request(server, 'GET', '/api/workspaces')[1]['workspaces'][0]
+    assert listing['metadata']['label'] == 'DEMO'
+    for bad in ({'label': 'x' * 65}, {'label': 5}, {'label': 'a\nb'}, {}, {'label': 'x', 'extra': 1}):
+        assert request(server, 'PATCH', path, bad)[0] == 400
+    assert request(server, 'PATCH', path, {'label': ''})[1] == {'label': None}
+    assert 'label' not in read_json(root / 'workspace.json')

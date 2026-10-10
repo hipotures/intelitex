@@ -8,6 +8,7 @@ import { useCommand } from '../../api/mutations'
 import { Button, Cover, Empty, ErrorNote, Overlay } from '../../components/ui/common'
 import { announce } from '../../app/notifications'
 import { Action } from '../pipeline/Action'
+import { EditableLabel } from '../../components/EditableLabel'
 import { debugTag } from '../../debug/regions'
 import { SourceDetails, SetupWorkspace } from './LibrarySource'
 import { LibraryGroups } from './LibraryGroups'
@@ -22,9 +23,9 @@ function libraryPageLimit(grid: HTMLDivElement | null, loaded = 0) {
 
 export function WorkspaceRow({ workspace }: { workspace: Workspace }) {
   const p = useApi(endpoint(workspace.workspace_id, 'summary'), pipelineSummarySchema, workspace.prepared)
-  return <div className="workspace-row" {...debugTag('WRC', workspace.workspace_id)} onClick={e => { if (!(e.target as HTMLElement).closest('button,a')) e.currentTarget.querySelector<HTMLAnchorElement>('a')?.click() }}>
+  return <div className="workspace-row" {...debugTag('WRC', workspace.workspace_id)} onClick={e => { if (!(e.target as HTMLElement).closest('button,a,.workspace-label')) e.currentTarget.querySelector<HTMLAnchorElement>('a')?.click() }}>
     <Cover title={workspace.metadata.title} />
-    <div><Link className="workspace-title" to="/work/workspaces/$workspaceId" params={{ workspaceId: workspace.workspace_id }}>{workspace.metadata.title}</Link>{workspace.metadata.label && <div className="workspace-label">{workspace.metadata.label}</div>}<div className="workspace-author">{workspace.metadata.creators.join(', ') || '—'} · {workspace.metadata.source_language ?? workspace.metadata.language ?? 'Source language unconfirmed'} → {workspace.metadata.target_language ?? 'target unknown'}</div></div>
+    <div><Link className="workspace-title" to="/work/workspaces/$workspaceId" params={{ workspaceId: workspace.workspace_id }}>{workspace.metadata.title}</Link><EditableLabel id={workspace.workspace_id} label={workspace.metadata.label ?? null} /><div className="workspace-author">{workspace.metadata.creators.join(', ') || '—'} · {workspace.metadata.source_language ?? workspace.metadata.language ?? 'Source language unconfirmed'} → {workspace.metadata.target_language ?? 'target unknown'}</div></div>
     <div className="workspace-state"><span className={`status-dot ${workspace.active_job ? 'running' : ''}`} />{workspace.active_job?.state ?? p.data?.stage ?? (workspace.prepared ? 'Loading…' : 'Not prepared')}<small>{p.data ? `${p.data.progress.translation.completed}/${p.data.progress.translation.required} translation units complete` : 'Inspect source locally'}</small></div>
     <div className="row-progress"><div className="progress-wrap"><progress max={100} value={p.data?.progress.percent ?? workspace.progress?.percent ?? undefined} title="Workflow progress — not an ETA" /><div className="progress-value">{p.data?.progress.percent ?? workspace.progress?.percent ?? '—'}{p.data?.progress.percent != null || workspace.progress?.percent != null ? '%' : ''}</div></div></div>
     <div className="row-actions"><Action workspace={workspace} pipeline={p.data} row /></div>

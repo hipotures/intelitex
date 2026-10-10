@@ -84,6 +84,29 @@ class ServerService:
             return book_metadata.update(root, self.application.web.book(root),
                                         revision(payload), payload['corrections'])
 
+    def workspace_label(self, ident, payload):
+        """Rename this workspace's display label only; book metadata stays shared."""
+        fields(payload, {'label'}, {'label'})
+        label = payload['label']
+        if label is not None:
+            if not isinstance(label, str) or len(label.strip()) > 64 or any(ord(c) < 32 for c in label):
+                raise ValueError('Invalid workspace label.')
+            label = label.strip() or None
+        root = self.workspaces.resolve(ident)
+        with self.application.web.dependencies.project_lock(root):
+            from ..application.workspace_setup import read_workspace_setup
+            from ..util import atomic_json
+            setup = read_workspace_setup(root)
+            if not setup:
+                raise ValueError('This workspace has no editable label.')
+            setup.pop('label', None)
+            if label is not None:
+                setup['label'] = label
+            atomic_json(root / 'workspace.json', setup)
+        with self._summary_lock:
+            self._summary_cache.pop(root, None)
+        return {'label': label}
+
     def last_job(self, ident):
         resets = self.workspaces.root / ident / 'history' / 'p1_resets'
         reset_time = max((item.stat().st_mtime for item in resets.glob('*/completed.json')), default=None)
