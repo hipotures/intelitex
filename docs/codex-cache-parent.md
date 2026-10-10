@@ -123,5 +123,5 @@ cache routing key inheritance, configuration precedence and safe fallback.
 No paid/live inference is part of implementation testing.
 
 See the [deployment verification report](codex-cache-parent-validation.md) for
-executed regression checks, pre-existing failures and effective salvation-03
+executed regression checks, pre-existing failures and effective example-book-03
 profile resolution.

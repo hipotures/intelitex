@@ -40,12 +40,12 @@ session reuse and accounting, not a real provider cache hit.
 
 ## Isolation and resources
 
-All work and commits stay in `/home/user/DEV/intelitex-p0-p5`. No production main
+All work and commits stay in `$HOME/DEV/intelitex-p0-p5`. No production main
 checkout, listener, service, active translation workspace, or native home was
 opened, changed, restarted, or deployed. No push or merge was performed.
 
 Private validation root:
-`/home/user/.local/state/intelitex-p0-p5-validation/web-visualization-20261002`.
+`$HOME/.local/state/intelitex-p0-p5-validation/web-visualization-20261002`.
 Its scratch, service state, evidence, control Codex home and SQLite home are
 separate from production. Native fixtures use disposable per-test homes and
 loopback Responses servers with authentication disabled. No configured user
@@ -80,7 +80,7 @@ isolated environment variables rather than changing the command's test selection
 
 | Command | Actual result | Evidence |
 | --- | --- | --- |
-| `.venv/bin/python /home/user/.codex/skills/codex-app-server/scripts/audit_installed_protocol.py` | Passed for installed Codex CLI 0.160.0; startup/schema/initialize/thread-start/skills checks; no model turn or authentication. | `audit.log` |
+| `.venv/bin/python $HOME/.codex/skills/codex-app-server/scripts/audit_installed_protocol.py` | Passed for installed Codex CLI 0.160.0; startup/schema/initialize/thread-start/skills checks; no model turn or authentication. | `audit.log` |
 | `npm ci` in `web/` | 280 packages installed, 281 audited, zero reported vulnerabilities. Existing ESLint deprecation warning; no dependency upgrade. | `npm-ci.log` |
 | `.venv/bin/python -m pytest -q --basetemp=…/tmp/backend-release` | **1878 passed**, 3 warnings, **507.87 s**. Complete final Python regression. | `backend-release.log` |
 | `.venv/bin/python -m pytest -q tests/test_source_sessions.py tests/test_source_preload.py --basetemp=…/tmp/native-release` | **133 passed**, **152.24 s**, under the separate 256 MiB native cap. Includes all R1/R2 and new P0 command/read/ordering tests. | `native-release.log` |

@@ -98,14 +98,14 @@ replacement and delayed HTTP responses arriving after newer live events.
 
 ## Applied migration — 2026-09-27
 
-The registry for `/home/user/translations` was rehearsed on an independent
+The registry for `$HOME/translations` was rehearsed on an independent
 SQLite backup, then migrated through the existing server's reload. The server
 returned on the same PID and port; no second production server was started.
 
 - 53 jobs and all 52 request receipts migrated; all 10,898 retained legacy events
   preserved in the JSON migration export.
 - Every individual job API response and every request receipt matched the old
-  registry. Workspace listings and salvation-02 activity were unchanged.
+  registry. Workspace listings and example-book-02 activity were unchanged.
 - All 28,313 pre-existing protected workspace files retained their SHA-256 hashes.
   No translation/model invocation or publication was performed on live books.
 - Retired DB/WAL/SHM verification passed after API reads; the server had no open

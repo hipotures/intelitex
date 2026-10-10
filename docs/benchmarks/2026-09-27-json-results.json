@@ -17,7 +17,7 @@
     "storage": {
       "device": "/dev/sdb",
       "filesystem": "ext4",
-      "mount": "/home/user",
+      "mount": "$HOME",
       "model": "QEMU HARDDISK",
       "rotational": false
     },
@@ -27,7 +27,7 @@
   "samples": 30,
   "cache": "warm; no drop_caches",
   "files": {
-    "/home/user/translations/salvation-02/book.json": {
+    "$HOME/translations/example-book-02/book.json": {
       "bytes": 12785789,
       "pretty_bytes": 12785789,
       "compact_bytes": 8786057,
@@ -694,7 +694,7 @@
         }
       }
     },
-    "/home/user/translations/salvation-02/analysis_plan.json": {
+    "$HOME/translations/example-book-02/analysis_plan.json": {
       "bytes": 2980865,
       "pretty_bytes": 2980865,
       "compact_bytes": 2208144,
@@ -1361,7 +1361,7 @@
         }
       }
     },
-    "/home/user/translations/salvation-02/terms.review.json": {
+    "$HOME/translations/example-book-02/terms.review.json": {
       "bytes": 2598469,
       "pretty_bytes": 2598469,
       "compact_bytes": 1787413,
@@ -2028,7 +2028,7 @@
         }
       }
     },
-    "/home/user/translations/salvation-02/analysis_inputs/ch0011_a001.json": {
+    "$HOME/translations/example-book-02/analysis_inputs/ch0011_a001.json": {
       "bytes": 175798,
       "pretty_bytes": 175798,
       "compact_bytes": 116036,
@@ -2695,7 +2695,7 @@
         }
       }
     },
-    "/home/user/translations/.runtime/jobs/f8e81f3d6a0d556e61b13d7eb14a695baa473963af31d2d3d4304bbd69aa3d49.json": {
+    "$HOME/translations/.runtime/jobs/f8e81f3d6a0d556e61b13d7eb14a695baa473963af31d2d3d4304bbd69aa3d49.json": {
       "bytes": 109033,
       "pretty_bytes": 109033,
       "compact_bytes": 68481,

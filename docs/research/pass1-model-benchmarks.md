@@ -10,7 +10,7 @@ The original detailed reports and implementation prompts remain available in Git
 
 ## Workload and baseline
 
-The main experiment series used one completed Pass-1 unit from the Evolutionary Void test project:
+The main experiment series used one completed Pass-1 unit from a long-novel test project:
 
 - task: `pass1/ch0005_a001`;
 - source blocks: 637;

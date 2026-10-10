@@ -43,7 +43,7 @@ A separate reported failure was reproduced with read-only diagnostics: required 
 
 Exactly **one pre-existing native test runtime** was migrated using `migrate_project`, not recreated:
 
-- Project: `/home/user/.local/state/intelitex-p0-p5-validation/p0-status-followup-20261002/tmp/native/test_installed_all_passes_one_0/project`.
+- Project: `$HOME/.local/state/intelitex-p0-p5-validation/p0-status-followup-20261002/tmp/native/test_installed_all_passes_one_0/project`.
 - Old suffix: `private-native/3f18e6540d924ff49051880bdbb4e676/unit/beec115f8306f805fa599dd67882b78bd614d578b7e0a4afab53ba8d108758ca/bfdb6e46b5f5cc5c205afc8f720b712d0299fad436dbc4f5737b74c2d8e5278b/`.
 - New project-relative runtime: `artifacts/unit/codex-home/beec115f8306/bfdb6e46b5f5/`.
 - Thread and session ID before/after: `01a0fd8f-789b-7b72-98ca-a986759dffe5`.
@@ -69,7 +69,7 @@ Final scratch data is under `/var/tmp/intelitex-p0-p5-final-3d88nmg1`, on a file
 | `npm --prefix web test` | Passed in isolated source snapshot; typecheck/build, 69 unit tests and 21 browser tests, 0 failed/skipped; final browser duration 249.07 seconds |
 | Pre-existing native migration + cold history resume | Passed; 1 migrated, second migration 0, original thread/session/P0 retained, 0 model turns |
 
-Final Python, compile, Node and frontend scopes recorded zero OOM events/kills. The final Python scope peaked at 512.0 MiB under its 512 MiB cap. Frontend memory reached its 768 MiB limit and completed successfully under reclamation; this is not reported as extra capacity. Logs, resource summaries, browser screenshots and migration/auth proofs are retained outside Git under `/home/user/.local/state/intelitex-p0-p5-validation/p0-status-followup-20261002`.
+Final Python, compile, Node and frontend scopes recorded zero OOM events/kills. The final Python scope peaked at 512.0 MiB under its 512 MiB cap. Frontend memory reached its 768 MiB limit and completed successfully under reclamation; this is not reported as extra capacity. Logs, resource summaries, browser screenshots and migration/auth proofs are retained outside Git under `$HOME/.local/state/intelitex-p0-p5-validation/p0-status-followup-20261002`.
 
 The focused migration tests cover new canonical paths, ignored legacy runtime roots, fresh-manager cold resume, old-layout migration/idempotence, five interruption boundaries followed by a fresh subprocess, actual cross-filesystem copying, active locks/processes, unverifiable owners, corrupt identity/path bindings, private symlink escapes, short-name collision refusal, old full-length local names and private HTTP/artifact exclusion. Native lifecycle/recovery tests include lost revert acknowledgement, interrupted/failed cleanup, selection rejection/restart and saved-candidate verification.
 

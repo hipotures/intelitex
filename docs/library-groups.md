@@ -11,15 +11,15 @@ Each group may contain an optional `library.yaml`:
 ```yaml
 version: 1
 kind: author
-name: Peter F. Hamilton
+name: Mark Twain
 ```
 
-For `Peter F. Hamilton/Salvation/library.yaml`:
+For `Mark Twain/Tom Sawyer/library.yaml`:
 
 ```yaml
 version: 1
 kind: series
-name: Salvation
+name: Tom Sawyer
 ```
 
 `kind` accepts `author`, `series`, or `category`. Both `kind` and `name` are

@@ -58,12 +58,12 @@ def test_optional_yaml_is_explicit_and_invalid_yaml_keeps_group_visible(tmp_path
 def test_global_sort_keeps_nested_groups_together_across_pages(api, sort):
     _, _, service, server = api
     root = service.imports.root
-    epub(root / 'Hamilton/Salvation/01.First.epub', 'First', 'Hamilton', 'en')
-    epub(root / 'Hamilton/Salvation/02.Last.epub', 'Last', 'Hamilton, Peter F.', 'pl')
-    epub(root / 'Hamilton/Other.epub', 'Other', 'Hamilton', 'en')
+    epub(root / 'Twain/Tom Sawyer/01.First.epub', 'First', 'Twain', 'en')
+    epub(root / 'Twain/Tom Sawyer/02.Last.epub', 'Last', 'Twain, Mark', 'pl')
+    epub(root / 'Twain/Other.epub', 'Other', 'Twain', 'en')
     epub(root / 'Root.epub', 'A title', 'Z Author', 'de')
-    (root / 'Hamilton/library.yaml').write_text('version: 1\nkind: author\nname: Peter F. Hamilton\n')
-    (root / 'Hamilton/Salvation/library.yaml').write_text('version: 1\nkind: series\n')
+    (root / 'Twain/library.yaml').write_text('version: 1\nkind: author\nname: Mark Twain\n')
+    (root / 'Twain/Tom Sawyer/library.yaml').write_text('version: 1\nkind: series\n')
     cursor, all_sources = None, []
     for _ in range(10):
         code, page = request(server, 'GET', f'/api/library?limit=2&links=false&sort={sort}' + (f'&after={quote(cursor, safe="")}' if cursor else ''))
@@ -76,15 +76,15 @@ def test_global_sort_keeps_nested_groups_together_across_pages(api, sort):
     ids = [s['source_id'] for s in all_sources]
     assert len(ids) == len(set(ids)) == 5
     expected = {
-        'author': ['Hamilton/Other.epub', 'Hamilton/Salvation/01.First.epub', 'Hamilton/Salvation/02.Last.epub', 'Root.epub', 'book'],
-        'title': ['Root.epub', 'book', 'Hamilton/Other.epub', 'Hamilton/Salvation/01.First.epub', 'Hamilton/Salvation/02.Last.epub'],
-        'language': ['Root.epub', 'Hamilton/Other.epub', 'Hamilton/Salvation/01.First.epub', 'Hamilton/Salvation/02.Last.epub', 'book'],
+        'author': ['Twain/Other.epub', 'Twain/Tom Sawyer/01.First.epub', 'Twain/Tom Sawyer/02.Last.epub', 'Root.epub', 'book'],
+        'title': ['Root.epub', 'book', 'Twain/Other.epub', 'Twain/Tom Sawyer/01.First.epub', 'Twain/Tom Sawyer/02.Last.epub'],
+        'language': ['Root.epub', 'Twain/Other.epub', 'Twain/Tom Sawyer/01.First.epub', 'Twain/Tom Sawyer/02.Last.epub', 'book'],
     }
     assert ids == expected[sort]
     first = next(s for s in all_sources if s['source_id'].endswith('01.First.epub'))
     assert first['groups'] == [
-        {'group_id': 'Hamilton', 'name': 'Peter F. Hamilton', 'kind': 'author'},
-        {'group_id': 'Hamilton/Salvation', 'name': 'Salvation', 'kind': 'series'},
+        {'group_id': 'Twain', 'name': 'Mark Twain', 'kind': 'author'},
+        {'group_id': 'Twain/Tom Sawyer', 'name': 'Tom Sawyer', 'kind': 'series'},
     ]
     # Nested IDs round-trip through both HTTP adapters, including an encoded slash.
     code, info = request(server, 'GET', '/api/library/sources/' + quote(first['source_id'], safe='') + '/preflight')

@@ -606,7 +606,7 @@ def run(project: Path, scratch: Path, chapter_id: str | None, timeout: float, wi
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", type=Path, default=Path("/home/user/translations/salvation-03"))
+    parser.add_argument("--project", type=Path, default=Path.home() / 'translations' / 'example-book-03')
     parser.add_argument("--scratch", type=Path, required=True, help="Fresh directory outside repository and production project")
     parser.add_argument("--chapter", help="Complete canonical chapter ID; default selects an 80–200 kB chapter")
     parser.add_argument("--timeout", type=float, default=1200, help="Per-turn/RPC timeout in seconds")

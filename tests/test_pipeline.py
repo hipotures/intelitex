@@ -991,7 +991,7 @@ def test_major_section_and_natural_scene_planning(tmp_path):
         '<html><body><h1>THREE</h1>'
         f'<p class="calibre19">{big}</p>'
         f'<p class="calibre21">{small}</p>'
-        '<p class="calibre27"><i>Inigo\'s Dream</i></p>'
+        '<p class="calibre27"><i>The Hidden Tale</i></p>'
         '<p class="calibre23">tiny one</p>'
         '<p class="calibre21">tiny two</p></body></html>'
     )
@@ -1000,7 +1000,7 @@ def test_major_section_and_natural_scene_planning(tmp_path):
     with Display(True) as ui:
         book = import_folder(source, out, lambda text: max(1, len(text)//4),
                              {"whole_section_char_limit": 10000}, ui)
-    assert [c["title"] for c in book["chapters"]] == ["THREE", "Inigo's Dream"]
+    assert [c["title"] for c in book["chapters"]] == ["THREE", "The Hidden Tale"]
     assert len(book["chapters"][0]["scenes"]) == 2
     assert len(book["chapters"][0]["chunk_ids"]) == 2
     assert len(book["chapters"][1]["scenes"]) == 2

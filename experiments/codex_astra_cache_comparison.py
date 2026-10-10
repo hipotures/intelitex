@@ -156,7 +156,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command',choices=('prepare','run','compare','package'))
     parser.add_argument('--scratch',type=Path,required=True)
-    parser.add_argument('--project',type=Path,default=Path('/home/user/translations/salvation-03'))
+    parser.add_argument('--project',type=Path,default=Path.home() / 'translations' / 'example-book-03')
     args=parser.parse_args();scratch=args.scratch.resolve()
     result=prepare(args.project,scratch) if args.command=='prepare' else run(scratch) if args.command=='run' else compare(scratch) if args.command=='compare' else safe_package(scratch)
     print(json.dumps({k:v for k,v in result.items() if k in ('archive','bytes','sha256','members','scratch','production_unchanged')},ensure_ascii=False))

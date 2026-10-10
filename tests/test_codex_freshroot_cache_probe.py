@@ -79,7 +79,7 @@ def test_secrets_refused_and_no_file_written(tmp_path):
 def test_real_harness_methods_only_and_no_book_access():
     text=Path(p.__file__).read_text()
     assert '"thread/fork"' not in text and '"thread/resume"' not in text
-    assert '/home/user/translations' not in text
+    assert str(Path.home() / 'translations') not in text
     assert 'book.json' not in text
     assert 'auth.unlink(missing_ok=True)' in text
     assert 'start_new_session=True' in text

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -303,15 +304,17 @@ def test_recovery_ignores_only_strategy_and_uses_recorded_parent(project, tmp_pa
         store.close()
 
 
-def test_opt_out_non_codex_and_salvation_resolution(project):
+def test_opt_out_non_codex_and_example_book_resolution(project):
     from bookpipe.provider_registry import ProviderPool
     for kind in ('openai','vllm'):
         profile = {'provider':kind,'enabled':True,'model':'test','context_size':10000,'options':{},
                    **({'endpoint':'http://localhost:8080/v1'} if kind == 'vllm' else {})}
         settings = {'profiles':{'custom':profile}, 'default_profile':'custom', 'passes':SETTINGS['passes']}
         assert resolve_profile(settings,3,project=project)[1]['options'] == {}
-    root = Path('/home/user/translations/salvation-03')
-    if root.is_dir():
+    # Optional: point INTELITEX_REAL_PROJECT at a prepared project to inspect it read-only.
+    real_project = os.environ.get('INTELITEX_REAL_PROJECT')
+    root = Path(real_project) if real_project else None
+    if root is not None and root.is_dir():
         settings_path, web = root/'settings.json', root/'web.config.json'
         before = [p.read_bytes() for p in (settings_path, web)]
         settings = read_json(settings_path)

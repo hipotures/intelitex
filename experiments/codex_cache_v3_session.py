@@ -583,7 +583,7 @@ def run(scratch: Path, timeout: float = 1200) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("prepare", "run"))
-    parser.add_argument("--project", type=Path, default=Path("/home/user/translations/salvation-03"))
+    parser.add_argument("--project", type=Path, default=Path.home() / 'translations' / 'example-book-03')
     parser.add_argument("--scratch", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=1200)
     args = parser.parse_args(argv)

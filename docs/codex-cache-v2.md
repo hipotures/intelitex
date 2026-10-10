@@ -168,7 +168,7 @@ and input, developer, source, transport/canonical schema, raw/decoded/accepted
 output UTF-8 bytes. Bytes are not token counts. Raw usage events and all six
 normalized usage categories remain unchanged; absent values stay absent/null.
 
-## Offline comparison on salvation-03/ch0020_c0001
+## Offline comparison on example-book-03/ch0020_c0001
 
 Measured using the same accepted canonical requests/results, with transient
 retry instructions removed equally from every variant. All twelve input/output
@@ -211,7 +211,7 @@ Offline preparation (no auth access/model calls):
 
 ```bash
 uv run python -m experiments.codex_cache_ab prepare \
-  --project /home/user/translations/salvation-03 --chunk-id ch0020_c0001 \
+  --project $HOME/translations/example-book-03 --chunk-id ch0020_c0001 \
   --scratch /tmp/intelitex-cache-v2-p3-next --profile codex-sol-high --pass-no 3
 uv run python -m experiments.codex_cache_ab sizes \
   --scratch /tmp/intelitex-cache-v2-p3-next

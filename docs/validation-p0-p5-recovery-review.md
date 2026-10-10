@@ -1,7 +1,7 @@
 # Persistent source-session recovery: review corrections
 
 Date: 2026-10-02. Base commit: `6d921acd50806c6ef34f833968be8a16157d4c62`.
-Dedicated worktree: `/home/user/DEV/intelitex-p0-p5`.
+Dedicated worktree: `$HOME/DEV/intelitex-p0-p5`.
 Branch: `work/p0-p5-persistent-sessions`.
 
 The corrective implementation and this report are committed on the feature
@@ -11,7 +11,7 @@ No merge, deployment, push, or additional live model call was performed.
 
 ## Review evidence and fixes
 
-The supplied `/home/user/review.md`, `recovery_microprobes.py`, and
+The supplied `$HOME/review.md`, `recovery_microprobes.py`, and
 `microprobe-results.json` describe the reviewed base commit. Their seven
 extracted-method scenarios reproduce five manifestations of two defects and
 include two successful controls. They use copied methods and deterministic
@@ -116,7 +116,7 @@ the deliberate duplicate-ZIP-member fixture. They are not test failures.
 ## Commands and retained evidence
 
 Validation root:
-`/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002`.
+`$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002`.
 Stdout is retained as `r1-before.log`, `r2-stop-before.log`,
 `first-source-suite.log`, `expanded-source-suite.log`, `focused-final.log`,
 `full-final.log`, and `node-final.log`; scope measurements are in
@@ -127,15 +127,15 @@ The complete suite's actual command, run from the dedicated worktree, was:
 ```bash
 systemd-run --user --scope --unit=intelitex-p0-p5-review-full --quiet \
   -p MemoryMax=256M -p MemorySwapMax=0 -p CPUQuota=50% \
-  env TMPDIR=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp \
-  CODEX_HOME=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/control-home \
-  CODEX_SQLITE_HOME=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/control-sqlite \
-  XDG_STATE_HOME=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/state \
+  env TMPDIR=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp \
+  CODEX_HOME=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/control-home \
+  CODEX_SQLITE_HOME=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/control-sqlite \
+  XDG_STATE_HOME=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/state \
   OPENAI_API_KEY= \
-  .venv/bin/python /home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/resource_runner.py \
-  /home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/full-resources.json \
+  .venv/bin/python $HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/resource_runner.py \
+  $HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/full-resources.json \
   .venv/bin/python -m pytest -q \
-  --basetemp=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp/full-suite
+  --basetemp=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp/full-suite
 ```
 
 The private resource runner invokes the supplied command, records its exit code

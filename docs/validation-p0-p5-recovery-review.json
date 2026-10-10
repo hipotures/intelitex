@@ -60,7 +60,7 @@
     }
   },
   "commands": {
-    "python_full_inner": ".venv/bin/python -m pytest -q --basetemp=/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp/full-suite",
+    "python_full_inner": ".venv/bin/python -m pytest -q --basetemp=$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/tmp/full-suite",
     "focused_inner": ".venv/bin/python -m pytest -q tests/test_source_sessions.py tests/test_revision_workflow.py tests/test_usage_observability.py",
     "node_inner": "node --test --test-concurrency=1 tests/*.cjs",
     "scope_properties": [
@@ -68,7 +68,7 @@
       "MemorySwapMax=0",
       "CPUQuota=50%"
     ],
-    "resource_runner": "/home/user/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/resource_runner.py"
+    "resource_runner": "$HOME/.local/state/intelitex-p0-p5-validation/review-fixes-20261002/resource_runner.py"
   },
   "live_model_calls_during_corrections": 0,
   "production_operations": [],

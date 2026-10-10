@@ -238,7 +238,7 @@ every provider request used it. IntelliTex adds no warm-up calls, waits or sessi
 operations to force pinning. This step has no live-model/cache measurements and
 does not solve independent-root routing.
 
-## Offline measurement on salvation-03/ch0022
+## Offline measurement on example-book-03/ch0022
 
 Read-only accepted P1 `ch0022_a001` and P2–P5 `ch0022_c0001` tasks/results were
 encoded with both formats. All canonical output round trips and all new input
@@ -274,7 +274,7 @@ Reproduce offline with a fresh report directory:
 
 ```bash
 uv run python -m experiments.codex_cache_ab shared-sizes \
-  --project /home/user/translations/salvation-03 \
+  --project $HOME/translations/example-book-03 \
   --chunk-id ch0022_c0001 --analysis-unit ch0022_a001 \
   --scratch /tmp/intelitex-cache-shared-sizes-new
 ```

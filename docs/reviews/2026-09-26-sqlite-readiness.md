@@ -295,7 +295,7 @@ Poniżej rodziny tabel do rozwinięcia według kompletnych schematów dokumentó
 
 Duże przebudowy zapisują kandydacką generację partiami, a następnie krótką transakcją przełączają aktywną generację. Odczyt jednego DTO używa jednej generacji; nie miesza starego planu z nowymi segmentami. Przyrostowy update zmienia tylko dotknięte rekordy i zależne agregaty, w jednej transakcji wraz ze znacznikiem synchronizacji. Hash per dokument pozwala pominąć niezmienione pliki; porównanie rekordów pozwala ograniczyć SQL po zmianie dużego dokumentu. Historyczny wynik pozostaje oddzielną wersją.
 
-Pełny import historii może być kosztowny i odbywa się w tle, z widocznym pokryciem. Aktywny dokument/segment ma pierwszeństwo, ale historia nie jest wyłączona z kontraktu. Dla `salvation-02` odczyt inwentarza 2026-09-27 wykazał 5234 pliki JSON o łącznym rozmiarze 210 720 952 bajtów: 10 w katalogu głównym, 35 w `analysis_inputs/` i 5189 w `artifacts/`. Nie wystarczy więc benchmark samego `book.json`.
+Pełny import historii może być kosztowny i odbywa się w tle, z widocznym pokryciem. Aktywny dokument/segment ma pierwszeństwo, ale historia nie jest wyłączona z kontraktu. Dla `example-book-02` odczyt inwentarza 2026-09-27 wykazał 5234 pliki JSON o łącznym rozmiarze 210 720 952 bajtów: 10 w katalogu głównym, 35 w `analysis_inputs/` i 5189 w `artifacts/`. Nie wystarczy więc benchmark samego `book.json`.
 
 ### Czy `analysis_inputs/ch0011_a001.json` również trafia do cache?
 
@@ -378,7 +378,7 @@ Optymalizacje bundla frontendu są osobnym zadaniem. Historyczny pomiar i polity
 
 ## Pomiar zapisu JSON — 2026-09-27
 
-Wykonano odczyt rzeczywistego `salvation-02/book.json` (12 785 694 bajty, około 12,8 MB), a wszystkie zapisy wyłącznie na tymczasowej kopii pod `/home/user/DEV`, na tym samym systemie plików. Użyto `.venv/bin/python`, istniejących funkcji `atomic_json`, `atomic_text` i `plan_fingerprint`. Każdy wariant wykonano 21 razy; pierwszy pomiar odrzucono, poniżej 20 próbek i p95 metodą nearest-rank. Nie czyszczono cache systemu operacyjnego. SHA-256 źródłowego pliku przed i po eksperymencie był identyczny; tymczasowe pliki usunięto.
+Wykonano odczyt rzeczywistego `example-book-02/book.json` (12 785 694 bajty, około 12,8 MB), a wszystkie zapisy wyłącznie na tymczasowej kopii pod `$HOME/DEV`, na tym samym systemie plików. Użyto `.venv/bin/python`, istniejących funkcji `atomic_json`, `atomic_text` i `plan_fingerprint`. Każdy wariant wykonano 21 razy; pierwszy pomiar odrzucono, poniżej 20 próbek i p95 metodą nearest-rank. Nie czyszczono cache systemu operacyjnego. SHA-256 źródłowego pliku przed i po eksperymencie był identyczny; tymczasowe pliki usunięto.
 
 | Operacja | p50 | p95 | Maksimum |
 | --- | ---: | ---: | ---: |

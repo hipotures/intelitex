@@ -52,7 +52,7 @@ This is not a guarantee of zero repeated tokens at the provider. Codex may inter
 
 ### 3.1 Previously reported live test
 
-The preceding project discussion reported a successful source-only P0/revert/cold-resume probe on Codex `0.160.0`, model `gpt-6.1-sol`, effort `high`. It used 15,194 source bytes from `salvation-03/ch0022_c0001`, six live calls without retries, and retained the same thread across restart. Reported usage was 7,139 input / 2,688 cached tokens for P0 and approximately 7,173-7,189 input / 6,912 cached tokens for subsequent questions. After cleanup, only P0 remained in active history.
+The preceding project discussion reported a successful source-only P0/revert/cold-resume probe on Codex `0.160.0`, model `gpt-6.1-sol`, effort `high`. It used 15,194 source bytes from `example-book-03/ch0022_c0001`, six live calls without retries, and retained the same thread across restart. Reported usage was 7,139 input / 2,688 cached tokens for P0 and approximately 7,173-7,189 input / 6,912 cached tokens for subsequent questions. After cleanup, only P0 remained in active history.
 
 The previous discussion identified `/tmp/intelitex-revert-cache-test/result.md` and `usage_summary.json` as evidence. Those files were not available for independent inspection during this PRD preparation. Treat these numbers as prior reported measurements, not new measurements, an SLA, or proof that the complete production P0-P5 pipeline already exists. Reproduce the relevant lifecycle with a new scratch fixture during implementation.
 
@@ -448,7 +448,7 @@ P0 profile/configuration resolution must be deterministic and visible in diagnos
 
 For an explicit opt-in of an existing workspace, preserve accepted P1 and human review. Create missing P0 only when an incomplete requested Codex stage needs it. Do not rerun P1 merely because an old successful analysis lacks P0, and do not reinterpret an old P2 parent as a valid source-only P0. Preserve old final translations until genuinely dependent work is replaced through current invalidation rules.
 
-The first end-to-end user test is a new book in a new workspace. No automatic conversion of the running `salvation-03` project is authorized.
+The first end-to-end user test is a new book in a new workspace. No automatic conversion of the running `example-book-03` project is authorized.
 
 ## 15. Reset, invalidation, archive and cleanup policies
 

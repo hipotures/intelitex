@@ -19,7 +19,7 @@ Registry before: `fresh-root`, `p2-parent-ephemeral-fork-v1` (default).
 Registry after: `fresh-root`, `p2-parent-ephemeral-fork-v1`, `paired-passes-v1`
 (default). Both wire defaults remain `cache-shared-v2`.
 
-Actual salvation-03 resolution includes its web assignment overrides, not just
+Actual example-book-03 resolution includes its web assignment overrides, not just
 settings.json. Both before/after configurations were resolved read-only using
 ProviderPool against the starting repository export and the modified repository.
 
@@ -70,7 +70,7 @@ P1 remains outside the paired lifecycle.
 All checks below were executed offline;
 no paid/live model request or browser test was made.
 
-- Installed skill audit: `python3 /home/user/.codex/skills/codex-app-server/scripts/audit_installed_protocol.py` passed.
+- Installed skill audit: `python3 $HOME/.codex/skills/codex-app-server/scripts/audit_installed_protocol.py` passed.
 - `uv run pytest -q tests/test_codex_pair.py`: 44 passed before adding the final
   restored-usage regression; that additional test passed separately (1 passed).
 - `uv run pytest -q tests/test_codex_pair.py tests/test_codex_parent.py tests/test_codex_cache_shared_v2.py tests/test_codex_cache_shared_v2_app_server.py tests/test_codex_effort.py tests/test_profile_wire_defaults.py tests/test_transports.py tests/test_pipeline.py`: 346 passed.

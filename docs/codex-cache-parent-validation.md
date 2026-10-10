@@ -64,7 +64,7 @@ assistant answers, complete canonical artifacts, independent retries, safe
 fallback and unchanged effort/model selection. These tests do not measure
 production provider cache hits or latency.
 
-## Effective salvation-03 activation
+## Effective example-book-03 activation
 
 Resolved through the actual `ProviderPool`, including `web.config.json` pass
 overrides. Compared with the same read-only resolution under starting HEAD:

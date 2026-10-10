@@ -106,8 +106,8 @@ def test_invalid_explicit_wire_format_still_fails_closed(settings, field, value)
         validate_profiles(settings)
 
 
-def salvation_settings(settings):
-    """Frozen configuration shape inspected in salvation-03; no book/state fixture."""
+def example_book_settings(settings):
+    """Frozen configuration shape inspected in a real project; no book/state fixture."""
     settings["default_profile"] = "codex-astra-high"
     settings["pass_profiles"] = {"2": "codex-astra-low", "3": "codex-astra-medium",
                                   "4": "codex-astra-low", "5": "codex-astra-medium"}
@@ -120,8 +120,8 @@ def salvation_settings(settings):
     return settings
 
 
-def test_salvation_resolution_and_restart_are_read_only(settings, tmp_path):
-    configured = salvation_settings(settings)
+def test_example_book_resolution_and_restart_are_read_only(settings, tmp_path):
+    configured = example_book_settings(settings)
     atomic_json(tmp_path / "settings.json", configured)
     atomic_json(tmp_path / "web.config.json", {"sections": {},
         "pass_profiles": {str(n): "codex-sol-high" for n in range(2, 6)}})
@@ -150,7 +150,7 @@ def test_salvation_resolution_and_restart_are_read_only(settings, tmp_path):
 
 
 def test_profile_assignment_layers_keep_their_existing_precedence(settings, tmp_path):
-    salvation_settings(settings)
+    example_book_settings(settings)
     atomic_json(tmp_path / "web.config.json", {
         "pass_profiles": {"2": "codex-sol-high"},
         "sections": {"ch0022": {"profiles": {"2": "codex-sol-medium"}}},

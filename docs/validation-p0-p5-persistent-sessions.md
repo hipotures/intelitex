@@ -1,6 +1,6 @@
 # P0-P5 persistent source sessions: implementation validation
 
-Date: 2026-10-02. Dedicated checkout: `/home/user/DEV/intelitex-p0-p5`.
+Date: 2026-10-02. Dedicated checkout: `$HOME/DEV/intelitex-p0-p5`.
 Branch: `work/p0-p5-persistent-sessions`. Implementation parent: `dc6052b`;
 PRD reviewed baseline: `e4b622fc447c1df71028aa114cff6fdbd41d7204`.
 This report and the implementation are committed together. Nothing was merged,
@@ -98,7 +98,7 @@ Exact final targeted command, in the dedicated worktree and its own virtualenv:
 ```bash
 systemd-run --user --scope --unit=intelitex-p0-p5-final-validation --quiet \
   -p MemoryMax=256M -p MemorySwapMax=0 -p CPUQuota=50% \
-  env TMPDIR=/home/user/.local/state/intelitex-p0-p5-validation/tmp \
+  env TMPDIR=$HOME/.local/state/intelitex-p0-p5-validation/tmp \
   .venv/bin/python -m pytest -q \
   tests/test_web_production.py tests/test_source_sessions.py \
   tests/test_revision_workflow.py

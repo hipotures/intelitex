@@ -46,8 +46,8 @@ Use the same code version for the server and CLI after the cutover; old executab
 cannot be assumed to understand the new persistence contract.
 
 ```sh
-intelitex migrate-state --workspace-root /home/user/translations
-intelitex migrate-state --workspace-root /home/user/translations --verify
+intelitex migrate-state --workspace-root $HOME/translations
+intelitex migrate-state --workspace-root $HOME/translations --verify
 ```
 
 `--project PATH` limits either operation to one workspace. Batch mode includes
@@ -87,7 +87,7 @@ tests. Browser load-to-interactive measurement is a separate UI validation.
 
 ## Migration verification on 2026-09-27
 
-All 14 prepared workspaces under `/home/user/translations` were first rehearsed
+All 14 prepared workspaces under `$HOME/translations` were first rehearsed
 on independent copies of their legacy databases, then migrated with the server
 stopped and no active jobs. Every migrated database passed full record equality
 and backup verification. The server was restarted with JSON-only checkpoint
