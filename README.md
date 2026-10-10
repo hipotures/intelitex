@@ -15,7 +15,7 @@ book title in the Reader follow the translation.
 
 ### Work
 
-| Books in progress (top) | Books in progress (bottom, with the Library) |
+| Books in progress | Library |
 |:--:|:--:|
 | <img src="docs/images/work-top.png" width="100%" alt="Work page: active workspaces"> | <img src="docs/images/work-bottom.png" width="100%" alt="Work page scrolled to the Library"> |
 
@@ -25,17 +25,17 @@ book title in the Reader follow the translation.
 |:--:|:--:|
 | <img src="docs/images/workspace-overview.png" width="100%" alt="Workspace overview"> | <img src="docs/images/workspace-section-preview.png" width="100%" alt="Section preview drawer"> |
 
-| Prepare | Preload · P0 |
+| Prepare | Analyse · P1 |
 |:--:|:--:|
-| <img src="docs/images/phase-prepare.png" width="100%" alt="Prepare phase"> | <img src="docs/images/phase-preload.png" width="100%" alt="Preload phase"> |
+| <img src="docs/images/phase-prepare.png" width="100%" alt="Prepare phase"> | <img src="docs/images/phase-analysis.png" width="100%" alt="Analyse phase"> |
 
-| Analyse · P1 | Review |
+| Review | Translate · P2–P5 |
 |:--:|:--:|
-| <img src="docs/images/phase-analysis.png" width="100%" alt="Analyse phase"> | <img src="docs/images/review-terminology.png" width="100%" alt="Terminology review"> |
+| <img src="docs/images/review-terminology.png" width="100%" alt="Terminology review"> | <img src="docs/images/phase-translate.png" width="100%" alt="Translate phase"> |
 
-| Translate · P2–P5 | Publish |
+| Publish | |
 |:--:|:--:|
-| <img src="docs/images/phase-translate.png" width="100%" alt="Translate phase"> | <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> |
+| <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> | |
 
 ### Reader
 
