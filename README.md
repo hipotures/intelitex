@@ -6,6 +6,65 @@ terminology approval**, and then translates the next requested number of natural
 Completed model calls survive interruption and are not repeated merely because
 you start another session.
 
+## Screenshots
+
+The web interface (`uv run intelitex serve`, see [web development](web/README.md)) on a real workspace:
+*The Time Machine* by H. G. Wells, a public-domain Project Gutenberg book, mid-translation. The Library
+below is filtered to Project Gutenberg books. Interface labels are English; chapter titles and the
+book title in the Reader follow the translation.
+
+### Work
+
+| Books in progress (top) | Books in progress (bottom, with the Library) |
+|:--:|:--:|
+| <img src="docs/images/work-top.png" width="100%" alt="Work page: active workspaces"> | <img src="docs/images/work-bottom.png" width="100%" alt="Work page scrolled to the Library"> |
+
+### Workspace and phases
+
+| Workspace overview | Section preview with model overrides |
+|:--:|:--:|
+| <img src="docs/images/workspace-overview.png" width="100%" alt="Workspace overview"> | <img src="docs/images/workspace-section-preview.png" width="100%" alt="Section preview drawer"> |
+
+| Prepare | Preload · P0 |
+|:--:|:--:|
+| <img src="docs/images/phase-prepare.png" width="100%" alt="Prepare phase"> | <img src="docs/images/phase-preload.png" width="100%" alt="Preload phase"> |
+
+| Analyse · P1 | Review |
+|:--:|:--:|
+| <img src="docs/images/phase-analysis.png" width="100%" alt="Analyse phase"> | <img src="docs/images/review-terminology.png" width="100%" alt="Terminology review"> |
+
+| Translate · P2–P5 | Publish |
+|:--:|:--:|
+| <img src="docs/images/phase-translate.png" width="100%" alt="Translate phase"> | <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> |
+
+### Reader
+
+The Reader in the three themes (dark, light, sepia):
+
+| Dark | Light | Sepia |
+|:--:|:--:|:--:|
+| <img src="docs/images/reader-dark.png" width="100%" alt="Reader, dark theme"> | <img src="docs/images/reader-light.png" width="100%" alt="Reader, light theme"> | <img src="docs/images/reader-sepia.png" width="100%" alt="Reader, sepia theme"> |
+
+<img src="docs/images/reader-settings.png" width="50%" alt="Reader with the reading settings panel open">
+
+### Updating the screenshots
+
+The images are generated, not drawn: `web/scripts/screenshots.mjs` opens the pages in Chromium and writes
+`docs/images/*.png` (1440 px wide at 2x density). Re-run it after a UI change and commit the result:
+
+```bash
+npm --prefix web ci && npm --prefix web run build          # the server serves web/dist
+SCREENSHOT_URL=http://HOST:PORT/work/workspaces/<workspace id> \
+  npm --prefix web run screenshots                         # all shots, from a running server
+SCREENSHOT_URL=... npm --prefix web run screenshots -- reader   # only shots whose name contains "reader"
+```
+
+With `SCREENSHOT_URL` the script only reads (every request other than GET is blocked), expands the
+collapsed panels in its own throwaway browser profile and filters the Library to Project Gutenberg.
+Without it, it drives a disposable offline fixture server with demo data. Add or change a shot by editing
+`LIVE_SHOTS` in the script. If Playwright's browser is not installed, set
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a system Chromium.
+
 ## Persistent P0-P5 source sessions
 
 New workspaces select `pipeline_execution.codex_mode: source-session-v1`.
