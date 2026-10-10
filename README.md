@@ -33,19 +33,21 @@ book title in the Reader follow the translation.
 |:--:|:--:|
 | <img src="docs/images/review-terminology.png" width="100%" alt="Terminology review"> | <img src="docs/images/phase-translate.png" width="100%" alt="Translate phase"> |
 
-| Publish | |
+| Publish | Settings · Models |
 |:--:|:--:|
-| <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> | |
+| <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> | <img src="docs/images/settings-models.png" width="100%" alt="Settings dialog, Models tab"> |
 
 ### Reader
 
-The Reader in the three themes (dark, light, sepia):
+The translated book, in the three themes and with the reading settings open:
 
-| Dark | Light | Sepia |
-|:--:|:--:|:--:|
-| <img src="docs/images/reader-dark.png" width="100%" alt="Reader, dark theme"> | <img src="docs/images/reader-light.png" width="100%" alt="Reader, light theme"> | <img src="docs/images/reader-sepia.png" width="100%" alt="Reader, sepia theme"> |
+| Reader (dark) | Reader (light) |
+|:--:|:--:|
+| <img src="docs/images/reader-dark.png" width="100%" alt="Reader, dark theme"> | <img src="docs/images/reader-light.png" width="100%" alt="Reader, light theme"> |
 
-<img src="docs/images/reader-settings.png" width="50%" alt="Reader with the reading settings panel open">
+| Reader (sepia) | Reader settings |
+|:--:|:--:|
+| <img src="docs/images/reader-sepia.png" width="100%" alt="Reader, sepia theme"> | <img src="docs/images/reader-settings.png" width="100%" alt="Reader with the reading settings panel open"> |
 
 ### Updating the screenshots
 

@@ -67,18 +67,37 @@ const LIVE_SHOTS = W => [
   // Everything is dark except the Reader, which is shown in all three themes.
   { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
   { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
-    prepare: async page => { await page.locator('.section-name').nth(1).click(); await page.locator('[data-ui-debug-id="PVD"]').waitFor() } },
+    prepare: async page => {
+      const row = page.locator('[data-ui-debug-id="SCT"] tr').filter({ has: page.getByText('F', { exact: true }) }).first()
+      await row.locator('.section-name').click()
+      await page.locator('[data-ui-debug-id="PVD"]').waitFor()
+    } },
   { name: 'phase-prepare', path: `/work/workspaces/${W}/prepare`, ready: 'css:[data-ui-debug-id="PTT"]' },
   { name: 'phase-analysis', path: `/work/workspaces/${W}/analyse`, ready: 'css:.phase-detail-page' },
-  // Translate and Publish select the second entry (the first real chapter) instead of the Contents list.
+  // Translate and Publish select the first Full (F) entry: Contents is translate-only (T) and not worth showing.
   { name: 'phase-translate', path: `/work/workspaces/${W}/translate`, ready: 'css:.phase-detail-page',
-    prepare: async page => { await page.locator('.translate-chunk-choice').nth(1).click(); await page.locator('tbody tr').nth(1).and(page.locator('.selected')).waitFor() } },
+    prepare: async page => {
+      const row = page.locator('tbody tr').filter({ has: page.locator('.translate-mode-badge.full') }).first()
+      await row.locator('.translate-chunk-choice').click()
+      await row.and(page.locator('.selected')).waitFor()
+    } },
   { name: 'phase-publish', path: `/work/workspaces/${W}/publish`, ready: 'css:.phase-detail-page',
-    prepare: async page => { const second = page.locator('.publish-section-choice').nth(1); await second.click(); await page.locator('.publish-section-choice[aria-pressed="true"]').filter({ hasText: '02 ·' }).waitFor() } },
+    prepare: async page => {
+      const row = page.locator('tbody tr').filter({ has: page.locator('.processing-readonly.full') }).first()
+      await row.locator('.publish-section-choice').click()
+      await row.locator('.publish-section-choice[aria-pressed="true"]').waitFor()
+    } },
   { name: 'review-terminology', path: `/work/workspaces/${W}/review`, ready: 'css:.review-term-row' },
   ...['dark', 'light', 'sepia'].map(theme => ({ name: `reader-${theme}`, path: `/reader/${W}`, ready: 'css:.reader-page p', prepare: firstChapter, theme })),
   { name: 'reader-settings', path: `/reader/${W}`, ready: 'css:.reader-page p',
     prepare: async page => { await firstChapter(page); await page.getByRole('button', { name: 'Reader settings' }).click(); await page.locator('.reader-settings').waitFor() } },
+  // Settings dialog on the Models tab, over the workspace page (not /work, which lists every workspace).
+  { name: 'settings-models', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
+    prepare: async page => {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await page.getByRole('tab', { name: 'Models' }).click()
+      await page.locator('[data-ui-debug-id="SPM"]').waitFor()
+    } },
 ]
 
 const live = (() => {
