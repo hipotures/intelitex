@@ -52,6 +52,19 @@ test('Library cards share one rigid size: language on the cover, clamped title, 
     assert.ok(card.titleLines <= 3, `${card.id}: title uses at most three lines`)
     assert.ok(card.authorInside && !card.authorClipped, `${card.id}: author is shown in full`)
   }
+  // The dim secondary color blends into the dark card, so the dark theme uses the softer-but-brighter one.
+  const authorColor = () => page.evaluate(() => {
+    const probe = name => { const el = document.createElement('i'); el.style.color = `var(--${name})`; document.body.append(el); const value = getComputedStyle(el).color; el.remove(); return value }
+    return { author: getComputedStyle(document.querySelector('.book-author')).color, soft: probe('text-soft'), dim: probe('text-dim') }
+  })
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+  let colors = await authorColor()
+  assert.equal(colors.author, colors.soft, 'dark theme: author uses the brighter secondary color')
+  for (const theme of ['light', 'sepia']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value }, theme)
+    colors = await authorColor()
+    assert.equal(colors.author, colors.dim, `${theme} theme: author keeps the dim secondary color`)
+  }
   const long = cards.find(card => card.id === 'Long title')
   assert.equal(long.titleClamped, true, 'an over-long title is clamped')
   assert.equal(long.titleTooltip, LONG, 'the tooltip carries the full title')

@@ -596,4 +596,6 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 .cover-workspaces { position:absolute;left:7px;right:7px;bottom:7px;z-index:3;text-align:center;background:rgba(0,0,0,.5);color:#fff;border-color:rgba(255,255,255,.28); }
 .book-card .book-meta { display:flex;flex-direction:column;flex:1 1 auto;min-height:0;text-align:left; }
 .book-card .book-name { white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;line-height:1.3;min-height:calc(3 * 1.3em); }
-.book-card .book-author { margin-top:auto;padding-top:6px;min-height:calc(2 * 1.35em + 6px);display:flex;align-items:flex-end;font-size:12.5px;line-height:1.35;color:var(--text-soft);overflow-wrap:anywhere; }
+.book-card .book-author { margin-top:auto;padding-top:6px;min-height:calc(2 * 1.35em + 6px);display:flex;align-items:flex-end;font-size:12.5px;line-height:1.35;color:var(--text-dim);overflow-wrap:anywhere; }
+/* The dim text color blends into the dark card; light and sepia are fine with it. */
+[data-theme="dark"] .book-card .book-author { color:var(--text-soft); }

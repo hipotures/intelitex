@@ -116,5 +116,5 @@ screenshots are not claimed to be pixel-identical. See the verification report f
 - Library cards have one rigid size instead of the mockup's content-sized cards. The source language is a badge
   on the cover's top-left corner and the active-workspace count sits on its bottom edge; the title may use up to
   three lines (the full title is in the tooltip) and the author is always shown in full at the bottom, in the
-  softer text color so it stays readable in the light and sepia themes. Every card grows together if one needs
+  softer text color in the dark theme so it does not blend into the card. Every card grows together if one needs
   more room (a long author, a group path).
