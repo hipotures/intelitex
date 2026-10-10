@@ -59,15 +59,15 @@ const LIVE_SHOTS = W => [
   // The main page is taller than the window: one shot from the very top, one scrolled to the very bottom.
   { name: 'work-top', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, 0)) } },
   { name: 'work-bottom', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)) } },
-  // Everything is dark except the workspace overview, which is shown in all three themes.
-  ...['dark', 'light', 'sepia'].map(theme => ({ name: `workspace-overview-${theme}`, path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]', theme })),
+  // Everything is dark except the Reader, which is shown in all three themes.
+  { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
   { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
     prepare: async page => { await page.locator('.section-name').nth(1).click(); await page.locator('[data-ui-debug-id="PVD"]').waitFor() } },
   { name: 'phase-analysis', path: `/work/workspaces/${W}/analyse`, ready: 'css:.phase-detail-page' },
   { name: 'phase-translate', path: `/work/workspaces/${W}/translate`, ready: 'css:.phase-detail-page' },
   { name: 'phase-publish', path: `/work/workspaces/${W}/publish`, ready: 'css:.phase-detail-page' },
   { name: 'review-terminology', path: `/work/workspaces/${W}/review`, ready: 'css:.review-term-row' },
-  { name: 'reader', path: `/reader/${W}`, ready: 'css:.reader-page p', prepare: firstChapter },
+  ...['dark', 'light', 'sepia'].map(theme => ({ name: `reader-${theme}`, path: `/reader/${W}`, ready: 'css:.reader-page p', prepare: firstChapter, theme })),
   { name: 'reader-settings', path: `/reader/${W}`, ready: 'css:.reader-page p',
     prepare: async page => { await firstChapter(page); await page.getByRole('button', { name: 'Reader settings' }).click(); await page.locator('.reader-settings').waitFor() } },
 ]
