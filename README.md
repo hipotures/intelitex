@@ -885,6 +885,17 @@ limits, continuity budget, and analysis-memory budget. `prompts/pass1.txt` throu
 `pass5.txt` are editable project-local prompt files, not hidden constants in the
 Python orchestration code.
 
+Chat-compatible local servers such as Strata can run without `/tokenize` or an
+input-token counting endpoint. Missing endpoints (HTTP 404, 405 or 501) select a
+conservative UTF-8 byte bound for planning and request-capacity checks. These
+bounds are recorded as bytes, never as token usage. Missing token usage is shown
+as `—` and does not pause subsequent local passes; token counts returned by the
+server remain visible. Authentication, connection and server errors still fail
+normally. Strata receives the supported `json_schema` response format. Explicit
+server rejections of completed invalid JSON or schema mismatches use the existing
+`json_retries` budget and remain recorded as failed validation attempts. Output
+limits and other server errors stop the run without automatic generation retries.
+
 Default thinking is **off**: analysis is explicit JSON work, not unbounded hidden
 deliberation. To test thinking only in P1/P2/P4:
 

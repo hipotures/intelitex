@@ -101,7 +101,7 @@ def decode(line: str) -> dict:
             raise ValueError("Invalid error type.")
         safe_codes = {'local_model_unavailable', 'source_span_mismatch', 'draft_span_mismatch',
                       'p3_id_coverage', 'p5_id_coverage', 'model_control_token_loop',
-                      'output_length_limit', 'missing_prerequisite', 'pass_already_saved'}
+                      'output_length_limit', 'structured_output_rejected', 'missing_prerequisite', 'pass_already_saved'}
         safe_codes.add('analysis_memory_limit')
         raw_code = error.get('code')
         code = raw_code if isinstance(raw_code, str) and raw_code in safe_codes else None
