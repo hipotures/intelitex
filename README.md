@@ -17,8 +17,8 @@ See the [screenshots](#screenshots), the [quick start](#quick-start) and the [we
 
 The web interface (`uv run intelitex serve`, see [web development](web/README.md)) on a real workspace:
 *The Time Machine* by H. G. Wells, a public-domain Project Gutenberg book, mid-translation. The Library
-below is filtered to Project Gutenberg books. Interface labels are English; chapter titles and the
-book title in the Reader follow the translation.
+is filtered to Project Gutenberg books (28 public-domain demo books). Interface labels are English; chapter
+titles and the book title in the Reader follow the translation.
 
 ### Work
 
@@ -59,7 +59,8 @@ The translated book, in the three themes and with the reading settings open:
 ### Updating the screenshots
 
 The images are generated, not drawn: `web/scripts/screenshots.mjs` opens the pages in Chromium and writes
-`docs/images/*.png` (1440 px wide at 2x density). Re-run it after a UI change and commit the result:
+`docs/images/*.png` (1440 px wide at 2x density, so 2880 px files; full pages are 3280 px tall). Re-run it
+after a UI change and commit the result:
 
 ```bash
 npm --prefix web ci && npm --prefix web run build          # the server serves web/dist
@@ -68,16 +69,23 @@ SCREENSHOT_URL=http://HOST:PORT/work/workspaces/<workspace id> \
 SCREENSHOT_URL=... npm --prefix web run screenshots -- reader   # only shots whose name contains "reader"
 ```
 
-With `SCREENSHOT_URL` the script only reads (every request other than GET is blocked), expands the
-collapsed panels in its own throwaway browser profile and filters the Library to Project Gutenberg.
-Without it, it drives a disposable offline fixture server with demo data. Add or change a shot by editing
-`LIVE_SHOTS` in the script. If Playwright's browser is not installed, set
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a system Chromium.
+Against a running server (`SCREENSHOT_URL`) the script only reads: every request other than GET is blocked.
+In its own throwaway browser profile it expands the collapsed panels (Pipeline models, Live activity), turns on
+the Project Gutenberg Library filter, selects the first Full (F) section on the Translate and Publish pages
+instead of the translate-only Contents, scrolls the lower Work shot until the Library has loaded, and embeds the
+Inter font so the result does not depend on installed fonts. Everything is dark except the Reader, which is
+shown in dark, light and sepia. Without `SCREENSHOT_URL` it drives a disposable offline fixture server with
+demo data.
+
+The Work page lists every active workspace on the server, so run the script against a server whose workspaces
+you are happy to publish. Add or change a shot by editing `LIVE_SHOTS` in the script. If Playwright's browser
+is not installed, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a system Chromium.
 
 ## Requirements
 
 - Linux (the project lock uses `fcntl`), Python 3.11 or later, and `uv`.
-- Node.js 22.12 or later, only to build and test the web interface (`web/`).
+- Node.js 22.12 or later, only to build and test the web interface (`web/`); the browser tests and the
+  screenshot script also need a Chromium (Playwright's or a system one).
 - A configured inference profile: a reachable llama.cpp or vLLM server, an explicitly configured OpenAI
   credential, or an isolated Codex app-server authentication source.
 - A source book: a packed `.epub`, or an unpacked EPUB root with its OPF/NCX metadata (preferable to a folder
@@ -120,7 +128,7 @@ unpacked EPUB/HTML folders); the server reads sources only from there. Each chil
 From the repository root, run:
 
 ```bash
-PROJECT="$HOME/translations/evolutionary-void"
+PROJECT="$HOME/translations/the-time-machine"
 
 uv run intelitex import /path/to/unpacked-book \
   --project "$PROJECT" \
@@ -242,9 +250,11 @@ optional book title in the Reader follow the translation.
   the *Archive* drawer holds parked ones. Double-click a workspace's label to rename it. *Library* lists the
   source books under `--import-root` (packed EPUBs and book folders), grouped by directory as authors, series
   and categories ([Library hierarchy](docs/library-groups.md)), with sorting by author, title or language and
-  a **Refresh** button. A card opens the source details (**Inspect source**, **Add to workspace**). The
-  optional **Project Gutenberg** checkbox (turn it on in Settings → Library) lists only books whose EPUB
-  metadata names gutenberg.org as the source.
+  a **Refresh** button. Every card has the same size: the source language is a badge on the cover's top-left
+  corner, the title takes up to three lines (the full title is in the tooltip) and the author is always shown
+  in full at the bottom; a count of active workspaces sits on the cover's bottom edge. A card opens the source
+  details (**Inspect source**, **Add to workspace**). The optional **Project Gutenberg** checkbox (turn it on in
+  Settings → Library) lists only books whose EPUB metadata names gutenberg.org as the source.
 - **Workspace.** The phase rail runs Prepare → Preload (P0) → Analyse (P1) → Review → Translate → Publish.
   The *Sections* table shows each section's processing mode and the P0–P5 state; a section opens a preview
   drawer with optional per-section model overrides. *Pipeline models* assigns a profile to each pass and
@@ -372,7 +382,7 @@ Human terminology decisions live in one file, `terms.review.json`. The web **Rev
 
 ### Review application
 
-`terms.review.json` is now the single source of truth for human terminology decisions.
+`terms.review.json` is the single source of truth for human terminology decisions.
 Run `uv run intelitex review --project "$PROJECT"` to start a loopback-only web
 application (default `http://127.0.0.1:8765/`). The UI groups all terms by Pass 1
 category, supports search and reviewed/unreviewed/uncertain/**notes** filters, shows candidate
@@ -381,7 +391,7 @@ back to `terms.review.json`. Changing a previously reviewed lexical choice reope
 Reviewer notes are independent annotations: they autosave without reopening an approved choice,
 and annotated entities can later be browsed with the **Notes** filter.
 
-For people/entities the detail pane now has an **At a glance** summary. Pass-1 observations
+For people/entities the detail pane has an **At a glance** summary. Pass-1 observations
 from `book_memory.json` are migrated into `terms.review.json` automatically, so gender/reference/
 continuity facts can be shown next to the entity. Distinct icons highlight known gender and
 coarse entity type (for example human, alien, or other entity) without inventing information.
@@ -406,9 +416,9 @@ expose it on an untrusted network.
 
 ### Scoped counters, filters and bulk accept
 
-The review category chips now show a **single matching-term count** instead of the previous `remaining/matching` fraction. For example, under `Uncertain`, `✓ Status & social 1` means one uncertain term matches that category and all of it has been reviewed. Green always means that every term matching the current status/search/category scope is reviewed. The header line separately reports reviewed and remaining counts.
+The review category chips show a **single matching-term count**, not a remaining/matching fraction. For example, under `Uncertain`, `✓ Status & social 1` means one uncertain term matches that category and all of it has been reviewed. Green always means that every term matching the current status/search/category scope is reviewed. The header line separately reports reviewed and remaining counts.
 
-The two filter rows now intersect. Category badges are calculated from the current
+The two filter rows intersect. Category badges are calculated from the current
 status filter and search; status-filter counts are calculated from the selected
 category and search. Each badge shows the number of matching terms, while its color
 indicates whether that scope is fully reviewed. Switching to All recalculates both
@@ -437,7 +447,7 @@ Browser writes are serialized. Revision tokens reject stale-tab overwrites inste
 of silently replacing another tab's edits. The token is API metadata and is not
 persisted into the review file. Pending custom forms and notes are flushed before
 changing filters or selecting another entity. The footer remains at the bottom of
-the detail pane, and the shortcut label is now centered and reads `Ctrl+Enter`.
+the detail pane, and the shortcut label reads `Ctrl+Enter`.
 
 ### Reviewing a provisional choice in translated context
 
@@ -454,7 +464,7 @@ uv run intelitex review --project "$PROJECT" --review-port 9000
 Stop the review server before invoking approve or translate: the existing CLI
 project lock intentionally allows only one such command at a time.
 
-The evidence pane now shows **English original / Polish P5** side by side when a
+The evidence pane shows **English original / Polish P5** side by side when a
 committed final translation exists. On narrower screens these columns stack.
 It reads the immutable source blocks from `book.json` and the registered final paths
 from JSON checkpoint state through a separate **read-only snapshot**. It checks artifact
@@ -475,14 +485,7 @@ it differs from the currently approved lexicon, and labels old final text for un
 already marked `stale`. The existing `approve` command marks dependent completed
 translation units stale; `translate --continue N` regenerates those units through
 P2-P5 and retains old artifacts. This is **unit-level retranslation**, not a global
-search-and-replace or a new paragraph-only AI correction pass. No separate pre-approval
-mode, automatic inflection substitution or Codex integration is introduced.
-
-Upgrade by replacing the program files only. Keep the existing project directory,
-`terms.review.json`, checkpoints and database. No import, P1 rerun or reset of human
-choices is required. The changed modules are `bookpipe/review.py`, the pure browser
-logic `bookpipe/review_filters.js`, and read-only evidence adapter
-`bookpipe/review_context.py`. Model prompts and P1/P2-P5 orchestration are unchanged.
+search-and-replace or a new paragraph-only AI correction pass.
 
 ### Choosing a Polish name
 
@@ -647,9 +650,9 @@ Enable cloud profiles only after setting an explicit opaque model ID, verified
 context capacity, and credential reference (OpenAI), or an explicitly authorized
 Codex authentication source.
 
-The local vLLM server at `192.168.100.207:8080` is available to every workspace
-as the built-in `vllm-diffusiongemma` profile; select it for a pass in the web
-workspace or with `--profile vllm-diffusiongemma`. A project-local profile with
+A built-in `vllm-diffusiongemma` profile points at a vLLM server on the author's LAN
+(`192.168.100.207:8080`) and is available to every workspace; select it for a pass in the web
+workspace or with `--profile vllm-diffusiongemma`, or ignore it. A project-local profile with
 the same name overrides it. To use another server, add a profile like this to
 the project's `settings.json` under `profiles`. The endpoint may end in `/v1`;
 the transport uses `/v1/models`,
@@ -832,7 +835,7 @@ task and validation. Explicit profile wire options override the defaults; `compa
 fingerprints and checkpoints remain unchanged. Prefix equality does not
 demonstrate provider cache reuse. A normal server restart reloads the defaults.
 
-Codex translation now defaults to
+Codex translation defaults to
 `translation_thread_strategy: paired-passes-v1`: P3 resumes accepted P2, while
 P5 resumes accepted P4 in a separate conversation. P4 starts a fresh root and
 never inherits P2/P3 conversations. Each attempt owns a new isolated runtime
@@ -896,9 +899,8 @@ reused for a different tokenizer.
 
 - With a package file, import follows the **OPF spine**, not filename order.
 - NCX / EPUB navigation anchors and `h1` / `h2` headings create major section boundaries.
-- For this Calibre-converted edition, `calibre27` is also recognized as a named major
-  section marker; this catches the embedded `Inigo's Twenty-first Dream` inside the
-  HTML file that starts with chapter THREE.
+- For Calibre-converted editions, `calibre27` is also recognized as a named major
+  section marker; this catches an embedded story that starts in the middle of an HTML file.
 - `calibre19`, `calibre21`, `calibre23`, image-only divider paragraphs, and `<hr>`
   provide natural scene-start hints. These hints are persisted in `book.json`.
 - Without OPF, files use natural sorting (`2` before `10`) and import emits a warning.
@@ -934,7 +936,7 @@ a different existing sidecar is never overwritten.
 
 ## Natural translation units and context budgets
 
-Translation no longer uses arbitrary 1200/1600-token chunks. The default structural
+Translation does not use arbitrary token-sized chunks. The default structural
 policy is:
 
 ```text
@@ -948,7 +950,7 @@ individual scene
     -> never split merely because it exceeds 10,000 characters
 ```
 
-This intentionally keeps compact multi-scene sections such as `Inigo's Last Dream`
+This intentionally keeps compact multi-scene sections, such as a short embedded story,
 together, while a large ordinary chapter is divided at its authored scene boundaries.
 A 30K-character scene remains one unit. Change the whole-section threshold at import
 with `--whole-section-limit N`. The exact frozen plan, scene IDs, character/word counts,
@@ -967,7 +969,7 @@ a 5K generation ceiling.
 
 Pass 1 planning reuses each narrative section's `source_tokens` count saved during import. A section that already fits the P1 source budget is scheduled immediately as one analysis unit, without re-tokenizing every paragraph through llama.cpp. Block-level `/tokenize` calls remain only as a fallback for an exceptionally large section or an older manifest without cached section token counts. Projects imported earlier need no re-import.
 
-## Reading lines / time lines
+## Continuity and spoiler safety
 
 Continuity defaults to the preceding completed chunk **within the same chapter**.
 It does not inject the previous unrelated chapter merely because it is adjacent
@@ -1030,7 +1032,8 @@ The terminal shows:
 2. Current narrative section, local translation unit, and progress through P2-P5.
 3. Current pass, waiting/receiving state, and received answer/reasoning **characters**.
 
-There is no elapsed timer or ETA in the UI. Incoming stream events are not falsely
+The web interface shows a weighted workflow percentage per workspace (explicitly not an ETA), per-phase
+counters and the *Live activity* stream. There is no elapsed timer or ETA in either interface. Incoming stream events are not falsely
 reported as exact generated tokens. Server token usage is saved when available.
 Noninteractive logs print stage transitions instead of animated bars. Prefill is
 shown as waiting; the server may not emit textual output during it.
@@ -1213,6 +1216,6 @@ available. Relevant primary references:
 - https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
 - https://www.w3.org/TR/epub-33/
 
-The five translation roles are based on the Pipeline V2 supplied in the conversation.
+The five translation roles are based on an earlier five-role design ("Pipeline V2").
 The compact schemas, source IDs, checkpoints, approval gate and deterministic merge
 are implementation changes, not claims that the original prompts guarantee them.

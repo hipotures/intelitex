@@ -43,6 +43,7 @@ npm --prefix web run test:unit
 npm --prefix web run build
 npm --prefix web run test:e2e
 npm --prefix web run test:visual
+npm --prefix web run screenshots   # regenerates docs/images, see the root README
 ```
 
 Browser tests need Playwright Chromium and its system libraries/fonts. They launch
