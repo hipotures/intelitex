@@ -43,6 +43,7 @@ export function Home() {
   const gutenbergChecked = usePreference(scope, 'library.gutenberg', 'false') === 'true'
   const gutenberg = gutenbergAvailable && gutenbergChecked
   const libraryFilter = gutenberg ? '&gutenberg=true' : ''
+  const [pendingGutenberg, setPendingGutenberg] = useState<boolean | null>(null)
   const libraryGrid = useRef<HTMLDivElement>(null)
   const library = useInfiniteQuery({ queryKey: [scope, '/api/library', sort, gutenberg],
     queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.querySelectorAll('.book-card').length : 0)}&links=false&sort=${sort}${libraryFilter}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
@@ -86,11 +87,25 @@ export function Home() {
     } catch (error) { setRefreshError(error) }
     finally { setRefreshingLibrary(false) }
   }
+  // Fetch the new view before switching to it. Switching the query key first would empty the grid, shrink
+  // the page and make the browser clamp the scroll position to the top.
+  async function selectGutenberg(checked: boolean) {
+    if (refreshingLibrary || loadingLibrary) return
+    setRefreshingLibrary(true)
+    setPendingGutenberg(checked)
+    setRefreshError(null)
+    try {
+      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false&sort=${sort}${checked ? '&gutenberg=true' : ''}`, libraryPageSchema)
+      queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library', sort, checked], { pages: [first], pageParams: [null] })
+      savePreference(scope, 'library.gutenberg', String(checked))
+    } catch (error) { setRefreshError(error) }
+    finally { setRefreshingLibrary(false); setPendingGutenberg(null) }
+  }
   return <main className="main" {...debugTag('WRK')}><div className="page-title-row"><div {...debugTag('WHT')}><div className="eyebrow">Work</div><h1>Books in progress</h1><div className="subtitle">Open a workspace, continue the pipeline, or start working on a book from the library.</div></div></div>
     <ErrorNote error={workspaces.error ?? command.error} retry={() => void reconcile()} />
     <section className="section" {...debugTag('ACT')}><div className="section-header"><div className="section-title"><h2>Active workspaces</h2><span className="count-badge">{workspaces.data ? active.length : '—'}</span></div><Button variant="ghost" className="compact" onClick={() => setArchive(true)}>Archive →</Button></div>
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
-    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="library-view-label">{gutenberg ? 'Project Gutenberg' : 'All'}</span><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions">{gutenbergAvailable && <label className="library-filter"><input type="checkbox" aria-label="Show only Project Gutenberg books" checked={gutenberg} disabled={refreshingLibrary} onChange={event => { savePreference(scope, 'library.gutenberg', String(event.target.checked)); setRefreshError(null) }} />Project Gutenberg</label>}<label className="library-sort">Sort by<select aria-label="Sort Library" value={sort} disabled={refreshingLibrary} onChange={event => { const value = event.target.value; setSort(value); savePreference(scope, 'library.sort', value); setRefreshError(null) }}><option value="author">Author</option><option value="title">Title</option><option value="language">Language</option></select></label><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
+    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="library-view-label">{gutenberg ? 'Project Gutenberg' : 'All'}</span><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions">{gutenbergAvailable && <label className="library-filter"><input type="checkbox" aria-label="Show only Project Gutenberg books" checked={pendingGutenberg ?? gutenberg} disabled={refreshingLibrary} onChange={event => void selectGutenberg(event.target.checked)} />Project Gutenberg</label>}<label className="library-sort">Sort by<select aria-label="Sort Library" value={sort} disabled={refreshingLibrary} onChange={event => { const value = event.target.value; setSort(value); savePreference(scope, 'library.sort', value); setRefreshError(null) }}><option value="author">Author</option><option value="title">Title</option><option value="language">Language</option></select></label><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
       {libraryError && <div className="notice error" role="alert"><span>{libraryError instanceof Error ? libraryError.message : 'Unable to load Library.'} {libraryData && 'Showing the last successful Library contents.'}</span><Button onClick={() => { if (libraryFailed && libraryData && hasNextPage) void fetchNextPage(); else void refreshLibrary() }} disabled={refreshingLibrary || loadingLibrary}>Retry Library refresh</Button></div>}
       <div className="library-grid" ref={libraryGrid}><LibraryGroups sources={sources} workspaces={active} open={setSourceDetails} /></div>
       <div ref={moreSources} className="library-load-more" aria-hidden="true" />
