@@ -69,6 +69,7 @@ const LIVE_SHOTS = W => [
   { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
     prepare: async page => { await page.locator('.section-name').nth(1).click(); await page.locator('[data-ui-debug-id="PVD"]').waitFor() } },
   { name: 'phase-prepare', path: `/work/workspaces/${W}/prepare`, ready: 'css:[data-ui-debug-id="PTT"]' },
+  { name: 'phase-preload', path: `/work/workspaces/${W}/preload`, ready: 'css:.phase-detail-page' },
   { name: 'phase-analysis', path: `/work/workspaces/${W}/analyse`, ready: 'css:.phase-detail-page' },
   { name: 'phase-translate', path: `/work/workspaces/${W}/translate`, ready: 'css:.phase-detail-page' },
   { name: 'phase-publish', path: `/work/workspaces/${W}/publish`, ready: 'css:.phase-detail-page' },
