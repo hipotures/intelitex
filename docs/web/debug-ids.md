@@ -84,6 +84,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PMT | Phase metric card | `web/src/features/pipeline/Phase.tsx` |
 | PSR | Prepare source structure card | `web/src/features/pipeline/PrepareContent.tsx` |
 | PPR | Prepare source preview card | `web/src/features/pipeline/PrepareContent.tsx` |
+| PTT | Prepare translated title card | `web/src/features/pipeline/TranslatedTitle.tsx` |
 | PSM | Prepare source metadata card | `web/src/features/pipeline/PrepareContent.tsx` |
 | PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |

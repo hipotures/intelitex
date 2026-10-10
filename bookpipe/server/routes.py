@@ -45,6 +45,8 @@ def dispatch(service, method, parts, body=None, query=None):
             return response(200, service.book_metadata(ident, body, edit=method == 'PATCH'))
         if tail == ['label'] and method == 'PATCH':
             return response(200, service.workspace_label(ident, body))
+        if tail == ['translated-title'] and method == 'PATCH':
+            return response(200, service.translated_title(ident, body))
         if method == 'POST':
             if tail == ['analysis-reset']:
                 return response(200, service.reset_analysis(ident, body))

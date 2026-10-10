@@ -92,7 +92,7 @@ def reader(value, kind):
     # ReaderContext builds these DTOs deliberately from verified text and IDs;
     # project manifests, checkpoint paths and provider metadata are never returned.
     fields = {
-        'metadata': 'book_fingerprint title chapters',
+        'metadata': 'book_fingerprint title translated_title chapters',
         'progress': 'total_words last_chapter chapters titles',
         'chapter': 'id title blocks complete stale unavailable warning',
         'context': 'recognized matched_text display_name title attributes statements earlier_mentions same_block_context range',

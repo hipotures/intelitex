@@ -65,11 +65,12 @@ class ServerService:
                 self._summary_cache[root] = (stamp, static, source, identity)
             else:
                 _, static, source, identity = cached
+        from ..application.translated_title import read_translated_title
         from ..application.workspace_setup import read_workspace_setup
         setup = read_workspace_setup(root)
         current = book_metadata.effective(root, identity)
         static = {**static, **current, 'book_id': book_metadata.book_id(identity), 'language': language_code(current.get('language'))}
-        metadata = {**static, 'label': setup.get('label'),
+        metadata = {**static, 'label': setup.get('label'), 'translated_title': read_translated_title(root),
                     'source_language': language_code(current.get('language') or setup.get('source_language')),
                     'target_language': language_code(setup.get('target_language')),
                     'lifecycle': self.application.web.lifecycle(root)}
@@ -106,6 +107,17 @@ class ServerService:
         with self._summary_lock:
             self._summary_cache.pop(root, None)
         return {'label': label}
+
+    def translated_title(self, ident, payload):
+        """Set or clear the hand-entered Polish (target-language) title shown in the Reader."""
+        from ..application.translated_title import write_translated_title
+        fields(payload, {'title'}, {'title'})
+        root = self.workspaces.resolve(ident)
+        with self.application.web.dependencies.project_lock(root):
+            title = write_translated_title(root, payload['title'])
+        with self._summary_lock:
+            self._summary_cache.pop(root, None)
+        return {'title': title}
 
     def last_job(self, ident):
         resets = self.workspaces.root / ident / 'history' / 'p1_resets'

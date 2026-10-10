@@ -14,7 +14,7 @@ export const capabilitiesSchema = z.object({ scope_id: text, import_enabled: z.b
   sse: z.boolean(), multi_workspace: z.boolean(), drafts: z.boolean(), archive: z.boolean(), section_configuration: z.boolean(), diagnostics: z.boolean() })
 const lifecycle = z.object({ archived: z.boolean(), revision: nullableText, updated_at: text.optional() })
 const metadata = z.object({ book_id: text.optional(), title: text, creators: z.array(text), language: nullableText, word_count: count.nullable(),
-  label: nullableText.optional(), source_language: nullableText.optional(), target_language: nullableText.optional(), format: text.optional(), lifecycle })
+  label: nullableText.optional(), translated_title: nullableText.optional(), source_language: nullableText.optional(), target_language: nullableText.optional(), format: text.optional(), lifecycle })
 const progressCount = z.object({ completed: count, required: count, denominator: text })
 const workflowProgress = z.object({ percent: count.nullable(), basis: text, analysis: progressCount, translation: progressCount })
 export const workspaceSchema = z.object({ workspace_id: text, prepared: z.boolean(), metadata, progress: workflowProgress.optional(), active_job: jobSchema.nullable(), last_job: jobSchema.nullable(), source_id: text.optional() })
@@ -129,7 +129,7 @@ const usagePass = z.object({ pass_no: count, profile: nullableText, provider: nu
   result_status: text, physical_attempt_count: count, provider_call_count: count, unknown_provider_call_count: count,
   failed_attempt_count: count, retry_count: count, cost: costEstimate.nullable() })
 export const usageSchema = z.object({ scope: text, warning: nullableText, units: z.array(z.object({ unit_id: text, chapter_id: nullableText, passes: z.array(usagePass) })) })
-export const readerSchema = z.object({ title: text, book_fingerprint: text, chapters: z.array(z.object({ id: text, title: text }).passthrough()) })
+export const readerSchema = z.object({ title: text, translated_title: nullableText.optional(), book_fingerprint: text, chapters: z.array(z.object({ id: text, title: text }).passthrough()) })
 export const readerProgressSchema = z.object({ total_words: count, last_chapter: z.object({ id: text, title: text }).nullable(),
   chapters: z.array(z.object({ id: text, start: count, words: count, blocks: z.array(z.object({ id: text, start: count, words: count })) })),
   titles: z.record(z.string(), text).default({}) })

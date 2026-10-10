@@ -72,6 +72,7 @@ export const debugRegions = [
   { id: 'PMT', description: 'Phase metric card', source: 'features/pipeline/Phase.tsx' },
   { id: 'PSR', description: 'Prepare source structure card', source: 'features/pipeline/PrepareContent.tsx' },
   { id: 'PPR', description: 'Prepare source preview card', source: 'features/pipeline/PrepareContent.tsx' },
+  { id: 'PTT', description: 'Prepare translated title card', source: 'features/pipeline/TranslatedTitle.tsx' },
   { id: 'PSM', description: 'Prepare source metadata card', source: 'features/pipeline/PrepareContent.tsx' },
   { id: 'PCK', description: 'Prepare checks card', source: 'features/pipeline/PrepareContent.tsx' },
   { id: 'RPM', description: 'Prepare rebuild confirmation modal', source: 'features/pipeline/Phase.tsx' },

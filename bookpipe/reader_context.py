@@ -630,9 +630,11 @@ class ReaderContext:
         book = self._book()
         from .book_metadata import effective
         title = effective(self.root, book)["title"]
+        from .application.translated_title import read_translated_title
         return {
             "book_fingerprint": book["source_fingerprint"],
             "title": title if isinstance(title, str) and title.strip() else "Translated book",
+            "translated_title": read_translated_title(self.root),
             "chapters": [
                 {"id": chapter["id"], "title": chapter.get("title") or f"Chapter {index}"}
                 for index, chapter in enumerate(book["chapters"], 1)

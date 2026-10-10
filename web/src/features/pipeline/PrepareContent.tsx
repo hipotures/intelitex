@@ -6,6 +6,7 @@ import { useConnection } from '../../realtime/coordinator'
 import { prepareExcerpt } from './prepareExcerpt'
 import { sectionTitles } from './sectionTitles'
 import { SourceMetadata } from './SourceMetadata'
+import { TranslatedTitle } from './TranslatedTitle'
 
 const modes = { full: ['F', 'Full'], translate: ['T', 'Translate only'], excluded: ['E', 'Excluded'] } as const
 
@@ -91,6 +92,7 @@ export function PrepareContent({ id, pipeline, preparation, preparationError, wo
           </>}
         </div>
       </Panel>
+      <TranslatedTitle id={id} metadata={pipeline.metadata} disabled={commandDisabled || pipeline.busy || pipeline.metadata.lifecycle.archived} />
       <SourceMetadata id={id} metadata={pipeline.metadata} disabled={commandDisabled || pipeline.busy || pipeline.metadata.lifecycle.archived} />
       <Panel debugId="PCK" title="Checks">
         {(preparation?.checks ?? []).map(check => <p className="phase-check" key={check}><span className="phase-check-icon">✓</span>{check}</p>)}

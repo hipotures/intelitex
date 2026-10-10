@@ -639,6 +639,23 @@ def test_library_project_gutenberg_filter_uses_opf_metadata_not_file_names(api):
     assert request(server, 'GET', '/api/library?gutenberg=maybe')[0] == 400
 
 
+def test_translated_title_is_stored_per_workspace_and_shown_by_reader_and_pipeline(api):
+    _, root, _, server = api
+    path = '/api/workspaces/book/translated-title'
+    code, saved = request(server, 'PATCH', path, {'title': '  Wehikuł   czasu '})
+    assert code == 200 and saved == {'title': 'Wehikuł czasu'}
+    assert read_json(root / 'translated_title.json') == {'format_version': 1, 'title': 'Wehikuł czasu'}
+    assert request(server, 'GET', '/api/workspaces/book/reader')[1]['translated_title'] == 'Wehikuł czasu'
+    assert request(server, 'GET', '/api/workspaces/book/pipeline')[1]['metadata']['translated_title'] == 'Wehikuł czasu'
+    for bad in ({'title': 'x' * 201}, {'title': 'a\nb'}, {'title': 5}, {}, {'title': 'ok', 'extra': 1}):
+        assert request(server, 'PATCH', path, bad)[0] == 400
+    assert request(server, 'GET', '/api/workspaces/book/reader')[1]['translated_title'] == 'Wehikuł czasu'
+    code, cleared = request(server, 'PATCH', path, {'title': None})
+    assert code == 200 and cleared == {'title': None}
+    assert not (root / 'translated_title.json').exists()
+    assert request(server, 'GET', '/api/workspaces/book/reader')[1]['translated_title'] is None
+
+
 def test_draft_archive_restore_uses_catalog_revision_without_importing(api):
     _, root, service, _ = api
     source = service.imports.root / 'draft-only'
