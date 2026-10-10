@@ -8,6 +8,7 @@
 // other method is aborted, so nothing can be saved, started or changed. Collapsed panels are expanded
 // through browser preferences of a throwaway browser profile, and anything that does not belong in a
 // screenshot (other workspaces, books outside Project Gutenberg) is hidden or filtered before capture.
+// A shot's `theme` (dark, light, sepia) switches the page theme before capture.
 // Edit FIXTURE_SHOTS / LIVE_SHOTS to add or change a screenshot. Set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
 // to use a system Chromium.
 import { spawn } from 'node:child_process'
@@ -26,10 +27,9 @@ const fontCss = (await Promise.all(INTER.map(async subset => {
 
 const OUTPUT = resolve(import.meta.dirname, '../../docs/images')
 // Every shot is 1440 CSS px wide at 2x pixel density (2880 px files): uniform in a gallery and sharp on
-// HiDPI screens or when the browser scales the image down. Full-page shots use a 1640 px tall window, which
-// holds the tallest page (the workspace overview, 1635 px) without cutting anything; strips are STRIP px tall.
+// HiDPI screens or when the browser scales the image down. Shots use a 1640 px tall window, which holds the
+// tallest page (the workspace overview, 1635 px) without cutting anything.
 const VIEWPORT = { width: 1440, height: 1640 }
-const STRIP = 420
 const SCALE = 2
 const THEME = 'dark'
 
@@ -45,13 +45,7 @@ const FIXTURE_SHOTS = [
 ]
 
 // ---- Live mode ----------------------------------------------------------------------------------------
-// `W` is the workspace id. `strip` captures a STRIP-px-high band: from the top of the page, or from the
-// top of `stripFrom`. `prepare` runs after the page is ready and may only change what the browser shows.
-const onlyThisWorkspace = W => page => page.evaluate(id => {
-  for (const row of document.querySelectorAll('.workspace-row')) if (row.getAttribute('data-entity-id') !== id) row.style.display = 'none'
-  document.querySelector('[data-ui-debug-id="LIB"]').style.display = 'none'
-  document.querySelector('[data-ui-debug-id="ACT"] .count-badge').style.display = 'none' // counts every workspace
-}, W)
+// `W` is the workspace id. `prepare` runs after the page is ready and may only change what the browser shows.
 const gutenbergOnly = async page => {
   await page.getByRole('heading', { name: 'Library', exact: true }).scrollIntoViewIfNeeded()
   await page.locator('.book-card').first().waitFor()
@@ -62,9 +56,11 @@ const gutenbergOnly = async page => {
 // Open the first real chapter (the Reader starts at the table of contents).
 const firstChapter = async page => { await page.locator('.reader-nav, aside, nav').getByText('I. Introduction', { exact: true }).first().click(); await page.getByRole('heading', { name: 'I. Introduction' }).first().waitFor() }
 const LIVE_SHOTS = W => [
-  { name: 'work-active', path: '/work', ready: `css:[data-ui-debug-id="WRC"][data-entity-id="${W}"]`, prepare: onlyThisWorkspace(W), strip: true },
-  { name: 'work-library', path: '/work', ready: 'heading:Library', prepare: gutenbergOnly, strip: true, stripFrom: '[data-ui-debug-id="LIB"]' },
-  { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
+  // The main page is taller than the window: one shot from the very top, one scrolled to the very bottom.
+  { name: 'work-top', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, 0)) } },
+  { name: 'work-bottom', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)) } },
+  // Everything is dark except the workspace overview, which is shown in all three themes.
+  ...['dark', 'light', 'sepia'].map(theme => ({ name: `workspace-overview-${theme}`, path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]', theme })),
   { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
     prepare: async page => { await page.locator('.section-name').nth(1).click(); await page.locator('[data-ui-debug-id="PVD"]').waitFor() } },
   { name: 'phase-analysis', path: `/work/workspaces/${W}/analyse`, ready: 'css:.phase-detail-page' },
@@ -173,14 +169,12 @@ try {
     await settled(page)
     await shot.prepare?.(page)
     await settled(page)
+    if (shot.theme) await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, shot.theme)
     await page.addStyleTag({ content: fontCss })
     await page.evaluate(() => Promise.all([400, 500, 600, 700, 800].map(w => document.fonts.load(`${w} 16px Inter`))))
     await page.evaluate(() => document.fonts.ready)
     const file = `${OUTPUT}/${shot.name}.png`
-    if (shot.strip) {
-      const top = shot.stripFrom ? await page.locator(shot.stripFrom).first().evaluate(node => node.getBoundingClientRect().top + scrollY - 16) : 0
-      await page.screenshot({ path: file, animations: 'disabled', fullPage: true, clip: { x: 0, y: Math.max(0, top), width: VIEWPORT.width, height: STRIP } })
-    } else await page.screenshot({ path: file, animations: 'disabled' })
+    await page.screenshot({ path: file, animations: 'disabled' })
     console.log('wrote', file)
   }
 
