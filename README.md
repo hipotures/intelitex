@@ -24,25 +24,25 @@ titles and the book title in the Reader follow the translation.
 
 | Books in progress | Library |
 |:--:|:--:|
-| <img src="docs/images/work-top.png" width="100%" alt="Work page: active workspaces"> | <img src="docs/images/work-bottom.png" width="100%" alt="Work page scrolled to the Library"> |
+| <img src="docs/images/work-top.png" width="440" alt="Work page: active workspaces"> | <img src="docs/images/work-bottom.png" width="440" alt="Work page scrolled to the Library"> |
 
 ### Workspace and phases
 
 | Workspace overview | Section preview with model overrides |
 |:--:|:--:|
-| <img src="docs/images/workspace-overview.png" width="100%" alt="Workspace overview"> | <img src="docs/images/workspace-section-preview.png" width="100%" alt="Section preview drawer"> |
+| <img src="docs/images/workspace-overview.png" width="440" alt="Workspace overview"> | <img src="docs/images/workspace-section-preview.png" width="440" alt="Section preview drawer"> |
 
 | Prepare | Analyse · P1 |
 |:--:|:--:|
-| <img src="docs/images/phase-prepare.png" width="100%" alt="Prepare phase"> | <img src="docs/images/phase-analysis.png" width="100%" alt="Analyse phase"> |
+| <img src="docs/images/phase-prepare.png" width="440" alt="Prepare phase"> | <img src="docs/images/phase-analysis.png" width="440" alt="Analyse phase"> |
 
 | Review | Translate · P2–P5 |
 |:--:|:--:|
-| <img src="docs/images/review-terminology.png" width="100%" alt="Terminology review"> | <img src="docs/images/phase-translate.png" width="100%" alt="Translate phase"> |
+| <img src="docs/images/review-terminology.png" width="440" alt="Terminology review"> | <img src="docs/images/phase-translate.png" width="440" alt="Translate phase"> |
 
 | Publish | Settings · Models |
 |:--:|:--:|
-| <img src="docs/images/phase-publish.png" width="100%" alt="Publish phase"> | <img src="docs/images/settings-models.png" width="100%" alt="Settings dialog, Models tab"> |
+| <img src="docs/images/phase-publish.png" width="440" alt="Publish phase"> | <img src="docs/images/settings-models.png" width="440" alt="Settings dialog, Models tab"> |
 
 ### Reader
 
@@ -50,11 +50,11 @@ The translated book, in the three themes and with the reading settings open:
 
 | Reader (dark) | Reader (light) |
 |:--:|:--:|
-| <img src="docs/images/reader-dark.png" width="100%" alt="Reader, dark theme"> | <img src="docs/images/reader-light.png" width="100%" alt="Reader, light theme"> |
+| <img src="docs/images/reader-dark.png" width="440" alt="Reader, dark theme"> | <img src="docs/images/reader-light.png" width="440" alt="Reader, light theme"> |
 
 | Reader (sepia) | Reader settings |
 |:--:|:--:|
-| <img src="docs/images/reader-sepia.png" width="100%" alt="Reader, sepia theme"> | <img src="docs/images/reader-settings.png" width="100%" alt="Reader with the reading settings panel open"> |
+| <img src="docs/images/reader-sepia.png" width="440" alt="Reader, sepia theme"> | <img src="docs/images/reader-settings.png" width="440" alt="Reader with the reading settings panel open"> |
 
 ### Updating the screenshots
 
