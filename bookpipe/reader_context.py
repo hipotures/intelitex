@@ -645,8 +645,22 @@ class ReaderContext:
         chapters = []
         total_words = 0
         last_chapter = None
+        # Chapter titles in the target language. A chapter's own translated heading wins; otherwise the
+        # translation of its title wherever it appears in an already translated chapter (the Contents list).
+        source_titles = {item["id"]: (item.get("title") or "").strip() for item in book["chapters"]}
+        wanted = {title for title in source_titles.values() if title}
+        own_titles: dict[str, str] = {}
+        listed_titles: dict[str, str] = {}
         for source_chapter in book["chapters"]:
             chapter = self.chapter(source_chapter["id"])
+            source_text = {block.get("id"): (block.get("text") or "").strip()
+                           for block in source_chapter.get("blocks", []) if isinstance(block, dict)}
+            for block in chapter["blocks"]:
+                original, translated = source_text.get(block["id"]), block["text"].strip()
+                if translated and original in wanted:
+                    listed_titles.setdefault(original, translated)
+                    if original == source_titles[source_chapter["id"]]:
+                        own_titles.setdefault(source_chapter["id"], translated)
             chapter_start = total_words
             blocks = []
             for block in chapter["blocks"]:
@@ -663,7 +677,9 @@ class ReaderContext:
                 last_chapter = {"id": chapter["id"], "title": chapter["title"]}
             if "unavailable" in chapter:
                 break
-        return {"total_words": total_words, "last_chapter": last_chapter, "chapters": chapters}
+        titles = {cid: title for cid in source_titles
+                  if (title := own_titles.get(cid) or listed_titles.get(source_titles[cid]))}
+        return {"total_words": total_words, "last_chapter": last_chapter, "chapters": chapters, "titles": titles}
 
     @staticmethod
     def _translation_map(raw: bytes, expected_ids: list[str]) -> dict[str, str]:

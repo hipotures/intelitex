@@ -131,7 +131,8 @@ const usagePass = z.object({ pass_no: count, profile: nullableText, provider: nu
 export const usageSchema = z.object({ scope: text, warning: nullableText, units: z.array(z.object({ unit_id: text, chapter_id: nullableText, passes: z.array(usagePass) })) })
 export const readerSchema = z.object({ title: text, book_fingerprint: text, chapters: z.array(z.object({ id: text, title: text }).passthrough()) })
 export const readerProgressSchema = z.object({ total_words: count, last_chapter: z.object({ id: text, title: text }).nullable(),
-  chapters: z.array(z.object({ id: text, start: count, words: count, blocks: z.array(z.object({ id: text, start: count, words: count })) })) })
+  chapters: z.array(z.object({ id: text, start: count, words: count, blocks: z.array(z.object({ id: text, start: count, words: count })) })),
+  titles: z.record(z.string(), text).default({}) })
 export const chapterSchema = z.object({ id: text, title: text, complete: z.boolean(), stale: z.boolean(), warning: nullableText.optional(),
   unavailable: z.object({ after_blocks: count, reason: text }).optional(),
   blocks: z.array(z.object({ id: text, kind: text, text, formatting: z.array(z.object({ start: count, end: count, style: z.enum(['em','strong']) })).optional() })) })

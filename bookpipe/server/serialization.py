@@ -93,7 +93,7 @@ def reader(value, kind):
     # project manifests, checkpoint paths and provider metadata are never returned.
     fields = {
         'metadata': 'book_fingerprint title chapters',
-        'progress': 'total_words last_chapter chapters',
+        'progress': 'total_words last_chapter chapters titles',
         'chapter': 'id title blocks complete stale unavailable warning',
         'context': 'recognized matched_text display_name title attributes statements earlier_mentions same_block_context range',
     }

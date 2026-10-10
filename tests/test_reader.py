@@ -118,6 +118,49 @@ def test_reader_progress_counts_only_the_contiguous_available_prefix(tmp_path):
             "id": "ch0001", "start": 0, "words": 3,
             "blocks": [{"id": "B0000001", "start": 0, "words": 3}],
         }],
+        "titles": {},
+    }
+
+
+def make_titles_project(tmp_path):
+    """Contents (translated) lists every title; chapter 2 is translated, chapter 3 is not."""
+    root = tmp_path / "project"
+    root.mkdir()
+    layout = {
+        "ch0001": [("B0000001", "Contents"), ("B0000002", "I. One"), ("B0000003", "II. Two")],
+        "ch0002": [("B0000004", "I. One"), ("B0000005", "Body one.")],
+        "ch0003": [("B0000006", "II. Two"), ("B0000007", "Body two.")],
+    }
+    translations = {
+        "ch0001": {"B0000001": "Spis treści", "B0000002": "I. Wstęp", "B0000003": "II. Maszyna"},
+        "ch0002": {"B0000004": "I. Wprowadzenie", "B0000005": "Treść pierwsza."},
+    }
+    chapters, chunks = [], []
+    for number, (cid, blocks) in enumerate(layout.items(), 1):
+        canonical = [{"id": bid, "kind": "p", "text": text, "order": order} for order, (bid, text) in enumerate(blocks, 1)]
+        chunk = {"id": f"{cid}_c0001", "chapter_id": cid, "number": 1,
+                 "blocks": [{**block, "parent_id": block["id"]} for block in canonical]}
+        chunks.append(chunk)
+        chapters.append({"id": cid, "number": number, "title": blocks[0][1], "blocks": canonical, "chunk_ids": [chunk["id"]]})
+    book = {"source_fingerprint": "source-fingerprint", "metadata": {"title": "Book"}, "chapters": chapters, "chunks": chunks}
+    store = Store(root)
+    atomic_json(root / "book.json", book)
+    store.register_chunks(book)
+    for index, (cid, mapping) in enumerate(translations.items(), 1):
+        path = root / "artifacts" / "pass5" / f"{cid}_c0001" / "result.json"
+        atomic_json(path, {"translations": [{"id": bid, "text": text} for bid, text in mapping.items()]})
+        store.save_job(f"pass5/{cid}_c0001", f"fingerprint-{index}", path, {})
+        store.finish_chunk(f"{cid}_c0001", str(path.relative_to(root)), [], "lexical")
+    store.close()
+    return root
+
+
+def test_reader_progress_reports_translated_chapter_titles(tmp_path):
+    titles = ReaderContext(make_titles_project(tmp_path)).progress()["titles"]
+    assert titles == {
+        "ch0001": "Spis treści",       # its own translated heading
+        "ch0002": "I. Wprowadzenie",   # own heading wins over the Contents entry ("I. Wstęp")
+        "ch0003": "II. Maszyna",       # not translated yet: taken from the translated Contents
     }
 
 

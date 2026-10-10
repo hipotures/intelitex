@@ -72,6 +72,9 @@ test('Reader restores position, ignores vertical scroll gestures, and anchors ma
   const paragraph = page.locator('.reader-page p').filter({ hasText: 'Translated: Relay-A moved steadily in section 1.' })
   await paragraph.waitFor()
   assert.equal(new URL(page.url()).pathname, '/reader/prepared')
+  // Chapter titles follow the translation (the chapter's own translated heading), not the source title.
+  assert.equal((await page.locator('.reader-chapter-list button').first().textContent()).trim(), 'Translated: Chapter 1')
+  assert.match(await page.locator('.reader-current span').textContent(), /^Translated: Chapter 1$/)
   assert.equal(await page.locator('.reader-page').count(), 1)
   assert.equal(await page.locator('vite-error-overlay').count(), 0)
   await page.screenshot({ path: evidence + '/reader-dark-1440.png', fullPage: false, animations: 'disabled' })
