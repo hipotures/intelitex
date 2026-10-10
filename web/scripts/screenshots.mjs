@@ -9,9 +9,17 @@
 // model is touched. Set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to use a system Chromium.
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
+
+// The app asks for the system font `Inter` and does not bundle it, so a machine without Inter would
+// render a fallback face. Embed the same family from devDependencies so shots look identical anywhere.
+const INTER = ['latin', 'latin-ext']
+const fontCss = (await Promise.all(INTER.map(async subset => {
+  const file = resolve(import.meta.dirname, `../node_modules/@fontsource-variable/inter/files/inter-${subset}-wght-normal.woff2`)
+  return `@font-face{font-family:Inter;font-weight:100 900;font-style:normal;src:url(data:font/woff2;base64,${(await readFile(file)).toString('base64')}) format('woff2')}`
+}))).join('\n')
 
 const OUTPUT = resolve(import.meta.dirname, '../../docs/images')
 // Every shot is the same viewport at 2x pixel density (2880x1800 files): uniform in a gallery
@@ -63,7 +71,7 @@ const waitFor = (page, ready) => {
 
 try {
   await mkdir(OUTPUT, { recursive: true })
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE, colorScheme: THEME, reducedMotion: 'reduce' })
+  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE, colorScheme: THEME, bypassCSP: true, reducedMotion: 'reduce' })
   const page = await context.newPage()
   page.setDefaultTimeout(15000)
   const errors = []
@@ -94,6 +102,8 @@ try {
     for (const shot of shots.filter(s => STAGES.indexOf(s.stage) === stage)) {
       await page.goto(config.url + shot.path)
       await waitFor(page, shot.ready)
+      await page.addStyleTag({ content: fontCss })
+      await page.evaluate(() => Promise.all([400, 500, 600, 700, 800].map(w => document.fonts.load(`${w} 16px Inter`))))
       await page.evaluate(() => document.fonts.ready)
       const file = `${OUTPUT}/${shot.name}.png`
       await (shot.target ? page.locator(shot.target).first() : page).screenshot({ path: file, animations: 'disabled' })
