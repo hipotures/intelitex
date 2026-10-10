@@ -74,6 +74,10 @@ const LIVE_SHOTS = W => [
       if (now === count) break
       count = now
     }
+    // Scrolling to the very bottom would hide the Library header (title, Project Gutenberg, sort, Refresh).
+    // Put the section right under the application bar instead, so its controls stay visible.
+    const top = await page.locator('[data-ui-debug-id="LIB"]').evaluate(node => node.getBoundingClientRect().top + window.scrollY)
+    await page.evaluate(y => window.scrollTo(0, y), top - 64 - 14)
   } },
   // Everything is dark except the Reader, which is shown in all three themes.
   { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
