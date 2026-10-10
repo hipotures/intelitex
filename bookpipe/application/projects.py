@@ -181,6 +181,10 @@ class ProjectsService:
                 book["tokenizer_identity"] = client.tokenizer_identity
                 for chapter in book["chapters"]:
                     chapter["source_tokens_tokenizer"] = client.tokenizer_identity
+                if client.tokenizer_identity.get("unit") == "utf8_bytes":
+                    for section in [*book["chapters"], *book["chunks"]]:
+                        section["source_tokens"] = None
+                        section["source_tokens_quality"] = "unavailable"
             book["content_fingerprint"] = plan_fingerprint(book)
             book["planning_settings"] = {"whole_section_char_limit": settings["whole_section_char_limit"]}
             if not configuration:

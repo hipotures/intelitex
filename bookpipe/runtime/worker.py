@@ -10,6 +10,7 @@ import httpx
 from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand, PreloadCommand
 from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
+from ..client import StructuredOutputRejected
 from ..progress import ProgressEvent
 from .models import JobSpec, ImportJobSpec, parse_spec
 from .protocol import JsonlProgressSink, MAX_FRAME
@@ -99,6 +100,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'model_control_token_loop'
         elif "Incomplete completion (finish_reason='length')" in message:
             code = 'output_length_limit'
+        elif any(isinstance(item, StructuredOutputRejected) for item in causes):
+            code = 'structured_output_rejected'
         elif 'has no current saved result for this chunk' in message:
             code = 'missing_prerequisite'
         elif message.startswith('Directly relevant analysis memory exceeds memory_tokens.'):

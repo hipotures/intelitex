@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import jsonschema
 
-from .client import Client, ContextFull
+from .client import Client, ContextFull, StructuredOutputRejected
 from .catalog import apply_estimate, load_catalog, pricing_snapshot
 from .contracts import InferenceUnitContext, SemanticRequest, preflight_measurement, preflight_metadata
 from .evidence import AttemptRecorder, EvidenceError
@@ -838,6 +838,19 @@ class Runner:
             # inspect/save its partial output. Only invalid completed JSON is retried.
             try:
                 raw, meta = provider.generate(body, attempt, recorder)
+            except StructuredOutputRejected as exc:
+                last_error = str(exc)
+                recorder.validation({"stage": "provider", "error": last_error})
+                recorder.finish(generation="completed", validation="failed", metadata={
+                    "provider": semantic.provider, "status": "invalid_output", "usage_status": "unavailable",
+                    "wire_format": body.get("wire_format", "canonical"),
+                    **preflight_metadata(measurement),
+                }, error={"type": type(exc).__name__, "message": last_error})
+                if manager:
+                    manager.finalize(False)
+                if retry + 1 == attempts:
+                    raise StructuredOutputRejected(f"P{pass_no} failed validation after retries. Artifacts: {attempt}\n{last_error[:1400]}") from exc
+                continue
             except BaseException as exc:
                 usage_status = "unknown"
                 from .evidence import recorded_model_submission
@@ -962,7 +975,9 @@ class Runner:
             self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,
                                                         "settings": self.settings["passes"][str(pass_no)]})
             recorder.mark_accepted()
-            if meta.get("usage_status") == "unavailable":
+            # Local chat servers may legitimately omit usage. Keep those values
+            # unknown without preventing the next analysis/translation pass.
+            if meta.get("usage_status") == "unavailable" and semantic.provider != "llamacpp":
                 with self.store.db:
                     self.store.set("observability_hold", {"attempt": str(attempt.relative_to(self.store.root)),
                                                           "reason": "Provider completed without expected usage telemetry."})

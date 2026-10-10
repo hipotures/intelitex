@@ -78,6 +78,9 @@ class MockState:
         self.fail_once = None
         self.bad_json_once = None
         self.unknown_evidence_once = False
+        self.tokenizer_missing = False
+        self.report_usage = True
+        self.structured_errors = []
 
 
 @pytest.fixture
@@ -108,6 +111,11 @@ def server():
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if state.tokenizer_missing and self.path in {
+                "/tokenize", "/apply-template", "/v1/chat/completions/input_tokens",
+            }:
+                self.send_json({"error": "not found"}, 404)
+                return
             if self.path == "/tokenize":
                 self.send_json({"tokens": list(range(max(1, len(body["content"]) // 4)))})
                 return
@@ -125,6 +133,16 @@ def server():
             inputs = json.loads(body["messages"][1]["content"])
             state.calls[stage] += 1
             state.requests.append((stage, inputs, body))
+            if state.structured_errors:
+                message = state.structured_errors.pop(0)
+                error = {"error": {"type": "structured_output_failed", "code": "structured_output_failed", "message": message}}
+                data = ("data: " + json.dumps(error) + "\n\ndata: [DONE]\n\n").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
             if stage == 1:
                 blocks = inputs["SOURCE_BLOCKS"]
                 evidence = [b["id"] for b in blocks if "Relay" in b["text"]]
@@ -165,6 +183,8 @@ def server():
                 events.append({"id": "mock-id", "choices": [{"index": 0, "delta": {"content": raw[offset:offset+80]}, "finish_reason": None}]})
             events.append({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
                            "usage": {"completion_tokens": len(raw)//4, "prompt_tokens": 20}})
+            if not state.report_usage:
+                events[-1].pop("usage")
             wire = "".join("data: " + json.dumps(e) + "\n\n" for e in events) + "data: [DONE]\n\n"
             data = wire.encode()
             self.send_response(200)
@@ -608,6 +628,76 @@ def test_user_selection_and_incremental_continue(project):
     completed = state.calls.copy()
     assert main(["translate", *args, "--continue", "0"]) == 0
     assert state.calls == completed
+
+
+@pytest.mark.parametrize("report_usage", [False, True])
+def test_local_pipeline_without_tokenizer(tmp_path, server, report_usage):
+    from bookpipe.usage import usage_by_unit_report
+
+    state, port = server
+    state.tokenizer_missing = True
+    state.report_usage = report_usage
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "chapter.html").write_text("<h1>Chapter 1</h1><p>Relay moved steadily. The crew waited.</p>")
+    root = tmp_path / "project"
+    args = ["--project", str(root), "--quiet"]
+    assert main(["import", str(source), *args, "--host", "127.0.0.1", "--port", str(port)]) == 0
+    book = read_json(root / "book.json")
+    for section in [*book["chapters"], *book["chunks"]]:
+        assert section["source_tokens"] is None
+        assert section["source_tokens_quality"] == "unavailable"
+    assert main(["analyze", *args]) == 0
+    review = read_json(root / "terms.review.json")
+    review["confirmed"] = True
+    review["terms"][0]["select"] = 1
+    atomic_json(root / "terms.review.json", review)
+    assert main(["approve", *args]) == 0
+    assert main(["translate", *args, "--continue", "0"]) == 0
+    assert all(state.calls[stage] == 1 for stage in range(1, 6))
+    assert "Relay-A" in (root / "translation.txt").read_text()
+    report = usage_by_unit_report(root)
+    passes = [p for unit in report.units for p in unit.passes]
+    assert {p.pass_no for p in passes} == set(range(1, 6))
+    for p in passes:
+        assert p.input_tokens.value == (20 if report_usage else None)
+        for attempt in p.attempts:
+            assert attempt.preflight_input.unit == "utf8_bytes"
+            assert attempt.cached_input_tokens is None
+            assert attempt.reasoning_output_tokens is None
+            assert (attempt.output_tokens is not None) == report_usage
+
+
+@pytest.mark.parametrize("message", [
+    "model did not return valid JSON: duplicate JSON key: meaning",
+    "model output failed the JSON Schema at /terms: missing required property",
+])
+def test_server_output_rejection_uses_json_retry_and_keeps_evidence(project, message):
+    root, args, state = project
+    state.structured_errors = [message]
+    assert main(["analyze", *args]) == 0
+    assert state.calls[1] == 3  # first unit rejected + retry; second unit succeeds
+    retry_inputs = state.requests[1][1]
+    assert message in retry_inputs["VALIDATION_ERROR"]
+    assert "return one complete valid json object" in retry_inputs["RETRY_INSTRUCTION"].lower()
+    attempts = list((root / "artifacts/pass1/ch0001_a001").rglob("attempt.json"))
+    assert len(attempts) == 2
+    rejected = next(read_json(p) for p in attempts if read_json(p)["lifecycle"]["validation"] == "failed")
+    assert rejected["lifecycle"]["generation"] == "completed"
+    assert rejected["response"]["status"] == "invalid_output"
+
+
+@pytest.mark.parametrize("message, calls", [
+    ("model did not return valid JSON: duplicate JSON key: meaning", 2),
+    ("structured output was incomplete (finish_reason=length); increase the output budget", 1),
+    ("could not validate structured output: server validator unavailable", 1),
+])
+def test_server_rejections_are_bounded_and_do_not_retry_server_or_length_errors(project, message, calls):
+    root, args, state = project
+    state.structured_errors = [message] * 3
+    assert main(["analyze", *args]) == 1
+    assert state.calls[1] == calls
+    assert not (root / "terms.review.json").exists()
 
 
 def test_final_translation_unit_auto_publishes_and_stale_retranslation_republishes(tmp_path, server):

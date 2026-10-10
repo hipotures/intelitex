@@ -117,6 +117,7 @@ class Job:
             'p5_id_coverage': 'P5 failed validation after its retry: the model did not return every source block. Saved earlier passes remain available.',
             'model_control_token_loop': 'The local model repeated tool-call markers instead of finishing its answer. The attempt was stopped; saved passes remain available.',
             'output_length_limit': 'The model reached its output-token limit without finishing the answer. The partial response was not accepted; saved passes remain available.',
+            'structured_output_rejected': 'The local server rejected the model response as invalid JSON or a schema mismatch after its configured retries. Saved checkpoints remain available; retry this unit.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
             'analysis_memory_limit': 'P1 cannot start this unit because its required terminology memory exceeds memory_tokens. Increase the workspace memory limit, then retry. Saved analysis remains available; no model call was made for this unit.',

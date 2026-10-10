@@ -21,6 +21,10 @@ class ContextFull(PipelineError):
     pass
 
 
+class StructuredOutputRejected(PipelineError):
+    """The server finished generation but rejected its JSON or schema."""
+
+
 class Client:
     provider = "llamacpp"
     preflight_input_unit = "tokens"
@@ -59,6 +63,8 @@ class Client:
         self.context = int(settings.get("context_size") or 0)
         self.identity: dict[str, Any] = {}
         self.count_endpoint: bool | None = None
+        self.tokenize_endpoint: bool | None = None
+        self.server_kind: str | None = None
         self.profile_name = settings.get("profile_name", "local")
         self.resolved_profile = settings.get("resolved_profile", {})
 
@@ -67,7 +73,10 @@ class Client:
 
     @property
     def tokenizer_identity(self) -> dict[str, Any]:
-        return {"provider": self.provider, "model": self.model, "model_identity": self.identity}
+        identity = {"provider": self.provider, "model": self.model, "model_identity": self.identity}
+        if self.tokenize_endpoint is False:
+            identity.update(unit="utf8_bytes", quality="conservative_upper_bound")
+        return identity
 
     def post(self, path: str, body: dict) -> dict:
         try:
@@ -100,6 +109,8 @@ class Client:
             detected = 0
             if props.is_success:
                 data = props.json()
+                if str(data.get("build_info", "")).casefold().startswith("strata "):
+                    self.server_kind = "strata"
                 gen = data.get("default_generation_settings", {})
                 detected = int(gen.get("n_ctx") or data.get("n_ctx") or 0)
                 self.identity["model_path"] = data.get("model_path")
@@ -114,19 +125,40 @@ class Client:
             raise PipelineError(f"Cannot discover llama.cpp at {self.base}: {exc}") from exc
 
     def count(self, text: str, recorder: AttemptRecorder | None = None) -> int:
+        # Keep planning bounded even when a chat-compatible server has no tokenizer.
+        # Byte bounds are sizing data, never reported token usage.
+        if self.tokenize_endpoint is False:
+            return len(text.encode("utf-8"))
         key = digest(text)
         if key not in self._tokens:
             if recorder:
                 recorder.event("outbound", "http_request", {"method": "POST", "path": "/tokenize",
                                                               "body": {"content": text, "add_special": False, "parse_special": False}})
-            data = self.post("/tokenize", {"content": text, "add_special": False, "parse_special": False})
+            try:
+                data = self.post("/tokenize", {"content": text, "add_special": False, "parse_special": False})
+            except PipelineError as exc:
+                cause = exc.__cause__
+                if not isinstance(cause, httpx.HTTPStatusError) or cause.response.status_code not in (404, 405, 501):
+                    raise
+                self.tokenize_endpoint = False
+                self._tokens.clear()
+                if recorder:
+                    recorder.event("inbound", "http_response", {"path": "/tokenize", "status": cause.response.status_code})
+                return len(text.encode("utf-8"))
             if recorder:
                 recorder.event("inbound", "http_response", {"path": "/tokenize", "body": data})
             tokens = data.get("tokens")
             if not isinstance(tokens, list):
                 raise PipelineError("/tokenize did not return a token list. No estimated fallback is used.")
+            self.tokenize_endpoint = True
             self._tokens[key] = len(tokens)
         return self._tokens[key]
+
+    def _request_byte_bound(self, body: dict) -> int:
+        self.preflight_input_unit = "utf8_bytes"
+        self.preflight_input_quality = "conservative_upper_bound"
+        self.preflight_input_method = "UTF-8 request byte upper bound; server tokenizer unavailable"
+        return len(dumps(body).encode("utf-8")) + 2048
 
     def count_request(self, body: dict, recorder: AttemptRecorder | None = None) -> int:
         # Recent llama.cpp can count the exact rendered prompt including the template.
@@ -142,6 +174,7 @@ class Client:
                 n = response.json().get("input_tokens")
                 if isinstance(n, int):
                     self.count_endpoint = True
+                    self.preflight_input_unit = "tokens"
                     self.preflight_input_quality = "provider_exact"
                     self.preflight_input_method = "llama.cpp POST /v1/chat/completions/input_tokens"
                     return n
@@ -149,6 +182,8 @@ class Client:
             if response.status_code not in (404, 405, 501):
                 raise PipelineError(f"Token preflight failed: HTTP {response.status_code}: {response.text[:600]}")
             self.count_endpoint = False
+        if self.tokenize_endpoint is False:
+            return self._request_byte_bound(body)
         # /apply-template has been available for longer. A margin covers auxiliary
         # grammar/reasoning/template data on versions that do not count it exactly.
         template_body = {"messages": body["messages"], "chat_template_kwargs": body.get("chat_template_kwargs", {})}
@@ -159,13 +194,23 @@ class Client:
             recorder.event("inbound", "http_response", {"path": "/apply-template", "status": response.status_code,
                                                           "body": response.text[:2000]})
         if response.is_success and isinstance(response.json().get("prompt"), str):
+            count = self.count(response.json()["prompt"], recorder)
+            if self.tokenize_endpoint is False:
+                return self._request_byte_bound(body)
+            self.preflight_input_unit = "tokens"
             self.preflight_input_quality = "verified_tokenizer_with_estimated_wrapper"
             self.preflight_input_method = "llama.cpp /apply-template then /tokenize plus wrapper margin"
-            return self.count(response.json()["prompt"], recorder) + 512
+            return count + 512
+        if response.status_code not in (404, 405, 501) and not response.is_success:
+            raise PipelineError(f"Template preflight failed: HTTP {response.status_code}: {response.text[:600]}")
         # This fallback still tokenizes real input; it is conservative, not chars/4.
+        count = self.count(dumps(body["messages"]), recorder)
+        if self.tokenize_endpoint is False:
+            return self._request_byte_bound(body)
+        self.preflight_input_unit = "tokens"
         self.preflight_input_quality = "verified_tokenizer_with_estimated_wrapper"
         self.preflight_input_method = "llama.cpp serialized messages /tokenize plus wrapper margin"
-        return self.count(dumps(body["messages"]), recorder) + 2048
+        return count + 2048
 
     def body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict:
         cfg = self.settings["passes"][str(pass_no)]
@@ -187,6 +232,11 @@ class Client:
         }
         if not on:
             body["reasoning_effort"] = "none"
+        if self.server_kind == "strata":
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": f"intelitex_pass{pass_no}", "strict": True, "schema": schema},
+            }
         # Do not pretend a textual "low budget" is an enforced reasoning limit.
         # max_tokens and the wall deadline are the actual bounds in this client.
         for key, value in self.settings.get("request_extra", {}).items():
@@ -199,17 +249,19 @@ class Client:
         count = self.count_request(body, recorder)
         required = count + body["max_tokens"] + 1024
         if required > self.context:
+            size = "Request byte upper bound" if self.preflight_input_unit == "utf8_bytes" else "Request"
             raise ContextFull(
-                f"Request needs {required:,} tokens including output reserve and margin; "
+                f"{size} needs {required:,} tokens including output reserve and margin; "
                 f"server permits {self.context:,}. No source text was truncated."
             )
         if recorder:
-            recorder.event("inbound", "token_count_result", {"input_tokens": count})
+            size_field = "input_upper_bound" if self.preflight_input_unit == "utf8_bytes" else "input_tokens"
+            recorder.event("inbound", "token_count_result", {size_field: count, "unit": self.preflight_input_unit})
             recorder.context({
                 "method": self.preflight_input_method,
                 "quality": self.preflight_input_quality,
                 "tokenizer_identity": {"provider": "llamacpp", "model": self.model},
-                "input_tokens": count,
+                size_field: count,
                 "capacity_tokens": self.context,
                 "planning_output_reserve": body["max_tokens"],
                 "safety_margin": 1024,
@@ -279,7 +331,14 @@ class Client:
                             recorder.event("inbound", "sse_frame", payload)
                         event = json.loads(payload)
                         if "error" in event:
-                            raise PipelineError(f"Server stream error: {event['error']}")
+                            error = event["error"]
+                            if isinstance(error, dict) and "structured_output_failed" in (error.get("type"), error.get("code")):
+                                message = str(error.get("message", ""))
+                                if "finish_reason=length" in message:
+                                    raise PipelineError("Incomplete completion (finish_reason='length'). Server rejected truncated structured output.")
+                                if message.startswith(("model did not return valid JSON:", "model output failed the JSON Schema")):
+                                    raise StructuredOutputRejected(f"Server rejected structured output: {message}")
+                            raise PipelineError(f"Server stream error: {error}")
                         events.write(dumps(event) + "\n")
                         events.flush()
                         info["events"] += 1

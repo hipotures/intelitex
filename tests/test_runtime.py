@@ -556,6 +556,22 @@ def test_public_job_state_and_safe_worker_failure_code(tmp_path):
                  error=safe_frame['error']).public()
     assert 'output-token limit' in public['error']['message']
 
+    frames.clear()
+
+    def rejected_output(_sink):
+        from bookpipe.client import StructuredOutputRejected
+        raise StructuredOutputRejected('P1 failed validation after retries. Artifacts: /private/path\nprivate model response')
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'translate'),
+                   SimpleNamespace(send=frames.append), rejected_output) == 1
+    safe_frame = decode(json.dumps(frames[0]) + '\n')
+    assert safe_frame['error']['code'] == 'structured_output_rejected'
+    assert '/private/path' not in json.dumps(safe_frame)
+    public = Job('j', str(tmp_path), 'w', str(project), 'translate', state='failed',
+                 error=safe_frame['error']).public()
+    assert 'invalid JSON' in public['error']['message']
+    assert 'private model response' not in public['error']['message']
+
 
 def test_worker_real_pipeline_resumes_checkpoints_and_auto_publishes(tmp_path, server):
     from test_pipeline import make_epub_source
