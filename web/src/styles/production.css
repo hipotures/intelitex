@@ -146,7 +146,9 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .reader-mode .reader-main { max-width:none;height:100dvh;margin:0;padding:0; }
 .reader-mode .reader-main .reader-shell { height:100dvh;min-height:0;border:0;border-radius:0; }
 .reader-mode .reader-main .reader-books { padding-top:calc(var(--header-h) + 14px);transition:opacity .35s ease; }
-.reader-mode .reader-sidebar-switch { top:var(--header-h); }
+/* The sidebar's own padding-top already clears the fixed header; sticky insets count from the content box,
+   so offsetting by the header again pushed the switch over the first chapter (Contents). */
+.reader-mode .reader-sidebar-switch { top:0; }
 .reader-mode .reader-reading-area { padding-top:var(--header-h); }
 .reader-mode .reader-reading-area .reader-controls { top:0; }
 .reader-mode .reader-progress-line { position:fixed;top:calc(var(--header-h) + 58px);left:280px;right:0;width:auto;height:12px;margin:0; }
