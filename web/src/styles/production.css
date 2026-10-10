@@ -587,3 +587,13 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 .translated-title-form label { font-size:12px;color:var(--text-dim); }
 .translated-title-form input { width:100%;max-width:520px; }
 .translated-title-actions { display:flex;gap:10px; }
+/* Library cards: one rigid size. The language sits on the cover's top-left corner, the active-workspace count on
+   its bottom edge; the title takes up to three lines (full text in the tooltip) and the author is always shown in
+   full at the very bottom. If a card needs more room (long author, group path), every card grows with it. */
+.library-grid { grid-auto-rows:1fr; }
+.cover-frame { position:relative; }
+.cover-language { position:absolute;top:7px;left:7px;z-index:3;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 6px;border-radius:5px;background:rgba(0,0,0,.42);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;line-height:1; }
+.cover-workspaces { position:absolute;left:7px;right:7px;bottom:7px;z-index:3;text-align:center;background:rgba(0,0,0,.5);color:#fff;border-color:rgba(255,255,255,.28); }
+.book-card .book-meta { display:flex;flex-direction:column;flex:1 1 auto;min-height:0;text-align:left; }
+.book-card .book-name { white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;line-height:1.3;min-height:calc(3 * 1.3em); }
+.book-card .book-author { margin-top:auto;padding-top:6px;min-height:calc(2 * 1.35em + 6px);display:flex;align-items:flex-end;font-size:12.5px;line-height:1.35;color:var(--text-soft);overflow-wrap:anywhere; }

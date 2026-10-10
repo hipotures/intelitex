@@ -112,3 +112,9 @@ requested Refresh control and removed text create small intentional differences 
 v33 within the existing 1% budget. Other screens
 are compared manually against original captures with different real fixture data; their
 screenshots are not claimed to be pixel-identical. See the verification report for results.
+
+- Library cards have one rigid size instead of the mockup's content-sized cards. The source language is a badge
+  on the cover's top-left corner and the active-workspace count sits on its bottom edge; the title may use up to
+  three lines (the full title is in the tooltip) and the author is always shown in full at the bottom, in the
+  softer text color so it stays readable in the light and sepia themes. Every card grows together if one needs
+  more room (a long author, a group path).

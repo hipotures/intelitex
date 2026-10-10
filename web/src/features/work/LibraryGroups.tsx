@@ -17,17 +17,20 @@ export function LibraryGroups({ sources, workspaces, open }: {
   return sources.map(source => {
     const linked = workspaces.filter(w => w.source_id === source.source_id).length
     const parent = source.groups[0]
+    const language = source.language && source.language.toLowerCase() !== 'und' ? source.language : null
     const path = source.groups.map(group => `${group.kind ? `${group.kind}: ` : ''}${group.name}`).join(' › ')
     return <button className="book-card" data-source-id={source.source_id} data-library-group={parent?.group_id}
       style={parent ? { '--library-group-color': groupColor(parent.group_id) } as CSSProperties : undefined}
       {...debugTag('BKC', source.source_id)} key={source.source_id} onClick={() => open(source)} aria-label={`Open ${source.title}`}>
-      <Cover title={source.title} large /><div className="book-meta"><div className="book-name" title={source.title}>{source.title}</div>
-        <div className="book-detail"><span>{source.creators.join(', ') || 'Unknown author'}</span>{source.language && source.language.toLowerCase() !== 'und' && <span className="library-language">{source.language}</span>}
-          {linked > 0 && <span className="workspace-chip">{linked} active {linked === 1 ? 'workspace' : 'workspaces'}</span>}</div>
+      <div className="cover-frame"><Cover title={source.title} large />
+        {language && <span className="cover-language" title="Source language">{language.toUpperCase()}</span>}
+        {linked > 0 && <span className="workspace-chip cover-workspaces">{linked} active {linked === 1 ? 'workspace' : 'workspaces'}</span>}</div>
+      <div className="book-meta"><div className="book-name" title={source.title}>{source.title}</div>
         {parent && <div className="library-group-path" title={path}>{source.groups.map((group, i) => <span key={group.group_id}>
           {i > 0 && <span aria-hidden="true"> › </span>}{group.kind && <span className="library-kind">{group.kind}</span>} {group.name}
         </span>)}</div>}
         {source.groups.some(group => group.warning) && <span className="library-group-warning">Group configuration needs attention</span>}
+        <div className="book-author">{source.creators.join(', ') || 'Unknown author'}</div>
       </div>
     </button>
   })
