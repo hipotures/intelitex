@@ -1,12 +1,15 @@
-// Regenerates the README screenshots from the disposable offline fixture server.
+// Regenerates the README screenshots into docs/images/<name>.png.
 //
-//   npm --prefix web run screenshots              # every shot
-//   npm --prefix web run screenshots -- review    # only shots whose name contains "review"
+//   npm --prefix web run screenshots                  # demo data from the disposable offline fixture
+//   SCREENSHOT_URL=http://HOST:PORT/work/workspaces/ID npm --prefix web run screenshots   # a real server
+//   ... npm --prefix web run screenshots -- review    # only shots whose name contains "review"
 //
-// Output goes to docs/images/<name>.png; README links those paths, so re-running this
-// script is the whole update procedure. Edit SHOTS to add or change a screenshot.
-// Uses only the offline fixture (tests/web_fixture_server.py): no real workspace, book or
-// model is touched. Set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to use a system Chromium.
+// Live mode (SCREENSHOT_URL) opens that workspace on a running server. It only issues GET requests: every
+// other method is aborted, so nothing can be saved, started or changed. Collapsed panels are expanded
+// through browser preferences of a throwaway browser profile, and anything that does not belong in a
+// screenshot (other workspaces, books outside Project Gutenberg) is hidden or filtered before capture.
+// Edit FIXTURE_SHOTS / LIVE_SHOTS to add or change a screenshot. Set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+// to use a system Chromium.
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { mkdir, readFile } from 'node:fs/promises'
@@ -22,35 +25,82 @@ const fontCss = (await Promise.all(INTER.map(async subset => {
 }))).join('\n')
 
 const OUTPUT = resolve(import.meta.dirname, '../../docs/images')
-// Every shot is the same viewport at 2x pixel density (2880x1800 files): uniform in a gallery
-// and sharp on HiDPI screens or when the browser scales the image down.
-const VIEWPORT = { width: 1440, height: 900 }
+// Every shot is 1440 CSS px wide at 2x pixel density (2880 px files): uniform in a gallery and sharp on
+// HiDPI screens or when the browser scales the image down. Full-page shots use a 1640 px tall window, which
+// holds the tallest page (the workspace overview, 1635 px) without cutting anything; strips are STRIP px tall.
+const VIEWPORT = { width: 1440, height: 1640 }
+const STRIP = 420
 const SCALE = 2
 const THEME = 'dark'
 
-// Pipeline stages the fixture workspace passes through, in order. A shot declares the stage it
-// needs. The viewport is captured by default; an optional `target` CSS selector (stable panel IDs
-// from docs/web/debug-ids.md) clips to one panel instead, at the cost of a different image size. `ready` is heading:<name>, text:<string> or css:<selector>.
+// ---- Fixture mode -------------------------------------------------------------------------------------
+// Pipeline stages the fixture workspace passes through, in order. `ready` is heading:<name>,
+// text:<string> or css:<selector>.
 const STAGES = ['prepared', 'review', 'translated']
-const SHOTS = [
+const FIXTURE_SHOTS = [
   { name: 'work-home', stage: 'prepared', path: '/work', ready: 'heading:Books in progress' },
   { name: 'workspace-overview', stage: 'prepared', path: '/work/workspaces/prepared', ready: 'css:[data-ui-debug-id="SCT"]' },
   { name: 'review-terminology', stage: 'review', path: '/work/workspaces/prepared/review', ready: 'css:.review-term-row' },
   { name: 'reader', stage: 'translated', path: '/reader/prepared', ready: 'text:Translated: Relay-A moved steadily in section 1.' },
 ]
 
+// ---- Live mode ----------------------------------------------------------------------------------------
+// `W` is the workspace id. `strip` captures a STRIP-px-high band: from the top of the page, or from the
+// top of `stripFrom`. `prepare` runs after the page is ready and may only change what the browser shows.
+const onlyThisWorkspace = W => page => page.evaluate(id => {
+  for (const row of document.querySelectorAll('.workspace-row')) if (row.getAttribute('data-entity-id') !== id) row.style.display = 'none'
+  document.querySelector('[data-ui-debug-id="LIB"]').style.display = 'none'
+  document.querySelector('[data-ui-debug-id="ACT"] .count-badge').style.display = 'none' // counts every workspace
+}, W)
+const gutenbergOnly = async page => {
+  await page.getByRole('heading', { name: 'Library', exact: true }).scrollIntoViewIfNeeded()
+  await page.locator('.book-card').first().waitFor()
+  const label = await page.locator('.library-view-label').textContent()
+  const checked = await page.getByLabel('Show only Project Gutenberg books').isChecked()
+  if (label !== 'Project Gutenberg' || !checked) throw new Error('Refusing to capture the Library: the Project Gutenberg filter is not active.')
+}
+// Open the first real chapter (the Reader starts at the table of contents).
+const firstChapter = async page => { await page.locator('.reader-nav, aside, nav').getByText('I. Introduction', { exact: true }).first().click(); await page.getByRole('heading', { name: 'I. Introduction' }).first().waitFor() }
+const LIVE_SHOTS = W => [
+  { name: 'work-active', path: '/work', ready: `css:[data-ui-debug-id="WRC"][data-entity-id="${W}"]`, prepare: onlyThisWorkspace(W), strip: true },
+  { name: 'work-library', path: '/work', ready: 'heading:Library', prepare: gutenbergOnly, strip: true, stripFrom: '[data-ui-debug-id="LIB"]' },
+  { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
+  { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
+    prepare: async page => { await page.locator('.section-name').nth(1).click(); await page.locator('[data-ui-debug-id="PVD"]').waitFor() } },
+  { name: 'phase-analysis', path: `/work/workspaces/${W}/analyse`, ready: 'css:.phase-detail-page' },
+  { name: 'phase-translate', path: `/work/workspaces/${W}/translate`, ready: 'css:.phase-detail-page' },
+  { name: 'phase-publish', path: `/work/workspaces/${W}/publish`, ready: 'css:.phase-detail-page' },
+  { name: 'review-terminology', path: `/work/workspaces/${W}/review`, ready: 'css:.review-term-row' },
+  { name: 'reader', path: `/reader/${W}`, ready: 'css:.reader-page p', prepare: firstChapter },
+  { name: 'reader-settings', path: `/reader/${W}`, ready: 'css:.reader-page p',
+    prepare: async page => { await firstChapter(page); await page.getByRole('button', { name: 'Reader settings' }).click(); await page.locator('.reader-settings').waitFor() } },
+]
+
+const live = (() => {
+  if (!process.env.SCREENSHOT_URL) return null
+  const url = new URL(process.env.SCREENSHOT_URL)
+  const workspace = url.pathname.match(/^\/work\/workspaces\/([A-Za-z0-9_-][A-Za-z0-9_.-]*)/)?.[1]
+  if (!workspace) throw new Error('SCREENSHOT_URL must look like http://HOST:PORT/work/workspaces/<workspace id>')
+  return { origin: url.origin, workspace }
+})()
+const SHOTS = live ? LIVE_SHOTS(live.workspace) : FIXTURE_SHOTS
+
 const filter = process.argv.slice(2)
 const shots = SHOTS.filter(shot => !filter.length || filter.some(part => shot.name.includes(part)))
 if (!shots.length) throw new Error(`No shot matches ${filter.join(', ')}; known: ${SHOTS.map(s => s.name).join(', ')}`)
-const lastStage = Math.max(...shots.map(shot => STAGES.indexOf(shot.stage)))
+const lastStage = live ? 0 : Math.max(...shots.map(shot => STAGES.indexOf(shot.stage)))
 
-const server = spawn('uv', ['run', '--group', 'dev', 'python', 'tests/web_fixture_server.py'],
-  { cwd: resolve(import.meta.dirname, '../..'), stdio: ['pipe', 'pipe', 'inherit'] })
-const lines = createInterface({ input: server.stdout })
-const config = await new Promise((done, fail) => {
-  lines.on('line', line => { try { const value = JSON.parse(line); if (value.url) done(value) } catch { /* wait for readiness */ } })
-  server.once('exit', () => fail(new Error('Fixture server exited before it was ready')))
-})
+let server, base
+if (live) base = live.origin
+else {
+  server = spawn('uv', ['run', '--group', 'dev', 'python', 'tests/web_fixture_server.py'],
+    { cwd: resolve(import.meta.dirname, '../..'), stdio: ['pipe', 'pipe', 'inherit'] })
+  const config = await new Promise((done, fail) => {
+    createInterface({ input: server.stdout }).on('line', line => { try { const value = JSON.parse(line); if (value.url) done(value) } catch { /* wait for readiness */ } })
+    server.once('exit', () => fail(new Error('Fixture server exited before it was ready')))
+  })
+  base = config.url
+}
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
   ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {})
 
@@ -69,9 +119,29 @@ const waitFor = (page, ready) => {
   return kind === 'css' ? page.locator(text).first().waitFor() : page.getByText(text).first().waitFor()
 }
 
+// Pages show placeholders ("Loading…", "Reading the saved workspace…") until their data arrives, and a CSS
+// selector alone matches that skeleton. Wait until no visible placeholder is left.
+const settled = page => page.waitForFunction(() => !/Loading|Reading the saved workspace/.test(document.body.innerText), null, { timeout: 30000 })
+
 try {
   await mkdir(OUTPUT, { recursive: true })
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE, colorScheme: THEME, bypassCSP: true, reducedMotion: 'reduce' })
+  if (live) {
+    // Browser preferences of this throwaway profile: expanded panels and the Project Gutenberg Library filter.
+    const scope = (await (await context.request.get(`${base}/api/capabilities`)).json()).scope_id
+    const preferences = { theme: THEME, 'library.gutenberg.show': 'true', 'library.gutenberg': 'true',
+      [`${live.workspace}.models`]: 'true', [`${live.workspace}.activity`]: 'true', [`${live.workspace}.recent-execution`]: 'true' }
+    await context.addInitScript(({ scope, preferences }) => {
+      for (const [key, value] of Object.entries(preferences)) localStorage.setItem(`intelitex.ui.v1.${scope}.${key}`, value)
+    }, { scope, preferences })
+    // Read-only guarantee: nothing but GET may reach a real server.
+    await context.route('**/*', route => {
+      const method = route.request().method()
+      if (method === 'GET' || method === 'HEAD') return route.continue()
+      console.warn(`Blocked ${method} ${route.request().url()}`)
+      return route.abort()
+    })
+  }
   const page = await context.newPage()
   page.setDefaultTimeout(15000)
   const errors = []
@@ -80,39 +150,49 @@ try {
   // Drive the fixture to the next stage with the same UI actions the browser tests use.
   const advance = {
     review: async () => {
-      await page.goto(`${config.url}/work/workspaces/prepared`)
+      await page.goto(`${base}/work/workspaces/prepared`)
       await page.getByRole('button', { name: 'Run', exact: true }).click()
       await page.getByRole('button', { name: 'Open Review', exact: true }).waitFor()
     },
     translated: async () => {
-      await page.goto(`${config.url}/work/workspaces/prepared/review`)
+      await page.goto(`${base}/work/workspaces/prepared/review`)
       await page.getByRole('button', { name: 'Review individually & next', exact: true }).click()
       await page.getByRole('button', { name: 'Approve glossary', exact: true }).click()
       await page.getByRole('dialog', { name: 'Approve glossary?' }).getByRole('button', { name: 'Approve selected forms' }).click()
       await page.getByText('✓ Glossary approved', { exact: true }).waitFor()
-      await page.goto(`${config.url}/work/workspaces/prepared`)
+      await page.goto(`${base}/work/workspaces/prepared`)
       await page.getByRole('button', { name: 'Run', exact: true }).click()
-      await wait(async () => (await (await context.request.get(`${config.url}/api/workspaces/prepared/pipeline`)).json()).publication.current,
+      await wait(async () => (await (await context.request.get(`${base}/api/workspaces/prepared/pipeline`)).json()).publication.current,
         'offline translation and publication')
     },
   }
 
+  async function capture(shot) {
+    await page.goto(base + shot.path)
+    await waitFor(page, shot.ready)
+    await settled(page)
+    await shot.prepare?.(page)
+    await settled(page)
+    await page.addStyleTag({ content: fontCss })
+    await page.evaluate(() => Promise.all([400, 500, 600, 700, 800].map(w => document.fonts.load(`${w} 16px Inter`))))
+    await page.evaluate(() => document.fonts.ready)
+    const file = `${OUTPUT}/${shot.name}.png`
+    if (shot.strip) {
+      const top = shot.stripFrom ? await page.locator(shot.stripFrom).first().evaluate(node => node.getBoundingClientRect().top + scrollY - 16) : 0
+      await page.screenshot({ path: file, animations: 'disabled', fullPage: true, clip: { x: 0, y: Math.max(0, top), width: VIEWPORT.width, height: STRIP } })
+    } else await page.screenshot({ path: file, animations: 'disabled' })
+    console.log('wrote', file)
+  }
+
   for (let stage = 0; stage <= lastStage; stage++) {
-    if (stage) await advance[STAGES[stage]]()
-    for (const shot of shots.filter(s => STAGES.indexOf(s.stage) === stage)) {
-      await page.goto(config.url + shot.path)
-      await waitFor(page, shot.ready)
-      await page.addStyleTag({ content: fontCss })
-      await page.evaluate(() => Promise.all([400, 500, 600, 700, 800].map(w => document.fonts.load(`${w} 16px Inter`))))
-      await page.evaluate(() => document.fonts.ready)
-      const file = `${OUTPUT}/${shot.name}.png`
-      await (shot.target ? page.locator(shot.target).first() : page).screenshot({ path: file, animations: 'disabled' })
-      console.log('wrote', file)
-    }
+    if (!live && stage) await advance[STAGES[stage]]()
+    for (const shot of shots.filter(s => live || STAGES.indexOf(s.stage) === stage)) await capture(shot)
   }
   if (errors.length) console.warn('Page errors while capturing:\n' + errors.join('\n'))
 } finally {
   await browser.close()
-  server.stdin.end('quit\n')
-  await new Promise(done => { server.once('exit', done); setTimeout(() => { server.kill('SIGTERM'); done() }, 3000).unref() })
+  if (server) {
+    server.stdin.end('quit\n')
+    await new Promise(done => { server.once('exit', done); setTimeout(() => { server.kill('SIGTERM'); done() }, 3000).unref() })
+  }
 }
