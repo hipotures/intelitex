@@ -63,7 +63,18 @@ const firstChapter = async page => {
 const LIVE_SHOTS = W => [
   // The main page is taller than the window: one shot from the very top, one scrolled to the very bottom.
   { name: 'work-top', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, 0)) } },
-  { name: 'work-bottom', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)) } },
+  { name: 'work-bottom', path: '/work', ready: 'heading:Library', prepare: async page => {
+    await gutenbergOnly(page)
+    // The Library loads further pages as the reader scrolls; keep going to the bottom until the list stops growing.
+    let count = -1
+    for (let step = 0; step < 12; step++) {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      await page.waitForTimeout(1200)
+      const now = await page.locator('.book-card').count()
+      if (now === count) break
+      count = now
+    }
+  } },
   // Everything is dark except the Reader, which is shown in all three themes.
   { name: 'workspace-overview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]' },
   { name: 'workspace-section-preview', path: `/work/workspaces/${W}`, ready: 'css:[data-ui-debug-id="SCT"]',
