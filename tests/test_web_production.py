@@ -602,6 +602,43 @@ def test_library_page_cursor_loads_only_requested_metadata_and_rejects_bad_queri
     assert request(server, 'GET', '/api/library?links=maybe')[0] == 400
 
 
+def _packed_opf_epub(path, identifier, source=None):
+    extra = f'<dc:source>{source}</dc:source>' if source else ''
+    opf = ('<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+           '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+           f'<dc:identifier id="id">{identifier}</dc:identifier><dc:title>{path.stem}</dc:title>'
+           f'<dc:creator>Test Author</dc:creator><dc:language>en</dc:language>{extra}</metadata></package>')
+    container = ('<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'
+                 '<rootfiles><rootfile full-path="package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('mimetype', 'application/epub+zip', compress_type=zipfile.ZIP_STORED)
+        archive.writestr('META-INF/container.xml', container)
+        archive.writestr('package.opf', opf)
+
+
+def test_library_project_gutenberg_filter_uses_opf_metadata_not_file_names(api):
+    _, _, service, server = api
+    library = service.imports.root
+    _packed_opf_epub(library / 'by-identifier.epub', 'http://www.gutenberg.org/1342')
+    _packed_opf_epub(library / 'by-source [pg1].epub', 'urn:other:1', 'https://www.gutenberg.org/ebooks/35')
+    _packed_opf_epub(library / 'pg999-looks-like-pg.epub', 'urn:other:2')
+    code, page = request(server, 'GET', '/api/library?links=false&sort=title')
+    assert code == 200
+    flags = {item['source_id']: item['gutenberg'] for item in page['sources']}
+    assert flags['by-identifier.epub'] and flags['by-source [pg1].epub']
+    assert flags['pg999-looks-like-pg.epub'] is False
+    assert not any(flags[name] for name in flags if name not in {'by-identifier.epub', 'by-source [pg1].epub'})
+    for suffix in ('&sort=title', ''):
+        code, page = request(server, 'GET', '/api/library?links=false&gutenberg=true' + suffix)
+        assert code == 200
+        assert sorted(item['source_id'] for item in page['sources']) == ['by-identifier.epub', 'by-source [pg1].epub']
+    code, first = request(server, 'GET', '/api/library?links=false&gutenberg=true&sort=title&limit=1')
+    assert len(first['sources']) == 1 and first['next_cursor']
+    code, second = request(server, 'GET', f"/api/library?links=false&gutenberg=true&sort=title&limit=1&after={quote(first['next_cursor'])}")
+    assert len(second['sources']) == 1 and second['next_cursor'] is None
+    assert request(server, 'GET', '/api/library?gutenberg=maybe')[0] == 400
+
+
 def test_draft_archive_restore_uses_catalog_revision_without_importing(api):
     _, root, service, _ = api
     source = service.imports.root / 'draft-only'

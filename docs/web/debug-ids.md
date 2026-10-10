@@ -112,6 +112,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | STB | Settings tabs | `web/src/app/Shell.tsx` |
 | SPA | Settings · Paths | `web/src/app/Shell.tsx` |
 | SPM | Settings · Models | `web/src/app/Shell.tsx` |
+| SPL | Settings · Library | `web/src/app/Shell.tsx` |
 | MPR | Settings model profile row | `web/src/app/Shell.tsx` |
 | SPI | Settings · Interface | `web/src/app/Shell.tsx` |
 | SPD | Settings · Debug | `web/src/app/Shell.tsx` |

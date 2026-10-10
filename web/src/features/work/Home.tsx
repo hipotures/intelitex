@@ -12,7 +12,7 @@ import { EditableLabel } from '../../components/EditableLabel'
 import { debugTag } from '../../debug/regions'
 import { SourceDetails, SetupWorkspace } from './LibrarySource'
 import { LibraryGroups } from './LibraryGroups'
-import { preference, savePreference } from '../../app/preferences'
+import { preference, savePreference, usePreference } from '../../app/preferences'
 
 function libraryPageLimit(grid: HTMLDivElement | null, loaded = 0) {
   const tracks = grid && getComputedStyle(grid).gridTemplateColumns.match(/\d+(?:\.\d+)?px/g)
@@ -39,9 +39,13 @@ export function Home() {
     const saved = preference(scope, 'library.sort', 'author')
     return ['author', 'title', 'language'].includes(saved) ? saved : 'author'
   })
+  const gutenbergAvailable = usePreference(scope, 'library.gutenberg.show', 'false') === 'true'
+  const gutenbergChecked = usePreference(scope, 'library.gutenberg', 'false') === 'true'
+  const gutenberg = gutenbergAvailable && gutenbergChecked
+  const libraryFilter = gutenberg ? '&gutenberg=true' : ''
   const libraryGrid = useRef<HTMLDivElement>(null)
-  const library = useInfiniteQuery({ queryKey: [scope, '/api/library', sort],
-    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.querySelectorAll('.book-card').length : 0)}&links=false&sort=${sort}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
+  const library = useInfiniteQuery({ queryKey: [scope, '/api/library', sort, gutenberg],
+    queryFn: ({ pageParam, signal }) => request(`/api/library?limit=${libraryPageLimit(libraryGrid.current, pageParam ? libraryGrid.current?.querySelectorAll('.book-card').length : 0)}&links=false&sort=${sort}${libraryFilter}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`, libraryPageSchema, { signal }),
     initialPageParam: null as string | null, getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: false, staleTime: Infinity })
   const [archive, setArchive] = useState(false)
@@ -76,8 +80,8 @@ export function Home() {
     setRefreshError(null)
     announce('Refreshing Library…')
     try {
-      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false&sort=${sort}`, libraryPageSchema)
-      queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library', sort], { pages: [first], pageParams: [null] })
+      const first = await request(`/api/library?limit=${libraryPageLimit(libraryGrid.current)}&links=false&sort=${sort}${libraryFilter}`, libraryPageSchema)
+      queryClient.setQueryData<InfiniteData<LibraryPage, string | null>>([scope, '/api/library', sort, gutenberg], { pages: [first], pageParams: [null] })
       announce('Library refreshed.')
     } catch (error) { setRefreshError(error) }
     finally { setRefreshingLibrary(false) }
@@ -86,7 +90,7 @@ export function Home() {
     <ErrorNote error={workspaces.error ?? command.error} retry={() => void reconcile()} />
     <section className="section" {...debugTag('ACT')}><div className="section-header"><div className="section-title"><h2>Active workspaces</h2><span className="count-badge">{workspaces.data ? active.length : '—'}</span></div><Button variant="ghost" className="compact" onClick={() => setArchive(true)}>Archive →</Button></div>
       <div className="workspace-list" {...debugTag('WLS')}>{active.map(w => <WorkspaceRow key={w.workspace_id} workspace={w} />)}{!active.length && <Empty>{workspaces.isPending ? 'Loading workspaces…' : 'No active workspaces.'}</Empty>}</div></section>
-    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="library-view-label">All</span><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions"><label className="library-sort">Sort by<select aria-label="Sort Library" value={sort} disabled={refreshingLibrary} onChange={event => { const value = event.target.value; setSort(value); savePreference(scope, 'library.sort', value); setRefreshError(null) }}><option value="author">Author</option><option value="title">Title</option><option value="language">Language</option></select></label><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
+    <section className="section" ref={libraryRegion} {...debugTag('LIB')}><div className="section-header"><div className="section-title"><h2>Library</h2><span className="library-view-label">{gutenberg ? 'Project Gutenberg' : 'All'}</span><span className="count-badge" title="Loaded Library sources">{libraryData ? `${sources.length}${hasNextPage ? '+' : ''}` : '—'}</span></div><div className="library-header-actions">{gutenbergAvailable && <label className="library-filter"><input type="checkbox" aria-label="Show only Project Gutenberg books" checked={gutenberg} disabled={refreshingLibrary} onChange={event => { savePreference(scope, 'library.gutenberg', String(event.target.checked)); setRefreshError(null) }} />Project Gutenberg</label>}<label className="library-sort">Sort by<select aria-label="Sort Library" value={sort} disabled={refreshingLibrary} onChange={event => { const value = event.target.value; setSort(value); savePreference(scope, 'library.sort', value); setRefreshError(null) }}><option value="author">Author</option><option value="title">Title</option><option value="language">Language</option></select></label><Button variant="ghost" className="compact library-refresh" onClick={() => void refreshLibrary()} disabled={refreshingLibrary || loadingLibrary} aria-busy={refreshingLibrary} aria-label="Refresh Library"><RefreshCw size={14} className={refreshingLibrary ? 'library-refresh-icon busy' : 'library-refresh-icon'} aria-hidden="true" />Refresh</Button></div></div>
       {libraryError && <div className="notice error" role="alert"><span>{libraryError instanceof Error ? libraryError.message : 'Unable to load Library.'} {libraryData && 'Showing the last successful Library contents.'}</span><Button onClick={() => { if (libraryFailed && libraryData && hasNextPage) void fetchNextPage(); else void refreshLibrary() }} disabled={refreshingLibrary || loadingLibrary}>Retry Library refresh</Button></div>}
       <div className="library-grid" ref={libraryGrid}><LibraryGroups sources={sources} workspaces={active} open={setSourceDetails} /></div>
       <div ref={moreSources} className="library-load-more" aria-hidden="true" />

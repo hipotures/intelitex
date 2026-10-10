@@ -220,6 +220,8 @@ h1,h2,h3 { font-weight:700; }
 .library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
 .library-sort { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim); }
 .library-sort select { width:auto;min-width:100px;padding:5px 8px; }
+.library-filter { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer; }
+.library-filter input { width:14px;height:14px;accent-color:var(--accent); }
 .library-view-label,.library-kind,.library-language { font-size:11px;border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--text-dim); }
 .library-kind { text-transform:uppercase;letter-spacing:.05em; }
 .book-card[data-library-group] { box-shadow:inset 3px 0 var(--library-group-color);background:color-mix(in srgb,var(--library-group-color) 6%,var(--panel)); }

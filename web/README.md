@@ -19,7 +19,11 @@ Open `http://127.0.0.1:8780/work`. The single Python FastAPI/Uvicorn server serv
 `web/dist`, API, SSE and vetted current EPUB downloads. Production needs no Node
 server. Do not use ASGI reload or multiple workers against one supervisor/registry.
 Sources are supported HTML/XHTML directories, extracted EPUB packages or packed `.epub`
-files, not uploads. Library loads at least 12 sources, rounded up to complete rows
+files, not uploads.
+Settings → Library can show a **Project Gutenberg** checkbox before *Sort by* in the Work
+Library header. It lists only books whose OPF `dc:identifier` or `dc:source` names
+`gutenberg.org` (never the file name), which keeps documentation screenshots free of
+books with unclear rights. The option and the checkbox state are browser preferences. Library loads at least 12 sources, rounded up to complete rows
 at the current grid width, then more as the user scrolls. Refresh explicitly
 restarts discovery from the first page.
 

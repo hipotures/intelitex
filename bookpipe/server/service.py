@@ -329,7 +329,7 @@ class ServerService:
         return {'sources': sources, 'configured': self.imports.root is not None}
 
     def library_page(self, query):
-        if set(query) - {'after', 'limit', 'links', 'sort'}:
+        if set(query) - {'after', 'limit', 'links', 'sort', 'gutenberg'}:
             raise ValueError('Invalid Library query.')
         sort = query.get('sort')
         if sort not in {None, 'author', 'title', 'language'}:
@@ -337,6 +337,9 @@ class ServerService:
         links = query.get('links', 'true')
         if links not in {'true', 'false'}:
             raise ValueError('Invalid Library link mode.')
+        gutenberg = query.get('gutenberg', 'false')
+        if gutenberg not in {'true', 'false'}:
+            raise ValueError('Invalid Library Project Gutenberg filter.')
         raw_limit = query.get('limit', '24')
         if not isinstance(raw_limit, str) or not raw_limit.isdecimal():
             raise ValueError('Invalid Library page size.')
@@ -348,7 +351,7 @@ class ServerService:
                                   or any(part in {'', '.', '..'} for part in after.split('/'))
                                   or ':' in after or '\\' in after or '\x00' in after):
             raise ValueError('Invalid Library cursor.')
-        sources, next_cursor = self.catalog.library_page(after, limit, sort)
+        sources, next_cursor = self.catalog.library_page(after, limit, sort, gutenberg == 'true')
         imported = ({str(self._book_summary(self.workspaces.resolve(i))[1]): i for i in self.workspaces.list()}
                     if links == 'true' else {})
         if self.imports.root and links == 'true':

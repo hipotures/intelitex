@@ -199,7 +199,7 @@ class WebCatalog:
 
     def _source_metadata(self, source_id):
         if self.imports.root is None:
-            return {'title': source_id, 'creators': [], 'language': None, 'word_count': None}
+            return {'title': source_id, 'creators': [], 'language': None, 'word_count': None, 'gutenberg': False}
         try:
             source = confined_source(self.imports.root, source_id)
             if source.is_file() and source.suffix.lower() == '.epub':
@@ -218,7 +218,8 @@ class WebCatalog:
         except (OSError, ValueError, PipelineError):
             metadata, title = {}, source_id
         return {'title': title,
-                'creators': metadata.get('creators', []), 'language': language_code(metadata.get('language')), 'word_count': None}
+                'creators': metadata.get('creators', []), 'language': language_code(metadata.get('language')), 'word_count': None,
+                'gutenberg': metadata.get('gutenberg', False)}
 
     def setup_metadata(self, workspace_id):
         root = workspace_destination(self.root, workspace_id)
@@ -295,11 +296,13 @@ class WebCatalog:
                            'workspace_id': entry['workspace_id'] if entry else None})
         return result
 
-    def library_page(self, after, limit, sort=None):
+    def library_page(self, after, limit, sort=None, gutenberg=False):
         if self.imports.root is None:
             return [], None
+        if gutenberg and sort is None:
+            sort = 'author'  # Filtering needs the complete, ordered listing.
         if sort is not None:
-            sources = ordered_sources(self.library(), sort)
+            sources = ordered_sources([s for s in self.library() if s.get('gutenberg')] if gutenberg else self.library(), sort)
             start = 0
             if after is not None:
                 positions = {source['source_id']: i for i, source in enumerate(sources)}

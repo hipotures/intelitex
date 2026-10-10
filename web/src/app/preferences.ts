@@ -1,3 +1,4 @@
+import { useCallback, useSyncExternalStore } from 'react'
 export function preference(scope: string, key: string, fallback = '') {
   try { return localStorage.getItem(`intelitex.ui.v1.${scope}.${key}`) ?? fallback } catch { return fallback }
 }
@@ -21,4 +22,10 @@ export function subscribePreferences(scope: string, listener: () => void) {
     window.removeEventListener('intelitex:preferences', changed)
     window.removeEventListener('storage', changed)
   }
+}
+
+/** Reactive read of one preference; re-renders when it is saved here or in another tab. */
+export function usePreference(scope: string, key: string, fallback = '') {
+  const subscribe = useCallback((listener: () => void) => subscribePreferences(scope, listener), [scope])
+  return useSyncExternalStore(subscribe, () => preference(scope, key, fallback))
 }

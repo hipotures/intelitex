@@ -31,9 +31,15 @@ def _small_member(archive: zipfile.ZipFile, name: str, limit: int) -> bytes:
     return raw
 
 
+def gutenberg_sourced(metadata) -> bool:
+    """True when the OPF names a gutenberg.org identifier or source (Project Gutenberg editions do)."""
+    return any('gutenberg.org' in (node.text or '').casefold()
+               for tag in ('identifier', 'source') for node in metadata.findall('{*}' + tag))
+
+
 def packed_epub_metadata(source: Path) -> dict:
     """Read presentation metadata without unpacking prose or the entire archive."""
-    result = {'title': source.stem, 'creators': [], 'language': None, 'word_count': None}
+    result = {'title': source.stem, 'creators': [], 'language': None, 'word_count': None, 'gutenberg': False}
     try:
         with zipfile.ZipFile(source) as archive:
             container = ET.fromstring(_small_member(archive, 'META-INF/container.xml', 256 * 1024))
@@ -51,6 +57,7 @@ def packed_epub_metadata(source: Path) -> dict:
             result['title'] = (title.text or '').strip()[:500] or source.stem if title is not None else source.stem
             result['creators'] = [(node.text or '').strip()[:500] for node in creators if (node.text or '').strip()]
             result['language'] = (language.text or '').strip()[:50] or None if language is not None else None
+            result['gutenberg'] = gutenberg_sourced(metadata)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError, DefusedXmlException, PipelineError):
         pass
     return result

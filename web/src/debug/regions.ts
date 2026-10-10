@@ -100,6 +100,7 @@ export const debugRegions = [
   { id: 'STB', description: 'Settings tabs', source: 'app/Shell.tsx' },
   { id: 'SPA', description: 'Settings · Paths', source: 'app/Shell.tsx' },
   { id: 'SPM', description: 'Settings · Models', source: 'app/Shell.tsx' },
+  { id: 'SPL', description: 'Settings · Library', source: 'app/Shell.tsx' },
   { id: 'MPR', description: 'Settings model profile row', source: 'app/Shell.tsx' },
   { id: 'SPI', description: 'Settings · Interface', source: 'app/Shell.tsx' },
   { id: 'SPD', description: 'Settings · Debug', source: 'app/Shell.tsx' },

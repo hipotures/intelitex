@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
-from .epub_sources import _member_name, _small_member, packed_epub_metadata
+from .epub_sources import _member_name, _small_member, gutenberg_sourced, packed_epub_metadata
 from .imports import confined_source, validate_source_tree
 from ..util import PipelineError
 from ..languages import language_code
@@ -95,7 +95,7 @@ def _folder_samples(source: Path) -> tuple[list[tuple[str, str | None]], list[st
 
 
 def _folder_metadata(source: Path) -> dict:
-    result = {'title': source.name, 'creators': [], 'language': None}
+    result = {'title': source.name, 'creators': [], 'language': None, 'gutenberg': False}
     opf = next((path for path in sorted(source.rglob('*.opf')) if path.is_file() and not path.is_symlink()), None)
     if opf is not None:
         try:
@@ -111,6 +111,7 @@ def _folder_metadata(source: Path) -> dict:
             result['title'] = (title.text or '').strip()[:500] or source.name if title is not None else source.name
             result['creators'] = [(node.text or '').strip()[:500] for node in creators if (node.text or '').strip()]
             result['language'] = (language.text or '').strip()[:50] or None if language is not None else None
+            result['gutenberg'] = gutenberg_sourced(metadata)
     if result['language'] is None:
         first = next((path for path in sorted(source.rglob('*')) if path.is_file() and not path.is_symlink() and path.suffix.lower() in {'.html', '.htm', '.xhtml'}), None)
         if first is not None:
