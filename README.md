@@ -650,9 +650,9 @@ Enable cloud profiles only after setting an explicit opaque model ID, verified
 context capacity, and credential reference (OpenAI), or an explicitly authorized
 Codex authentication source.
 
-A built-in `vllm-diffusiongemma` profile points at a vLLM server on the author's LAN
-(`192.168.100.207:8080`) and is available to every workspace; select it for a pass in the web
-workspace or with `--profile vllm-diffusiongemma`, or ignore it. A project-local profile with
+A built-in `vllm-diffusiongemma` profile, which targets the author's own vLLM server, is available to
+every workspace; select it for a pass in the web workspace or with `--profile vllm-diffusiongemma`, or ignore
+it. A project-local profile with
 the same name overrides it. To use another server, add a profile like this to
 the project's `settings.json` under `profiles`. The endpoint may end in `/v1`;
 the transport uses `/v1/models`,
@@ -664,7 +664,7 @@ environment variable containing the server's bearer token.
   "provider": "vllm",
   "enabled": true,
   "model": "diffusiongemma",
-  "endpoint": "http://192.168.100.207:8080/v1",
+  "endpoint": "http://127.0.0.1:8080/v1",
   "context_size": 131072,
   "planning_output_reserve": 16000,
   "request_timeout": 1200,
