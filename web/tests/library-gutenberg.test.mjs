@@ -28,7 +28,6 @@ test('Settings controls a Library checkbox that lists only Project Gutenberg boo
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`) })
-  await page.route('**/favicon.ico', route => route.fulfill({ status: 204 })) // Full Chromium asks for it; the app ships none.
   const filter = page.getByLabel('Show only Project Gutenberg books')
   await page.goto(config.url + '/work')
   await page.getByRole('heading', { name: 'Library', exact: true }).scrollIntoViewIfNeeded()

@@ -970,6 +970,7 @@ def test_asgi_guards_and_static_route_isolation(api, tmp_path):
     frontend = tmp_path / 'dist'
     frontend.mkdir()
     (frontend / 'index.html').write_text('<html>Intelitex</html>')
+    (frontend / 'favicon.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
     private = frontend / 'artifacts/ch0001/codex-home/scope/slot/home/auth.json'
     private.parent.mkdir(parents=True)
     private.write_text('private-runtime-sentinel')
@@ -983,6 +984,9 @@ def test_asgi_guards_and_static_route_isolation(api, tmp_path):
                 response = await client.request(method, '/work/workspaces/book/preload')
                 assert response.status_code == 200 and 'text/html' in response.headers['content-type']
             assert (await client.get('/reader/source/original.epub')).status_code == 200
+            icon = await client.get('/favicon.svg')
+            assert icon.status_code == 200 and icon.headers['content-type'].startswith('image/svg+xml')
+            assert (await client.get('/favicon.ico')).status_code == 404
             assert (await client.get('/reader/source/Book%20One.epub')).status_code == 200
             for path in ['/api/missing', '/assets/missing.js', '/assets/leak.js', '/book.json', '/docs']:
                 response = await client.get(path)

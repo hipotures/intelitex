@@ -139,6 +139,8 @@ def create_app(service, allowed_hosts, *, frontend=None):
             if re.fullmatch(r'assets/[A-Za-z0-9_.-]+\.(?:js|css|woff2)', path):
                 target = assets / path
                 mime = 'text/javascript' if target.suffix == '.js' else 'text/css' if target.suffix == '.css' else 'font/woff2'
+            elif path == 'favicon.svg':
+                target, mime = assets / 'favicon.svg', 'image/svg+xml'
             elif path == '' or re.fullmatch(r'(?:work(?:/workspaces/[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/(?:prepare|preload|analyse|review|translate|publish))?)?|reader(?:/source/[^/\\]{1,255}|/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?)', path):
                 target, mime = assets / 'index.html', 'text/html'
             else:
