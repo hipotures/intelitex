@@ -49,7 +49,7 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
                 "context_size": 1_050_000,
                 "planning_output_reserve": 16_000,
                 "max_output_tokens": None,
-                "request_timeout": 1_200,
+                "request_timeout": 3_600,
                 "reasoning_effort": effort,
                 "options": {"auth_source": "~/.codex/auth.json", **CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS},
             }
