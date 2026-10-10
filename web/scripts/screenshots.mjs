@@ -53,8 +53,13 @@ const gutenbergOnly = async page => {
   const checked = await page.getByLabel('Show only Project Gutenberg books').isChecked()
   if (label !== 'Project Gutenberg' || !checked) throw new Error('Refusing to capture the Library: the Project Gutenberg filter is not active.')
 }
-// Open the first real chapter (the Reader starts at the table of contents).
-const firstChapter = async page => { await page.locator('.reader-nav, aside, nav').getByText('I. Introduction', { exact: true }).first().click(); await page.getByRole('heading', { name: 'I. Introduction' }).first().waitFor() }
+// Open the first real chapter, the one after Contents (the Reader starts at the table of contents).
+// Chapter names follow the translation, so pick by position, not by name.
+const firstChapter = async page => {
+  await page.locator('.reader-chapter-list button').nth(1).click()
+  await page.locator('.reader-chapter-list button.active').nth(0).waitFor()
+  await page.waitForFunction(() => document.querySelector('.reader-chapter-list button:nth-of-type(2)')?.classList.contains('active'))
+}
 const LIVE_SHOTS = W => [
   // The main page is taller than the window: one shot from the very top, one scrolled to the very bottom.
   { name: 'work-top', path: '/work', ready: 'heading:Library', prepare: async page => { await gutenbergOnly(page); await page.evaluate(() => window.scrollTo(0, 0)) } },
