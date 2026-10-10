@@ -16,7 +16,8 @@
     "test:unit": "vitest run src",
     "test:browser": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "test:visual": "node tests/visual.mjs"
+    "test:visual": "node tests/visual.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.2",
