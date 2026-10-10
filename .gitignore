@@ -28,3 +28,6 @@ projects/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+
+# local machine-specific launcher
+/run.sh
