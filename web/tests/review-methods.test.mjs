@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -49,8 +50,8 @@ test('bulk acceptance stays distinct from individual review through glossary app
   await page.getByRole('button', { name: 'Approve glossary', exact: true }).click()
   const approvalDialog = page.getByRole('dialog', { name: 'Approve glossary?' })
   await approvalDialog.getByText('0/1 individually reviewed · 1 bulk accepted', { exact: false }).waitFor()
-  await mkdir('/tmp/intelitex-review-methods-evidence', { recursive: true })
-  await page.screenshot({ path: '/tmp/intelitex-review-methods-evidence/bulk-approval-dark-1440.png', animations: 'disabled' })
+  await mkdir(testEvidence('intelitex-review-methods-evidence'), { recursive: true })
+  await page.screenshot({ path: testEvidence('intelitex-review-methods-evidence/bulk-approval-dark-1440.png'), animations: 'disabled' })
   await approvalDialog.getByRole('button', { name: 'Approve selected forms' }).click()
   await page.getByText('✓ Glossary approved', { exact: true }).waitFor()
   await page.locator('.review-term-row').getByText('✓ bulk accepted').waitFor()
@@ -65,7 +66,7 @@ test('bulk acceptance stays distinct from individual review through glossary app
   await page.getByRole('button', { name: 'All', exact: true }).first().click()
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: /^Theme:.*Switch theme$/ }).click()
-  await page.screenshot({ path: '/tmp/intelitex-review-methods-evidence/bulk-light-390.png', fullPage: true, animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-review-methods-evidence/bulk-light-390.png'), fullPage: true, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   await page.getByRole('button', { name: 'Review individually & next', exact: true }).click()
   await page.locator('.review-page-meta').getByText('1/1 individually reviewed · 0 bulk accepted', { exact: false }).waitFor()

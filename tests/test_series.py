@@ -96,7 +96,9 @@ def write_predecessor(root: Path, *, label: str = "one", memory: dict | None = N
     atomic_json(root / "book_memory.json", memory if memory is not None else predecessor_memory())
     atomic_json(root / "lexicon.approved.json", lexicon if lexicon is not None else approved_lexicon())
     (root / "state.sqlite3").write_bytes(b"legacy database must not be opened")
-    atomic_json(root / "settings.json", read_json(cli_module.BUNDLE / "settings.default.json"))
+    legacy = read_json(cli_module.BUNDLE / "settings.default.json")
+    legacy.pop("pipeline_execution", None)
+    atomic_json(root / "settings.json", legacy)
     (root / "prompts").mkdir()
     for number in range(1, 6):
         (root / "prompts" / f"pass{number}.txt").write_text(f"legacy prompt {number}", encoding="utf-8")
@@ -524,6 +526,9 @@ def tuned_configuration(previous):
                     "auth_source": str(previous.parent / "shared" / "auth.json")},
     }
     settings["profiles"].update({"series-high": high, "series-low": {**high, "reasoning_effort": "low"}})
+    from bookpipe.source_sessions import DEFAULT_EXECUTION
+    settings["pipeline_execution"] = copy.deepcopy(DEFAULT_EXECUTION)
+    (previous / "prompts" / "pass0.txt").write_bytes((cli_module.BUNDLE / "prompts" / "pass0.txt").read_bytes())
     atomic_json(previous / "settings.json", settings)
     return settings
 
@@ -545,7 +550,8 @@ def test_configuration_is_inherited_before_provider_and_sets_book_identity(confi
     assert capture["settings"] == capture["disk_settings"] == settings
     assert read_json(root / "settings.json") == settings
     assert capture["profile"]["reasoning_effort"] == "high"
-    assert capture["profile"]["options"]["p1_wire_format"] == "canonical"
+    assert capture["profile"]["execution_strategy"] == "source-session-v1"
+    assert capture["disk_settings"]["profiles"]["series-high"]["options"]["p1_wire_format"] == "canonical"
     assert capture["catalog"][1] == bundled_catalog_path()
     assert not (root / "catalog" / "models.json").exists()
     book = read_json(root / "book.json")
@@ -927,3 +933,17 @@ def test_catalog_provenance_does_not_retain_predecessor_path(configuration_pool,
     assert saved["models"] == catalog["models"]
     assert saved["import"] == {"sha256": "original-catalog-hash"}
     assert read_json(previous / "catalog" / "models.json") == catalog
+
+
+def test_legacy_predecessor_new_volume_gets_source_mode_without_migrating_parent(configuration_pool, tmp_path):
+    from bookpipe.source_sessions import DEFAULT_EXECUTION
+    previous = tmp_path / 'v1'
+    write_predecessor(previous)
+    before = (previous / 'settings.json').read_bytes()
+    root = tmp_path / 'v2'
+    assert config_import(previous, root, source_folder(tmp_path / 'source')) == 0
+    assert read_json(root / 'settings.json')['pipeline_execution'] == DEFAULT_EXECUTION
+    assert (root / 'prompts/pass0.txt').read_bytes() == (cli_module.BUNDLE / 'prompts/pass0.txt').read_bytes()
+    assert (previous / 'settings.json').read_bytes() == before
+    assert not (previous / 'prompts/pass0.txt').exists()
+    assert not (root / 'source_sessions.json').exists()

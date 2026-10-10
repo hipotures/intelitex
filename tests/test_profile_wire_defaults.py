@@ -19,7 +19,9 @@ SHARED = "cache-shared-v2"
 
 @pytest.fixture
 def settings():
-    return read_json(BUNDLE / "settings.default.json")
+    value = read_json(BUNDLE / "settings.default.json")
+    value.pop("pipeline_execution", None)  # This suite describes existing legacy projects.
+    return value
 
 
 @pytest.mark.parametrize("name", sorted(builtin_codex_profiles()))

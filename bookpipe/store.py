@@ -44,7 +44,8 @@ class Store:
 
     def record_translation_pass(self, key, base_fingerprint, fingerprint, inputs, *, generated=False):
         """One receipt for the chosen result, shared by full and single-pass runs."""
-        number = int(key[4])
+        from .artifacts import task_parts
+        number, _ = task_parts(key)
         cid = key.split('/', 1)[1]
         selected = self.get('selected_pass:' + key)
         with self.db:
@@ -94,9 +95,9 @@ class Store:
         return {name: [tuple(row) for row in self.db.execute(sql)] for name, sql in tables.items()}
 
     def has_dependent_p1_work(self):
-        if self.db.execute("SELECT 1 FROM jobs WHERE key NOT LIKE 'pass1/%' LIMIT 1").fetchone():
+        if self.db.execute("SELECT 1 FROM jobs WHERE key LIKE 'pass2/%' OR key LIKE 'pass3/%' OR key LIKE 'pass4/%' OR key LIKE 'pass5/%' LIMIT 1").fetchone():
             return True
-        if self.db.execute("SELECT 1 FROM merged WHERE key NOT LIKE 'pass1/%' LIMIT 1").fetchone():
+        if self.db.execute("SELECT 1 FROM merged WHERE key LIKE 'pass2/%' OR key LIKE 'pass3/%' OR key LIKE 'pass4/%' OR key LIKE 'pass5/%' LIMIT 1").fetchone():
             return True
         if self.db.execute("SELECT 1 FROM chunks WHERE status!='pending' OR final_path IS NOT NULL LIMIT 1").fetchone():
             return True
@@ -183,7 +184,8 @@ class Store:
             return True
         # The engine writes P1 attempts below this pass-specific directory before
         # provider execution. Even incomplete evidence freezes membership.
-        return any((self.root / 'artifacts' / 'pass1').glob('**/attempt_*/attempt.json'))
+        from .artifacts import analysis_directories
+        return any(any(path.glob('**/attempt_*/attempt.json')) for path in analysis_directories(self.root))
 
     def seed_series(self, seed: dict):
         """Seed inherited memory atomically without treating the new book as approved."""

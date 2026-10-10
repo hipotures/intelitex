@@ -214,7 +214,9 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   const canFilterPreview = (previewPass === 2 || previewPass === 4) && !!unit?.passes[String(previewPass)]?.retained_count
   const sourceLanguage = languageName(pipeline.metadata.source_language ?? pipeline.metadata.language, 'Source language unknown')
   const targetLanguage = languageName(pipeline.metadata.target_language ?? pipeline.publication.target_language, 'Target language unknown')
-  const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived
+  const prerequisite = !pipeline.analysis.complete ? 'Complete P1 for the whole book before translation.'
+    : !pipeline.approved ? 'Confirm and approve Review before translation.' : null
+  const disabled = command.disabled || pipeline.busy || pipeline.metadata.lifecycle.archived || !!prerequisite
   const candidateActive = pipeline.active_job?.operation === 'translate' ? pipeline.active_job : null
   const liveActive = candidateActive ? live.state.jobs[candidateActive.job_id] : null
   const active = candidateActive && !['succeeded', 'failed', 'cancelled', 'abandoned'].includes(liveActive?.state ?? '')
@@ -278,7 +280,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
       queryClient.setQueryData([scope, endpoint(id, 'pipeline')], latest)
       const current = latest.units.find(item => item.id === chosen.chunkId)
       const original = pipeline.units.find(item => item.id === chosen.chunkId)
-      if (!latest.approved || latest.busy || latest.metadata.lifecycle.archived ||
+      if (!latest.analysis.complete || !latest.approved || latest.busy || latest.metadata.lifecycle.archived ||
           latest.config.revision !== pipeline.config.revision || !current || !original ||
           current.status !== original.status ||
           current.passes[String(chosen.passNo)]?.retained_count !== original.passes[String(chosen.passNo)]?.retained_count) {
@@ -319,6 +321,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   }
 
   return <div className="translate-content">
+    {prerequisite && <div className="notice" role="status">{prerequisite} Saved results and source previews remain available.</div>}
     {pipeline.units.some(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')) && <div className="notice" role="status">Segments requiring regeneration: {pipeline.units.filter(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')).map(item => item.id).join(', ')}. Earlier readable results remain available. Run continues the affected work in order.</div>}
     {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : failureDetail ? 'This older job did not record a detailed reason.' : 'Checking failure details…'} Saved passes remain available.</div>}
     {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
@@ -340,7 +343,7 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
           const isWorking = working?.chunkId === item.id && working.passNo === number && !completedInLive
           const modelName = assignedProfile(profiles, section, number)?.name ?? 'Unavailable'
           const runningDetail = typeof attempt === 'number' ? `attempt ${attempt}` : 'starting'
-          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && previewPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
+          return <td key={number}><div className="translate-pass-cell"><button className={`translate-pass-state ${display.tone}${isWorking ? ' working' : ''}`} aria-label={`${item.id} P${number}: ${isWorking ? `running, ${runningDetail}` : display.label}; preview`} aria-pressed={unit?.id === item.id && previewPass === number} title={isWorking ? `P${number} is running with ${modelName} · ${runningDetail}; open preview after it finishes.` : `P${number}: ${display.label}. Assigned model: ${modelName}. ${hasSaved ? 'Current inputs are checked before reuse.' : ''} Open preview.`} onClick={() => { setSelectedId(item.id); setSelectedPass(number) }}>{isWorking ? '◌' : display.symbol}</button><button className="translate-pass-run" aria-label={`${hasSaved ? 'Run again' : 'Run'} ${item.id} P${number}`} title={prerequisite ?? (!previous ? `Run P${number - 1} for this chunk first.` : hasSaved ? `Run P${number} again with ${modelName}; this contacts the model and replaces the selected result.` : `Run P${number} with ${modelName}; this contacts the model.`)} disabled={disabled || !previous} onClick={() => { setLocalError(null); setUnknownOutcome(false); setSelectedId(item.id); setSelectedPass(number); setPendingRun({ chunkId: item.id, passNo: number, rerun: hasSaved }) }}><Play size={13} /></button></div></td>
         })}</tr>
       })}</tbody></table></div>{!pipeline.units.length && <Empty>No translation chunks in this workspace.</Empty>}</Panel>
     </div><div className="phase-detail-stack translate-preview-stack" ref={previewStack}>

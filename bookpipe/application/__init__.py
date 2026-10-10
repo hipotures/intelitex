@@ -3,6 +3,7 @@
 from .api import Application
 from .commands import (
     AnalyzeCommand,
+    PreloadCommand,
     ApproveCommand,
     AttemptsCommand,
     CatalogImportCommand,
@@ -32,7 +33,7 @@ from .results import (
 )
 
 __all__ = [
-    "AnalyzeCommand", "Application", "ApprovalResult", "ApproveCommand", "AttemptsCommand",
+    "AnalyzeCommand", "PreloadCommand", "Application", "ApprovalResult", "ApproveCommand", "AttemptsCommand",
     "CatalogImportCommand", "DiscoverCommand", "DoctorCommand", "ExportCommand", "ExportResult",
     "ImportBookCommand", "ImportResult", "MarkerConflict", "NullProgress", "PipelineResult",
     "ProfilesCommand", "ProgressEvent", "ProgressSink", "ReaderSession", "ReaderSessionCommand",

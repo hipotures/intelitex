@@ -11,7 +11,7 @@ const workspace = (id, title, archived) => ({
     word_count: null, lifecycle: { archived, revision: `revision-${id}` } },
 })
 
-test('Work loads compact active summaries and defers the archive', { timeout: 30000 }, async () => {
+test('Work loads compact active summaries and defers the archive', { timeout: 60000 }, async () => {
   const browser = await chromium.launch()
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
@@ -73,7 +73,9 @@ test('Work loads compact active summaries and defers the archive', { timeout: 30
       assert.deepEqual(fullPipelines, [], 'Work cards must not fetch detail pipelines')
       assert.equal(queries.includes('true'), false, 'archive request must wait for drawer opening')
       const initialSummaries = summaries.length
-      await page.waitForTimeout(16_000)
+      // The maintained healthy-stream interval is six 5-second ticks.
+      const deadline = Date.now() + 35_000
+      while (summaries.length === initialSummaries && Date.now() < deadline) await page.waitForTimeout(250)
       assert.ok(summaries.length > initialSummaries, 'healthy-stream reconciliation must refresh Work summaries')
       assert.deepEqual(fullPipelines, [], 'periodic reconciliation must not refetch full pipelines')
       assert.equal(queries.includes('true'), false, 'periodic reconciliation must not open the archive')

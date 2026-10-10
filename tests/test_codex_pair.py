@@ -374,13 +374,21 @@ def test_selected_model_effort_remain_authoritative_on_resume(project,tmp_path,l
     finally:store.close()
 
 
-def test_p1_outside_pairs_and_actual_salvation_defaults(project,tmp_path,local_responses):
+def test_p1_outside_pairs_and_frozen_legacy_defaults(project,tmp_path,local_responses):
     from bookpipe.provider_registry import ProviderPool
     run_pass(project,tmp_path,1)
     meta=read_json(current_attempt(project,1)/'response_meta.json')
     assert meta['execution_strategy']=='fresh-root'
     assert 'pair_role' not in meta
-    root=Path('/home/user/translations/salvation-03')
+    # A fresh frozen fixture keeps regression tests independent of active books.
+    from bookpipe.profiles import builtin_codex_profiles
+    from bookpipe.util import atomic_json
+    root = tmp_path / 'legacy-fixture'
+    root.mkdir()
+    configured = {'profiles': builtin_codex_profiles(), 'default_profile': 'codex-astra-high',
+                  'pass_profiles': {}, 'passes': SETTINGS['passes']}
+    atomic_json(root/'settings.json', configured)
+    atomic_json(root/'web.config.json', {'sections': {}, 'pass_profiles': {str(n): 'codex-sol-high' for n in range(2, 6)}})
     if root.is_dir():
         files=[root/'settings.json',root/'web.config.json']
         before=[p.read_bytes() for p in files]

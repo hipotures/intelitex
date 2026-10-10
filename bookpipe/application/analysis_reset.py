@@ -5,6 +5,7 @@ import os
 import uuid
 from pathlib import Path
 
+from ..artifacts import analysis_directories
 from ..processing import ConfigConflict
 from ..util import PipelineError, atomic_json, digest
 from .sessions import OperationScope, ProjectReadScope
@@ -22,7 +23,7 @@ def _file_state(root: Path):
     if (root / 'artifacts').is_symlink():
         raise PipelineError('Unsafe P1 artifact.')
     paths = [root / name for name in _ACTIVE_FILES]
-    paths.append(root / 'artifacts' / 'pass1')
+    paths.extend(analysis_directories(root))
     result = []
     for path in paths:
         if path.is_symlink():
@@ -91,6 +92,9 @@ class AnalysisResetService:
                 raise AnalysisResetLocked('P1 has dependent work. Preserve it in this workspace.')
             if not current['has_data']:
                 return current
+            from ..source_sessions import reconcile_analysis_before_reset
+            from ..ui import Display
+            reconcile_analysis_before_reset(store, Display(True))
             resets = _history_root(root)
             resets.mkdir(mode=0o700, parents=True, exist_ok=True)
             version = resets / uuid.uuid4().hex
@@ -100,7 +104,7 @@ class AnalysisResetService:
             moved = []
             committed = False
             try:
-                for name in (*_ACTIVE_FILES, 'artifacts/pass1'):
+                for name in (*_ACTIVE_FILES, *(str(p.relative_to(root)) for p in analysis_directories(root))):
                     source = root / name
                     if not source.exists():
                         continue

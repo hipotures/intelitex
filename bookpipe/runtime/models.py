@@ -8,6 +8,11 @@ from .protocol import public_envelope
 
 ACTIVE = frozenset({"starting", "running", "stopping"})
 TERMINAL = frozenset({"succeeded", "failed", "cancelled", "abandoned"})
+STAGE_EVENTS = frozenset({
+    'pass_started', 'source_preload_started', 'source_preload_completed', 'preload_target_completed',
+    'analysis_progress', 'analysis_unit_progress', 'translation_progress', 'translation_unit_progress',
+    'publication_started',
+})
 
 
 def now() -> str:
@@ -28,10 +33,19 @@ class JobSpec:
     rerun: bool = False
     target_language: str = "pl"
     import_root: str | None = None
+    preload_target_id: str | None = None
+    expected_preload_revision: str | None = None
 
     def __post_init__(self):
-        if self.operation not in {"analyze", "translate", "publish"}:
-            raise ValueError("Unsupported operation; use analyze, translate or publish.")
+        if self.operation not in {"preload", "analyze", "translate", "publish"}:
+            raise ValueError("Unsupported operation; use preload, analyze, translate or publish.")
+        if self.operation == 'preload':
+            if (not isinstance(self.preload_target_id, str) or not re.fullmatch(r'pt_[0-9a-f]{64}', self.preload_target_id)
+                    or not isinstance(self.expected_preload_revision, str) or not re.fullmatch(r'[0-9a-f]{64}', self.expected_preload_revision)
+                    or self.profile is not None or self.chunk_limit != 0):
+                raise ValueError('Preload requires a current target and intent revision; configuration is inherited.')
+        elif self.preload_target_id is not None or self.expected_preload_revision is not None:
+            raise ValueError('Preload target fields apply only to preload.')
         if self.profile is not None and (not isinstance(self.profile, str) or not re.fullmatch(r"[\w.-]{1,128}", self.profile)):
             raise ValueError("Invalid profile name.")
         if type(self.chunk_limit) is not int or self.chunk_limit < 0:
@@ -81,6 +95,9 @@ class Job:
     sequence: int = 0
     last_event: dict | None = None
     error: dict | None = None
+    # A progress boundary must outlive the bounded, noisy activity tail. Private
+    # registry state; public views project only the relevant stage/cell status.
+    stage_event: dict | None = None
 
     def public(self) -> dict:
         value = {key: getattr(self, key) for key in (
@@ -102,6 +119,7 @@ class Job:
             'output_length_limit': 'The model reached its output-token limit without finishing the answer. The partial response was not accepted; saved passes remain available.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
+            'analysis_memory_limit': 'P1 cannot start this unit because its required terminology memory exceeds memory_tokens. Increase the workspace memory limit, then retry. Saved analysis remains available; no model call was made for this unit.',
         }
         error_code = self.error.get('code') if self.error else None
         if isinstance(error_code, str) and error_code in safe_errors:

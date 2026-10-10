@@ -136,8 +136,7 @@ class WorkflowQueries:
                         'translation': {'completed': translated, 'required': len(chunks),
                                         'denominator': 'required P5 translation units'}},
                     'analysis': {'complete': analyzed, 'planned': bool(plan), 'units': analysis,
-                                 'membership_locked': any(k.startswith('pass1/') for k in checkpoints) or
-                                 any(p.pass_no == 1 for u in usage.values() for p in u.passes)},
+                                 'membership_locked': store.has_p1_attempt()},
                     'review': {'prepared': review is not None, 'current': review_current,
                                'impact': review_impact(store, review) if review is not None else None,
                                'revision': digest(review) if review is not None else None,
@@ -147,4 +146,18 @@ class WorkflowQueries:
                     'excluded_sections': [{'id': c['id'], 'title': c.get('title'), 'role': c.get('role')}
                                           for c in book.get('non_narrative_sections', [])],
                     'publication': publication, 'actions': actions}
+            if include_usage:
+                from .source_preload import SourcePreloadQueries, view_summaries
+                preload, _ = SourcePreloadQueries(self.dependencies).build(
+                    root, store, book=source_book, plan=plan if files.is_file(root / 'analysis_plan.json') else None,
+                    usage=usage_report)
+                result['source_preload'] = preload['summary']
+                result['source_preload_sections'] = {}
+                for chapter in preload['chapters']:
+                    summary = chapter['summary']
+                    if any(t['relevance'] == 'unresolved' or any(c['pass_no'] == 1 for c in t['consumers'])
+                           for t in chapter['targets']):
+                        summary = view_summaries(chapter['targets'])['analysis']
+                        summary['denominator'] = 'P0 targets for this chapter\'s P1 units'
+                    result['source_preload_sections'][chapter['chapter_id']] = summary
             return result, source_book, usage_report, config

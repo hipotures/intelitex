@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useRef, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
 import { endpoint, queryClient, reconcile, request, Scope } from '../../api/client'
@@ -10,6 +10,7 @@ import { useConnection, useLive } from '../../realtime/coordinator'
 import { Activity } from './Workspace'
 import { displayCost, p1Cost } from './p1Cost'
 import { sectionTitles } from './sectionTitles'
+import { usePreviewPosition } from './usePreviewPosition'
 
 const tokenFields = ['input_tokens', 'cached_input_tokens', 'reasoning_output_tokens', 'output_tokens'] as const
 const tokenLabels = ['Input', 'Cache', 'Reason', 'Output']
@@ -48,7 +49,7 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
   const command = useCommand(id)
   const connection = useConnection()
   const live = useLive()
-  const previewStack = useRef<HTMLDivElement>(null)
+  const previewStack = usePreviewPosition()
   const runLatch = useRef(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pendingRun, setPendingRun] = useState<string | null>(null)
@@ -89,20 +90,6 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
   })
   const totalCost = p1Cost(usage)
   const completedUnits = pipeline.analysis.units.filter(item => item.state === 'completed').length
-
-  useLayoutEffect(() => {
-    const stack = previewStack.current
-    if (!stack) return
-    const grid = stack.parentElement
-    if (!grid) return
-    const updateTop = () => grid.style.setProperty('--translate-preview-top', `${stack.getBoundingClientRect().top + window.scrollY}px`)
-    const observer = new ResizeObserver(updateTop)
-    const main = stack.closest('main')
-    if (main) observer.observe(main)
-    window.addEventListener('resize', updateTop)
-    updateTop()
-    return () => { observer.disconnect(); window.removeEventListener('resize', updateTop) }
-  }, [])
 
   async function startUnit() {
     if (!pendingRun || runLatch.current || disabled) return

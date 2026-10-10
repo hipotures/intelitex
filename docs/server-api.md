@@ -22,6 +22,8 @@ workspace ID, not a path. Unlisted query parameters and mutation fields are reje
 | GET | `/api/workspaces/{id}/pipeline` | Pipeline snapshot below |
 | GET | `/api/workspaces/{id}/summary` | Compact checkpoint-validated stage, progress and action gates for Work cards; unpublished complete translations defer full EPUB readiness to Publish detail (`publication_check_required`); no section or physical-attempt details |
 | GET | `/api/workspaces/{id}/usage` | Retained usage by unit/pass/physical attempt |
+| GET | `/api/workspaces/{id}/source-preload` | Versioned read-only P0 source/configuration inventory, saved-evidence readiness, inherited assignments and bounded retained history |
+| GET | `/api/workspaces/{id}/source-preload/targets/{target_id}/preview?page=0` | Selected canonical or recorded source, at most five blocks, plus one saved session acknowledgement |
 | GET | `/api/workspaces/{id}/profiles` | Sanitized effective settings (same as `/settings`) |
 | GET | `/api/workspaces/{id}/settings` | Settings schema below |
 | GET | `/api/workspaces/{id}/publication/selection` | Revisioned groups of source sections that share XHTML files, omitted section IDs, and a safe section-level diagnostic for the last markup failure |
@@ -93,13 +95,59 @@ as a heuristic and requires the user to verify the language before Save.
 
 ## Jobs and current state
 
-Job input is `{operation:"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,unit_id?,pass_no?,rerun?,target_language?}`.
+Job input is `{operation:"preload"|"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,unit_id?,pass_no?,rerun?,target_language?,preload_target_id?,expected_preload_revision?,request_key?}`.
 `profile` selects an existing profile for analyze/translate. `chunk_limit` is a
 nonnegative integer, only for translation; omitted/zero processes all unfinished
 units. `target_language` is only for publication, defaults to `pl`, and must be a
 BCP-47-style language identifier. Publication does not accept `profile`.
+For one P0 target, send `operation:"preload"`, `preload_target_id` (`pt_` followed
+by 64 lowercase hex characters), `expected_preload_revision` (64 lowercase hex
+characters), and the normal persistent `request_key`. Source, profile and effort
+are inherited from eligible P1–P5 consumers. Independent model overrides, P1 unit
+IDs, translation pass IDs and chunk limits are unavailable for this operation.
+The worker revalidates intent under normal ownership and stops at the accepted
+P0 checkpoint. Accepted reuse/recovery does not submit another turn; ambiguous or
+held evidence requires inspection. Each missing target permits at most one new
+P0 attempt, without P1–P5, Review or publication. Global Start remains lazy.
+
+The P0 inventory's `format_version` is 1. Chapter groups distinguish projected
+`target_id`, nullable `scope_id`, actual `slot_id` and `generation`. Current
+coverage, needing execution, accepted baselines, unresolved planning groups,
+physical attempts and retained sessions have separate counts. A completed saved
+consumer without matching P0 is satisfied without creating a preload requirement;
+matching accepted baselines remain counted after consumers finish. Runtime/session
+warnings do not erase an accepted baseline. Readiness has
+`verification_scope:"saved_evidence"` and `native_check:"on_use"`; its timestamps
+describe saved observations, not a fresh native resume or provider-cache promise.
+`intent_revision` changes with executable intent, not token updates. History is
+bounded to 100 rows with a complete count and `history_truncated` flag.
+Targets include a human source-range `label`, `source_words`, `source_utf8_bytes`
+and `source_blocks`. Word counts split canonical source text on whitespace;
+byte counts sum its UTF-8 text, excluding envelope/JSON framing. Chapter `reason`
+explains an empty target list. Internal identities remain available for correlation,
+but the primary UI shows range, sizes and inherited purpose instead of hashes.
+
+Inventory and preview GETs never construct a provider/session manager, probe
+Codex, persist a plan/source package/UUID, or reconcile native state. Pending
+Codex analysis uses the exact local UTF-8 bound through the pure execution planner;
+nonlocal unresolved analysis groups still provide source previews and known
+translation targets. Preview pages are integer 0–10,000 with at most five blocks
+and 20,000 characters per block; traversal, unknown fields and symlinked evidence
+are rejected. Neither DTO exposes prompts, instruction text or native paths.
+
+Full pipeline adds `source_preload` and section `passes["0"]` from that projection.
+Compact Work-card summaries retain their existing lightweight path. Pass-0 usage
+uses the existing physical ledger; attempt DTOs include `physical_record_id`,
+requested/reported effort/model, durable `selection_status`, scope, slot and
+generation. Applied provenance requires the original R2 binding; missing proof
+is requested-only. Public P0 `attempt_id` and `accepted_attempt_id` use `pa_`
+opaque identities rather than internal artifact paths; P1–P5 IDs are unchanged.
+Pass-0 scope/slot/parent-pass metadata is safe for SSE; generation
+progress and consumer cleanup remain separate.
 For one P1 analysis unit, send `operation:"analyze"` with `unit_id` from the saved
-analysis plan. All earlier P1 units must have verified receipts; only the requested
+analysis plan, or the exact locally calculated P0 consumer projection before
+the first P1. The command persists and validates the execution plan. All earlier
+P1 units must have verified receipts; only the requested
 unit may call a model. Saved P1 units cannot be rerun individually because their
 merged memory feeds later units. Clear P1 through its guarded reset before a new
 whole-book analysis. The final unit completes P1 and creates the Review draft.

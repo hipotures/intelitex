@@ -84,6 +84,8 @@ def effective_settings(bundle: Path, root: Path, options: ModelOptions | None = 
     for number, cfg in settings["passes"].items():
         if cfg["max_tokens"] <= 0 or not 0 <= cfg["temperature"] <= 2:
             raise PipelineError(f"Invalid settings for pass {number}.")
+    from ..source_sessions import validate_execution
+    validate_execution(settings)
     validate_profiles(settings, root if installed else None)
     return settings
 

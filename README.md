@@ -6,6 +6,55 @@ terminology approval**, and then translates the next requested number of natural
 Completed model calls survive interruption and are not repeated merely because
 you start another session.
 
+## Persistent P0-P5 source sessions
+
+New workspaces select `pipeline_execution.codex_mode: source-session-v1`.
+When a selected Codex pass has no accepted checkpoint, existing Analyze and
+Translate Start operations prepare P0 internally. P0 binds only immutable source
+and a structured readiness acknowledgement. Each P1-P5 turn sends its active
+instructions, references and required canonical dependencies, persists its outcome,
+and returns native history to P0. P1 retains ordered memory and the existing
+book-wide review gate; P3 depends on P2, P4 on P2/P3, and P5 on P3/P4.
+
+A compatible source scope owns one private persistent Codex home, SQLite directory,
+working directory and native thread. Cold resumes preserve that binding. Private
+runtime state lives outside the project and checkout; restore the complete runtime
+including SQLite/WAL for recovery. Copy authentication only with explicit
+permission. A missing runtime, ambiguous submission, live foreign turn or changed
+source history stops inference with recovery diagnostics. Provider prompt-cache
+hits are independent of source persistence; zero cached tokens are valid.
+
+Existing projects without `pipeline_execution` remain on their legacy transport.
+New continuation volumes select the new mode and copy P0 from the bundle when
+the predecessor is legacy, without migrating that predecessor.
+Opting in requires copying `prompts/pass0.txt` and adding the contract below to
+project settings. Successful analysis, review and translation checkpoints remain
+valid; P0 is prepared only for missing requested work. Other providers keep complete
+standalone source requests.
+
+```json
+"pipeline_execution": {
+  "version": 1,
+  "codex_mode": "source-session-v1",
+  "source_scope_policy": "exact-existing-unit",
+  "revert_policy": "after-each-attempt",
+  "p0_output_reserve": 256
+}
+```
+
+Inspect slots without inference using
+`uv run intelitex source-sessions --project "$PROJECT"`. Explicit maintenance uses
+`--action archive|rebuild|purge --slot SLOT_ID`; rebuild retires the slot and lazily
+allocates a new generation, while purge requires prior retirement and preserves
+ordinary results and attempt evidence. P1 reset and review changes preserve P0.
+New-mode attempts are chapter-first; legacy pass-first attempts remain readable.
+Usage reports count P0 separately, retain archived P1 consumption, and include
+submitted failures, with missing
+usage marked unknown. Full retained context is checked before any source preload.
+
+See [architecture](docs/architecture.md), [validation report](docs/validation-p0-p5-persistent-sessions.md)
+and [measured live evidence](docs/validation-p0-p5-live.json).
+
 ## Native LLM transports and communication evidence / v1.11
 
 Intelitex supports four independent transports behind the same five-pass
@@ -18,8 +67,9 @@ pipeline contract:
 - `vllm`: the vLLM OpenAI-compatible Chat Completions API, streamed usage and
   native `/tokenize` chat-template preflight. Causal models use structured JSON
   schema; diffusion models use a schema instruction and post-response validation;
-- `codex`: a fresh persisted `codex app-server` thread per attempt, over JSONL
-  stdio, configured as isolated thin inference rather than a coding agent.
+- `codex`: isolated thin inference over JSONL `codex app-server`, with persistent
+  source sessions in new workspaces and the retained legacy per-attempt/pair modes
+  in projects without the new execution contract.
 
 Models, capacities, efforts, endpoints and rates are profile/catalog data. The
 default settings contain a working local profile and disabled cloud templates;
@@ -189,8 +239,9 @@ uv run intelitex translate --project "$PROJECT" \
   --profile codex-sol-medium --continue 1
 ```
 All discovered skills are disabled and re-listed before a thread starts. The
-saved rollout is copied into the attempt and the temporary authentication copy is
-removed after the child process is reaped. App-server can still add its small
+saved rollout is copied into the attempt. Legacy modes remove the temporary
+authentication copy after the child process is reaped; `source-session-v1` retains
+refreshed authentication in its durable private home for cold resume. App-server can still add its small
 platform-owned read-only sandbox instruction and date/timezone wrapper, so this
 mode is not advertised as a completely bare model request.
 

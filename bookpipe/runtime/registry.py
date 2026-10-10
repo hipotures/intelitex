@@ -14,7 +14,7 @@ import threading
 import uuid
 
 from ..util import PipelineError, atomic_json, digest, file_lock, read_json
-from .models import ACTIVE, TERMINAL, Job, now
+from .models import ACTIVE, TERMINAL, STAGE_EVENTS, Job, now
 from .protocol import public_envelope
 
 FORMAT = 1
@@ -154,6 +154,13 @@ class JobRegistry:
                     or latest.get('workspace_id') != workspace or type(latest.get('id')) is not int
                     or latest['id'] < last_id):
                 raise PipelineError('Invalid latest runtime event.')
+        stage = value.get('stage_event')
+        if stage is not None and (
+                stage.get('job_id') != value['job_id'] or stage.get('workspace_id') != workspace
+                or type(stage.get('sequence')) is not int or not 0 < stage['sequence'] <= value['sequence']
+                or type(stage.get('id')) is not int or not latest or not 0 < stage['id'] <= latest['id']
+                or stage.get('event', {}).get('kind') not in STAGE_EVENTS):
+            raise PipelineError('Invalid runtime stage event.')
         for receipt in record['requests']:
             if (set(receipt) != {'key', 'digest'} or not isinstance(receipt['key'], str) or not receipt['key']
                     or not isinstance(receipt['digest'], str) or not re.fullmatch('[0-9a-f]{64}', receipt['digest'])):
@@ -218,7 +225,8 @@ class JobRegistry:
             if previous and previous['job']['workspace_id'] != job.workspace_id:
                 raise PipelineError('Cannot change job workspace identity.')
             if previous and (previous['job']['operation'] != job.operation or previous['job']['sequence'] != job.sequence
-                             or previous['job']['last_event'] != job.last_event):
+                             or previous['job']['last_event'] != job.last_event
+                             or previous['job'].get('stage_event') != job.stage_event):
                 raise PipelineError('Job identity/progress changed; append events through the registry.')
             record = deepcopy(previous) if previous else {
                 'format_version': FORMAT, 'scope_id': self.scope_id, 'order': self._order + 1,
@@ -290,7 +298,12 @@ class JobRegistry:
             envelope = {'id': self._cursor + 1, 'job_id': job_id, 'workspace_id': job.workspace_id,
                         'sequence': job.sequence + 1, 'timestamp': now(), 'event': deepcopy(event)}
             record = deepcopy(self._records[job_id])
-            record['job'] = job_value(replace(job, sequence=envelope['sequence'], last_event=envelope))
+            stage = envelope if event.get('kind') in STAGE_EVENTS else job.stage_event
+            # Existing records predate stage_event. Retain their last boundary
+            # before a new activity tick can evict it.
+            if stage is None:
+                stage = next((e for e in reversed(record['events']) if e['event']['kind'] in STAGE_EVENTS), None)
+            record['job'] = job_value(replace(job, sequence=envelope['sequence'], last_event=envelope, stage_event=stage))
             record['events'] = (record['events'] + [envelope])[-min(self.event_limit, ACTIVITY_LIMIT):]
             self._write(record)
             self._events.append(envelope)

@@ -13,7 +13,7 @@ from datetime import datetime
 import re
 import threading
 from ..application.imports import ImportDisabled, ImportQueries, confined_source, workspace_destination
-from ..runtime.models import ImportJobSpec, JobSpec
+from ..runtime.models import ImportJobSpec, JobSpec, STAGE_EVENTS
 from . import serialization as dto
 
 
@@ -40,6 +40,14 @@ class ServerService:
         self._summary_cache = {}
         roots = [None, *(self.workspaces.resolve(i) for i in self.workspaces.list())]
         self.catalog.register_profiles(p['name'] for root in roots for p in self.application.workflow.settings(root)['profiles'])
+
+    def _active_stage(self, active, events):
+        if not active or active.state != 'running':
+            return None
+        from ..runtime.protocol import public_envelope
+        # Older job records can still supply a boundary from their recent tail.
+        stage = active.stage_event or next((e for e in reversed(events) if e['event']['kind'] in STAGE_EVENTS), None)
+        return public_envelope(stage)['event'] if stage else None
 
     def _book_summary(self, root):
         """Reuse immutable book-derived listing fields; read lifecycle/setup on every request."""
@@ -388,7 +396,8 @@ class ServerService:
         payload, key, fingerprint, previous = self.receipt(payload, workspace_id)
         if previous is not None:
             return previous.public()
-        fields(payload, {'operation', 'profile', 'chunk_limit', 'chunk_id', 'unit_id', 'pass_no', 'rerun', 'target_language'}, {'operation'})
+        fields(payload, {'operation', 'profile', 'chunk_limit', 'chunk_id', 'unit_id', 'pass_no', 'rerun', 'target_language',
+                         'preload_target_id', 'expected_preload_revision'}, {'operation'})
         operation = payload['operation']
         if operation != 'translate' and 'chunk_limit' in payload:
             raise ValueError('chunk_limit only applies to translate.')
@@ -404,6 +413,16 @@ class ServerService:
                        str(self.workspaces.resolve(workspace_id)), **payload,
                        import_root=str(self.imports.root) if operation in {'translate', 'publish'} and self.imports.root else None)
         with self.mutable(workspace_id):
+            if operation == 'preload':
+                value = self.application.source_preload.inventory(Path(spec.project))
+                target = next((t for c in value['chapters'] for t in c['targets'] if t['target_id'] == spec.preload_target_id), None)
+                if value['intent_revision'] != spec.expected_preload_revision:
+                    from ..processing import ConfigConflict
+                    raise ConfigConflict('Preload intent changed.')
+                if target is None:
+                    raise KeyError(spec.preload_target_id)
+                if not target['can_run']:
+                    raise ValueError('Preload target requires inspection or is not applicable.')
             return self.supervisor.start(spec, request_key=key, request_fingerprint=fingerprint).public()
 
     def import_book(self, payload):
@@ -443,12 +462,18 @@ class ServerService:
             result['progress']['percent'] = 98
         config = self.application.web.config(root, config=config_snapshot)
         result['sections'] = self.application.web.section_summaries(root, result, book=book, config=config)
+        result.pop('source_preload_sections', None)
         colors = self.catalog.read().get('profile_colors', {})
         by_section = {}
         for unit in usage.units:
             for attempt in unit.passes:
-                by_section.setdefault((unit.chapter_id, attempt.pass_no), set()).add(
-                    (attempt.profile, attempt.provider, attempt.reported_model or attempt.requested_model))
+                if attempt.pass_no == 0:
+                    for physical in attempt.attempts:
+                        model = physical.reported_model if physical.selection_status == 'verified' else physical.requested_model
+                        by_section.setdefault((unit.chapter_id, 0), set()).add((attempt.profile, attempt.provider, model))
+                else:
+                    by_section.setdefault((unit.chapter_id, attempt.pass_no), set()).add(
+                        (attempt.profile, attempt.provider, attempt.reported_model or attempt.requested_model))
         for section in result['sections']:
             for number, cell in section['passes'].items():
                 provenance = by_section.get((section['id'], int(number)), set())
@@ -464,13 +489,16 @@ class ServerService:
         events = self.supervisor.registry.recent_events(workspace_root=self.supervisor.workspace_root,
                     workspace_id=workspace_id, job_id=active.job_id, limit=120) if active else []
         # Runtime activity decorates cells without changing durable checkpoint counts.
-        boundaries = [e['event'] for e in events if e['event']['kind'] in {
-            'pass_started', 'analysis_progress', 'analysis_unit_progress', 'translation_progress', 'translation_unit_progress', 'publication_started'}]
-        if active and active.state == 'running' and boundaries and boundaries[-1]['kind'] == 'pass_started':
-            current = boundaries[-1]['values']
+        stage = self._active_stage(active, events)
+        if stage and stage['kind'] in {'pass_started', 'source_preload_started', 'source_preload_completed'}:
+            current = stage['values']
             section = next((s for s in result['sections'] if s['id'] == current.get('chapter_id')), None)
-            if section and str(current.get('pass_no')) in section['passes']:
-                section['passes'][str(current['pass_no'])]['runtime_state'] = 'running'
+            number = current.get('parent_consumer_pass') if stage['kind'] == 'source_preload_completed' else current.get('pass_no')
+            if active.operation != 'preload' or stage['kind'] == 'source_preload_started':
+                if section and str(number) in section['passes']:
+                    section['passes'][str(number)]['runtime_state'] = 'running'
+            if stage['kind'] == 'source_preload_started':
+                result['source_preload']['state'] = 'running'
         publication_events = [e for e in events if e['event']['kind'].startswith('publication_')]
         publishing = bool(active and (active.operation == 'publish' or
                           publication_events and publication_events[-1]['event']['kind'] == 'publication_started'))
@@ -525,6 +553,28 @@ class ServerService:
     def usage(self, workspace_id: str):
         return dto.usage(self.application.operations.usage_by_unit(
             UsageByUnitCommand(self.workspaces.resolve(workspace_id))))
+
+    def source_preload(self, workspace_id):
+        root = self.workspaces.resolve(workspace_id)
+        value = self.application.source_preload.inventory(root)
+        value['workspace_id'] = workspace_id
+        active = self.supervisor.active_for_project(root)
+        events = self.supervisor.registry.recent_events(workspace_root=self.supervisor.workspace_root,
+            workspace_id=workspace_id, job_id=active.job_id, limit=120) if active else []
+        stage = self._active_stage(active, events)
+        if (stage and stage['kind'] == 'source_preload_started' and stage['values'].get('pass_no') == 0):
+            values = stage['values']
+            from ..application.source_preload import compact_summary, view_summaries
+            for chapter in value['chapters']:
+                for target in chapter['targets']:
+                    if (target['scope_id'] == values.get('scope_id') and target['chapter_id'] == values.get('chapter_id')
+                            and target['slot_id'] is not None and target['slot_id'] == values.get('slot_id')):
+                        target.update(baseline_state='running', can_run=False)
+                chapter['summary'] = compact_summary(chapter['targets'], chapter['summary']['unresolved'])
+            value['summary'] = compact_summary([t for c in value['chapters'] for t in c['targets']],
+                value['summary']['unresolved'], retained=value['summary']['retained'], attempts=value['summary']['physical_attempts'])
+            value['views'] = view_summaries([t for c in value['chapters'] for t in c['targets']])
+        return dto.source_preload(value)
 
     def review(self, workspace_id, operation='load', payload=None, term_id=None):
         if operation in {'load', 'evidence'}:

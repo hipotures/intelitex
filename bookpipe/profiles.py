@@ -268,6 +268,12 @@ def resolve_profile(
         options = profile.setdefault("options", {})
         for key, default in {**CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS}.items():
             options.setdefault(key, default)
+    from .source_sessions import validate_execution
+    if validate_execution(settings) and profile["provider"] == "codex":
+        profile["pipeline_execution"] = copy.deepcopy(settings["pipeline_execution"])
+        for key in ("p1_wire_format", "translation_wire_format", "translation_thread_strategy"):
+            profile["options"].pop(key, None)
+        profile["execution_strategy"] = "source-session-v1"
     profile.setdefault("planning_output_reserve", settings["passes"][str(pass_no)]["max_tokens"])
     profile.setdefault("request_timeout", settings.get("request_timeout", 1200))
     if profile["provider"] == "llamacpp":

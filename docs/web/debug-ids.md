@@ -88,6 +88,10 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | PCK | Prepare checks card | `web/src/features/pipeline/PrepareContent.tsx` |
 | RPM | Prepare rebuild confirmation modal | `web/src/features/pipeline/Phase.tsx` |
 | PAN | Analyse units card | `web/src/features/pipeline/AnalyseContent.tsx` |
+| PNU | P0 source preload units | `web/src/features/pipeline/PreloadPage.tsx` |
+| PNV | P0 source and readiness preview | `web/src/features/pipeline/PreloadPage.tsx` |
+| PNC | P0 costs and token usage | `web/src/features/pipeline/PreloadPage.tsx` |
+| PNM | P0 target run confirmation | `web/src/features/pipeline/PreloadPage.tsx` |
 | PUC | Analyse P1 costs and token usage card | `web/src/features/pipeline/AnalyseContent.tsx` |
 | PAV | Analyse P1 source and result preview | `web/src/features/pipeline/AnalyseContent.tsx` |
 | AUM | Analyse unit run confirmation | `web/src/features/pipeline/AnalyseContent.tsx` |

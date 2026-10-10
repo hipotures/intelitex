@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { readFile, mkdir } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
@@ -34,7 +35,7 @@ const profiles = { source: 'project', revision: 'settings', assignments: {}, def
 const reset = { revision: 'p1-empty', has_data: false, can_reset: true, reason: null, history_available: false }
 
 test('Analyse shows an honest empty state and clears saved P1 only after confirmation', { timeout: 60000 }, async () => {
-  await mkdir('/tmp/intelitex-analysis-reset-evidence', { recursive: true })
+  await mkdir(testEvidence('intelitex-analysis-reset-evidence'), { recursive: true })
   const browser = await chromium.launch()
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' })
@@ -42,8 +43,14 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
     const errors = [], failed = []
     let capabilityDelay = true, resetPosts = 0
     page.on('pageerror', error => errors.push(error.message))
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-    page.on('requestfailed', request => failed.push(`${request.url()}: ${request.failure()?.errorText}`))
+    page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} ${message.location().url}`) })
+    page.on('requestfailed', request => {
+      // Clearing P1 unmounts its preview and intentionally aborts an in-flight
+      // React Query request. All other failed requests remain test failures.
+      if (resetPosts === 1 && request.failure()?.errorText === 'net::ERR_ABORTED' &&
+          new URL(request.url()).pathname === '/api/workspaces/w-1/analysis/units/ch0001_a001/preview') return
+      failed.push(`${request.url()}: ${request.failure()?.errorText}`)
+    })
     await page.addInitScript(() => { window.EventSource = class {
       static OPEN = 1; readyState = 1; listeners = {}
       constructor() { window.testStream = this }
@@ -63,6 +70,9 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       else if (path === '/api/workspaces/w-1/pipeline') body = pipeline
       else if (path === '/api/workspaces/w-1/profiles') body = profiles
       else if (path === '/api/workspaces/w-1/usage') body = { scope: 'offline', warning: null, units: [] }
+      else if (path === '/api/workspaces/w-1/analysis/units/ch0001_a001/preview') body = {
+        unit_id: 'ch0001_a001', chapter_id: 'ch0001', available: false,
+        source: [], terms: [], observations: [], page: 0, next_page: null, truncated: false }
       else if (path === '/api/workspaces/w-1/analysis-reset') {
         if (request.method() === 'POST') {
           assert.deepEqual(request.postDataJSON(), { revision: 'p1-planned' })
@@ -91,7 +101,7 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       await page.getByText('P1 has not been started').waitFor()
       assert.equal(await page.locator('[data-ui-debug-id="PHM"]').count(), 0, 'unknown usage is not shown as four empty metrics')
       assert.equal(await page.getByRole('button', { name: 'Clear P1' }).count(), 0, 'no fake reset for an empty P1')
-      await page.screenshot({ path: '/tmp/intelitex-analysis-reset-evidence/empty-dark-1440.png', animations: 'disabled' })
+      await page.screenshot({ path: testEvidence('intelitex-analysis-reset-evidence/empty-dark-1440.png'), animations: 'disabled' })
       await page.getByRole('button', { name: 'Return to workspace' }).click()
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
       const unopenedP1 = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
@@ -108,6 +118,8 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       await page.reload()
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
       const savedP1 = page.locator('.phase').filter({ hasText: 'Analyse · P1' })
+      // The workspace shell mounts before the refreshed pipeline snapshot.
+      await savedP1.and(page.locator('button:not([disabled])')).waitFor()
       assert.equal(await savedP1.isEnabled(), true, 'saved P1 work opens its diagnostic detail')
       await savedP1.click()
       await page.locator('[data-ui-debug-id="PAC"]').getByRole('button', { name: 'Clear P1' }).waitFor()
@@ -123,8 +135,10 @@ test('Analyse shows an honest empty state and clears saved P1 only after confirm
       await page.locator('[data-ui-debug-id="WSP"]').waitFor()
       assert.equal(resetPosts, 1)
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
-      await page.screenshot({ path: '/tmp/intelitex-analysis-reset-evidence/workspace-light-390.png', fullPage: true, animations: 'disabled' })
+      await page.getByRole('button', { name: 'Theme: dark. Switch theme' }).click()
+      await page.getByRole('button', { name: 'Theme: sepia. Switch theme' }).click()
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
+      await page.screenshot({ path: testEvidence('intelitex-analysis-reset-evidence/workspace-light-390.png'), fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.deepEqual(errors, [])
       assert.deepEqual(failed, [])

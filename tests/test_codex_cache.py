@@ -20,7 +20,7 @@ from bookpipe.util import PipelineError, atomic_json, digest, dumps, read_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROMPTS = {n: (ROOT / "prompts" / f"pass{n}.txt").read_text(encoding="utf-8") for n in range(1, 6)}
+PROMPTS = {n: (ROOT / "tests/fixtures/legacy_prompts" / f"pass{n}.txt").read_text(encoding="utf-8") for n in range(1, 6)}
 COMMON = {
     "SOURCE_BLOCKS": [{"id": "B1", "kind": "paragraph", "text": "Żuraw waits.\nA second line."}],
     "APPROVED_LEXICON": [], "OBSERVATIONS": [],
@@ -227,8 +227,8 @@ def test_unknown_config_fails_closed(project, option, value):
 def test_profile_resolution_records_both_wire_formats(project):
     settings = {"profiles": {}, "default_profile": "codex-sol-low", "passes": {"2": {"max_tokens": 1000}}}
     _, profile, _ = resolve_profile(settings, 2, project=project)
-    assert profile["options"]["p1_wire_format"] == "cache-shared-v1"
-    assert profile["options"]["translation_wire_format"] == "cache-shared-v1"
+    assert profile["options"]["p1_wire_format"] == "cache-shared-v2"
+    assert profile["options"]["translation_wire_format"] == "cache-shared-v2"
 
 
 def test_default_transport_enables_translation_cache_and_preserves_compact_p1(project):
@@ -247,12 +247,12 @@ def test_existing_project_profiles_use_cache_default_and_respect_explicit_rollba
     settings = {"profiles": {"custom": profile}, "default_profile": "custom",
                 "passes": {"2": {"max_tokens": 1000}}}
     _, resolved, _ = resolve_profile(settings, 2, project=project)
-    assert resolved["options"]["p1_wire_format"] == "cache-shared-v1"
-    assert resolved["options"]["translation_wire_format"] == (wire or "cache-shared-v1")
+    assert resolved["options"]["p1_wire_format"] == "cache-shared-v2"
+    assert resolved["options"]["translation_wire_format"] == (wire or "cache-shared-v2")
     provider = CodexAppServerClient({**resolved, "resolved_profile": resolved,
                                     "profile_name": "custom", "project_root": str(project)}, Display(True))
     body = body_for(provider, 2)
-    assert body["wire_format"] == (wire or "cache-shared-v1")
+    assert body["wire_format"] == (wire or "cache-shared-v2")
     if wire == "canonical":
         assert json.loads(body["input"]) == inputs_for(2)
         assert body["output_schema"] == response_schema(2, inputs_for(2))

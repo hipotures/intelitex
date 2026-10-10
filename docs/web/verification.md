@@ -1,5 +1,29 @@
 # Executed production web verification
 
+## P0 source preload in the dedicated worktree (2026-10-02)
+
+The implemented P0 page, six-phase workspace rail and eight-column section table
+were tested with fresh synthetic workspaces and installed Codex native-loopback
+evidence. The private browser origin never contacted a production listener.
+The Browser plugin was not available; validation used the repository's Playwright
+harness. See [the complete validation report](../validation-p0-web-visualization.md)
+for final counts, resource limits, recovery coverage and interrupted development
+runs.
+
+P0/P1 comparisons cover 1440, 1024 and 390 px, dark/light, debug labels on/off.
+They check panel/metric geometry, scrolling, rail/column counts, control access,
+overflow and console errors. Captures of desktop P0, mobile P0 and Workspace were
+also visually inspected. Source rows expose words/UTF-8 bytes and source-only
+actions; opaque identities remain in folded diagnostics. Browser interactions
+cover P0 selection, pagination, receipts, initial manual P1, whole-book P1/Review
+translation gates and existing application flows.
+
+The immutable v33 reference and its external `.agents` verification package are
+absent from this worktree. Their pixel/integrity checks were **not run**. The
+visual runner records this explicitly and runs implemented P0/P1 comparisons;
+it accepts `INTELITEX_V33_REFERENCE` when the approved reference is available.
+No cloud inference, deployment, merge or production operation was performed.
+
 ## Work-home publication and Library reads (2026-09-23)
 
 User-provided Network timings after the first compact-summary release showed

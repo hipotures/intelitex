@@ -47,6 +47,13 @@ class AnalyzeCommand(ModelOptions):
 
 
 @dataclass(frozen=True, slots=True)
+class PreloadCommand:
+    project: Path
+    preload_target_id: str
+    expected_preload_revision: str
+
+
+@dataclass(frozen=True, slots=True)
 class TranslateCommand(ModelOptions):
     project: Path
     chunk_limit: int = 5

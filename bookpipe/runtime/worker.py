@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 
-from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand
+from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand, PreloadCommand
 from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
 from ..progress import ProgressEvent
@@ -53,6 +53,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
                 app.projects.reprepare(command, spec.expected_revision)
             else:
                 app.projects.import_book(command)
+        elif spec.operation == "preload":
+            app.source_preload.run(PreloadCommand(project, spec.preload_target_id, spec.expected_preload_revision), sink)
         elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile, unit_id=spec.unit_id))
         elif spec.operation == "translate":
@@ -99,6 +101,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'output_length_limit'
         elif 'has no current saved result for this chunk' in message:
             code = 'missing_prerequisite'
+        elif message.startswith('Directly relevant analysis memory exceeds memory_tokens.'):
+            code = 'analysis_memory_limit'
         elif 'already has a saved result' in message:
             code = 'pass_already_saved'
         else:

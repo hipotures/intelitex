@@ -36,6 +36,73 @@ The core rule is:
 
 Interface parity is not required. A feature may remain web-only or CLI-only while still being callable programmatically through the application layer.
 
+## Persistent source sessions and the stage graph
+
+`bookpipe/stages.py` defines source prerequisite P0, analysis P1 and translation
+P2-P5. Full translation and targeted execution use the same canonical dependency
+builder: P3 receives accepted P2, P4 receives accepted P2/P3, and P5 receives
+accepted P3/P4. P1 freezes each ordered input and predecessor receipts before
+inference, merges an accepted delta idempotently, and retains human review as a
+book-wide prerequisite for translation.
+
+`Runner` resolves accepted checkpoints and compatible completed evidence before
+preparing source. The new Codex mode binds a `SourceScope` and
+`PersistentSourceSessionManager` at the common inference boundary used by CLI,
+application services and web workers. No frontend P0 controls are necessary.
+The source-session codec reconstructs all canonical inputs offline and preserves
+existing output validators. Its fixed P0-P5 schema and generic base/developer
+contract stay unchanged between turns. Source sentence references use exact
+Unicode character ranges; unrepresentable segmentation fails before inference.
+Stage editorial instructions and mutable memory arrive only in active task turns.
+
+Store owns the project UUID and task-to-scope inventory. Immutable source packages
+and maps live under `artifacts/CHAPTER/sources/SCOPE`; session manifests and
+append-first transition journals live under `sessions/SLOT`. The root
+`source_sessions.json` is a projection. New-mode task evidence lives under
+`artifacts/CHAPTER/passN/UNIT/FINGERPRINT`; `artifacts.py` discovers both this layout
+and legacy pass-first paths. Usage includes physical P0, failed calls and archived
+P1 attempts exactly once. Reset reconciles active P1 history before moving its
+evidence; pending unaccepted/uncertain outcomes prevent unsafe archival. Archived
+tasks never become recovery candidates for new analysis.
+
+Each compatible slot generation owns a stable external runtime, private auth,
+SQLite state, empty cwd and native thread. The compatibility identity includes
+source/map, generic contract, schema, P0 prompt, installed protocol/executable,
+model, effort and auth reference. Display profile labels are not identity.
+One runtime lease covers preparation, inference, recovered acceptance and cleanup;
+PID birth checks refuse a surviving orphan owner. Authentication is bootstrapped
+once and refreshed private auth is preserved. Native state is never exported into
+project evidence or staged into ephemeral child homes.
+
+Preparation proves installed schema capabilities and isolation, starts/resumes the
+same durable thread, and accepts P0 only after exact READY plus durable source
+history proof. Submission intent and exact request bytes precede `turn/start`.
+Turn buffers reset and notifications must match thread/turn IDs. Recovery inspects
+all turn and item pages, accepts compatible completed output through the normal
+validators and domain merge, and never invents usage from cumulative resume totals.
+An empty native allocation lost before any submission intent can be replaced;
+an uncertain submitted intent cannot.
+
+Terminal evidence, validated result, Store checkpoint and P1 domain acceptance
+precede `thread/revert`. The exclusive boundary is the first post-P0 turn, and all
+removed turns must have recorded application ownership and durable outcomes.
+Cleanup verifies exactly the original P0 remains. A lost revert acknowledgement
+is reconciled idempotently. Foreign/live turns, compaction, changed source proof,
+missing runtime or evidence storage failure stop destructive cleanup and new
+inference. Explicit archive/rebuild/purge operations use the same ownership lock.
+P1 reset and review edits retain valid source-only sessions.
+
+`pipeline_execution` is explicit and versioned. New-workspace defaults select it;
+settings for existing projects never inherit it merely by being read. New
+continuation volumes adopt it at creation and receive a bundled P0 prompt if
+the predecessor lacks the contract; no predecessor/native state is migrated. Legacy
+codecs, paired transport, successful checkpoints and other providers retain their
+semantics. Full retained source, contract/schema, dynamic suffix, output reserve
+and safety margin must fit before P0; a short suffix cannot evade the bound.
+Read-only operations, missing prerequisites and `allow_generate=False` never
+prepare P0. Phase timings, source/suffix sizes, logical hashes and correlated usage
+are local evidence, distinct from claims about provider caching internals.
+
 ## Entry points and adapters
 
 ### CLI

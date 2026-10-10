@@ -1,8 +1,23 @@
 # Intentional differences from original v33
 
 The original asset remains immutable. Production preserves its visual tokens, Work
-layout, five-phase rail, seven-column sections table, drawers, Review panels, themes
+layout, drawers, Review panels, themes
 and responsive breakpoints. The following differences carry real application semantics.
+
+- The P0 visualization PRD deliberately adds Preload between Prepare and Analyse,
+  plus a P0 status column (six tiles and eight columns). The P0 page reuses the P1
+  frame, metrics, tables, pagination, confirmation and scrolling. It is accessible
+  before a P1 plan exists, including a Prepare-required draft shell. P0 readiness
+  uses durable R2 proof and independent session warnings; configuration is inherited
+  from P1–P5. Lifetime physical usage and current target coverage are separate.
+  There is no independent P0 model selector, glossary, entity total, Clear panel or
+  book-wide preload barrier. Navigation remains available while Run is disabled.
+  Source rows show words and UTF-8 text bytes with readable analysis/translation
+  purposes; technical identities are folded diagnostics. Buttons say Preload
+  source and execute only P0. An accepted P0 also opens the initial P1 page's
+  single-first-unit action, permitting a manual P0/P1 cache experiment without
+  starting the whole analysis. Later P1 units retain their required order.
+  P2–P5 controls explicitly wait for whole-book P1 and Review approval.
 
 - No seeded books, fake progress/tokens, publication timers, simulated model tests,
   fake validation, generated cover artwork or localStorage pipeline state.
@@ -80,7 +95,7 @@ and responsive breakpoints. The following differences carry real application sem
   the backend revision or rolls back on conflict. Accessible native buttons/dialogs
   replace clickable mock divs.
 - Source preview is escaped, bounded and paginated. Diagnostic tables scroll internally
-  on narrow screens; no extra section-table columns were introduced.
+  on narrow screens; P0 deliberately adds the one section-table column specified above.
 - Scrollbars now use one theme-aware thin style across page and nested scroll areas,
   replacing native defaults and separate panel-specific scrollbar declarations.
 - Reader uses actual verified translated chapters, canonical Unicode markers, deletion,

@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -118,10 +119,10 @@ with ZipFile(root/'Packed Book.epub','w') as archive:
   await page.locator('[data-source-id="Packed Book.epub"]').waitFor()
   assert.equal(libraryRequests, beforePackedOpen, 'preparing a packed EPUB must not rescan Library')
 
-  await mkdir('/tmp/intelitex-browser-evidence', { recursive: true })
-  await page.screenshot({ path: '/tmp/intelitex-browser-evidence/library-refresh-dark-390.png', fullPage: false, animations: 'disabled' })
+  await mkdir(testEvidence('intelitex-browser-evidence'), { recursive: true })
+  await page.screenshot({ path: testEvidence('intelitex-browser-evidence/library-refresh-dark-390.png'), fullPage: false, animations: 'disabled' })
   await toggleLightDark(page)
-  await page.screenshot({ path: '/tmp/intelitex-browser-evidence/library-refresh-light-390.png', fullPage: false, animations: 'disabled' })
+  await page.screenshot({ path: testEvidence('intelitex-browser-evidence/library-refresh-light-390.png'), fullPage: false, animations: 'disabled' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   assert.deepEqual(pageErrors, [])
   assert.deepEqual(failedResponses, ['503 /api/library'])

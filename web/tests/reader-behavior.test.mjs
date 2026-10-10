@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -5,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
-const evidence = '/tmp/intelitex-reader-evidence'
+const evidence = testEvidence('intelitex-reader-evidence')
 const wait = async (fn, description) => {
   const end = Date.now() + 30000
   while (Date.now() < end) {

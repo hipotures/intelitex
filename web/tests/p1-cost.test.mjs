@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { readFile, mkdir } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
@@ -5,7 +6,7 @@ import test from 'node:test'
 import { chromium } from 'playwright'
 
 const dist = resolve('dist')
-const output = '/tmp/intelitex-p1-cost-evidence'
+const output = testEvidence('intelitex-p1-cost-evidence')
 const metadata = { title: 'Offline Book', creators: [], language: 'en', source_language: 'en',
   target_language: 'pl', label: null, format: 'EPUB', word_count: 120,
   lifecycle: { archived: false, revision: 'life' } }
@@ -160,7 +161,7 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
       assert.equal(await page.getByRole('button', { name: 'Run ch0001_a001 P1' }).isDisabled(), true)
       assert.equal(await cost.evaluate(node => getComputedStyle(node).animationName), 'none')
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.getByRole('button', { name: 'Toggle theme' }).click()
+      while (await page.locator('html').getAttribute('data-theme') !== 'light') await page.getByRole('button', { name: /Theme: .*\. Switch theme/ }).click()
       await page.screenshot({ path: `${output}/complete-light-390.png`, fullPage: true, animations: 'disabled' })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
       assert.equal(await page.locator('[data-ui-debug-id="PAN"] .diagnostic-scroll').first().evaluate(node => node.scrollWidth <= node.clientWidth), true,

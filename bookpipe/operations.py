@@ -26,6 +26,8 @@ def profile_report(settings: dict[str, Any], project: Path) -> dict[str, Any]:
         safe.pop("credential_value", None)
         resolved[str(pass_no)] = {"name": name, "provenance": provenance, "settings": safe}
     return {
+        "pipeline_execution": settings.get("pipeline_execution", {"codex_mode": "legacy"}),
+        "p0_resolution": "Same effective Codex model/effort as the consumer; dedicated p0_output_reserve; no separate warm model",
         "default_profile": settings["default_profile"],
         "pass_profiles": settings.get("pass_profiles", {}),
         "configured": redact(effective["profiles"]),
@@ -34,7 +36,8 @@ def profile_report(settings: dict[str, Any], project: Path) -> dict[str, Any]:
 
 
 def find_attempts(project: Path) -> list[Path]:
-    return sorted(project.glob("artifacts/**/attempt_*/attempt.json"))
+    from .artifacts import attempt_manifests
+    return attempt_manifests(project)
 
 
 def attempt_report(project: Path, selected: str | None = None) -> dict[str, Any]:
@@ -63,6 +66,10 @@ def usage_report(project: Path) -> dict[str, Any]:
     })
     for manifest_path in find_attempts(project):
         manifest = read_json(manifest_path)
+        if manifest.get("response", {}).get("wire_format") == "source-session-v1":
+            from .evidence import recorded_model_submission
+            if recorded_model_submission(manifest_path.parent) is False:
+                continue
         identity = manifest.get("identity", {})
         key = (str(identity.get("pass", "unknown")), identity.get("provider") or "unknown", identity.get("requested_model") or "unknown")
         group = groups[key]
@@ -95,6 +102,8 @@ def codex_protocol_doctor(profile: dict[str, Any]) -> dict[str, Any]:
                            capture_output=True, text=True, timeout=30, check=True)
             required = ["v1/InitializeParams.json", "v2/ThreadStartParams.json", "v2/TurnStartParams.json",
                         "v2/ThreadTokenUsageUpdatedNotification.json", "v2/TurnCompletedNotification.json"]
+            required.extend(["v2/ThreadResumeParams.json", "v2/ThreadTurnsListParams.json",
+                             "v2/ThreadItemsListParams.json", "v2/ThreadRevertParams.json", "v2/TurnInterruptParams.json"])
             hashes = {}
             for name in required:
                 path = Path(temp) / name

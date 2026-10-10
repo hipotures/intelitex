@@ -1,3 +1,4 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -5,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import test from 'node:test'
 import { chromium } from 'playwright'
 
-const evidence = '/tmp/intelitex-debug-evidence'
+const evidence = testEvidence('intelitex-debug-evidence')
 const regions = ['HDR', 'WRK', 'WHT', 'ACT', 'WLS', 'WRC', 'LIB', 'BKC']
 const rects = page => page.evaluate(ids => Object.fromEntries(ids.map(id => {
   const element = document.querySelector(`[data-ui-debug-id="${id}"]`)
@@ -70,7 +71,7 @@ test('Debug badges toggle and persist without moving Work regions or changing AP
     assert.deepEqual(await rects(page), before, `${width}px layout moved when Debug was disabled`)
     assert.notEqual(await page.locator('[data-ui-debug-id="ACT"]').evaluate(element => getComputedStyle(element, '::after').content), '"ACT"')
   }
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  while (await page.locator('html').getAttribute('data-theme') !== 'light') await page.getByRole('button', { name: /Theme: .*\. Switch theme/ }).click()
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('tab', { name: 'Debug' }).click()
   await page.getByRole('checkbox', { name: 'Show panel identifiers' }).check()
@@ -92,7 +93,7 @@ test('Debug badges toggle and persist without moving Work regions or changing AP
   }), true, 'workspace identity is selectable text, not a tooltip')
   await page.screenshot({ path: `${evidence}/workspace-debug-light-390.png`, fullPage: true, animations: 'disabled' })
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.getByRole('button', { name: 'Toggle theme' }).click()
+  await page.getByRole('button', { name: /Theme: .*\. Switch theme/ }).click()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
   await page.screenshot({ path: `${evidence}/workspace-debug-dark-1440.png`, fullPage: true, animations: 'disabled' })
   await page.locator('[data-ui-debug-id="PMA"] > button').click()
