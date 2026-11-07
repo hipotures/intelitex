@@ -1043,3 +1043,49 @@ def test_p1_reset_reconciles_accepted_suffix_before_archiving(project, tmp_path,
     from bookpipe.usage import usage_by_unit_report
     assert sum(g['attempts'] for g in usage_report(project)['groups']) == 3
     assert sum(p.provider_call_count for u in usage_by_unit_report(project).units for p in u.passes) == 3
+
+
+def test_native_source_session_exports_otel_to_local_collector(project, tmp_path, native_mock):
+    """Real Codex, local mock inference and local OTLP: no credentials/tokens."""
+    from contextlib import closing
+    received = []
+
+    class Collector(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers['Content-Length']))
+            received.append((self.path, body, self.headers.get('X-Intelitex-Project')))
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{}')
+
+    collector = ThreadingHTTPServer(('127.0.0.1', 0), Collector)
+    worker = threading.Thread(target=collector.serve_forever, daemon=True)
+    worker.start()
+    source = tmp_path / 'telemetry.toml'
+    base = f'http://127.0.0.1:{collector.server_port}'
+    source.write_text('[otel]\n'
+        f'exporter={{otlp-http={{endpoint="{base}/v1/logs", protocol="json"}}}}\n'
+        f'metrics_exporter={{otlp-http={{endpoint="{base}/v1/metrics", protocol="json"}}}}\n')
+    client, settings = configured(project, tmp_path)
+    client.settings['options']['otel_config'] = str(source)
+    try:
+        with closing(Store(project)) as store:
+            book = read_json(project / 'book.json') if (project / 'book.json').exists() else {}
+            book['metadata'] = {'title': 'Książka testowa'}
+            atomic_json(project / 'book.json', book)
+            Runner(store, client, settings, client.ui).run(1, 'pass1/unit', inputs_for(1))
+        client.close()
+        assert any(path == '/v1/logs' for path, _, _ in received)
+        assert any(path == '/v1/metrics' for path, _, _ in received)
+        import base64
+        assert all(base64.urlsafe_b64decode((header or '').removeprefix('utf8-base64:')).decode() == 'Książka testowa' for _, _, header in received), [(path, header) for path, _, header in received]
+        assert len(native_mock['calls']) == 2  # P0 and P1, both local mock.
+    finally:
+        client.close()
+        collector.shutdown()
+        collector.server_close()
+        worker.join(timeout=2)

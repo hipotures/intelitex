@@ -795,7 +795,39 @@ verified for the intended account/runtime):
 
 Codex uses private application-owned homes and an empty work directory outside
 the project/source tree. Only an explicitly configured `auth_source` is copied;
-user configuration, skills, rules, memories, plugins and trust settings are not.
+agent configuration, skills, rules, memories, plugins and trust settings are not.
+
+Built-in Codex profiles set `options.otel_config` to `~/.codex/config.toml`.
+Only its `[otel]` table is read into the private runtime at each process start,
+including durable P0–P5 session resumes. Logs and metrics use the same exporters
+and headers as the main Codex client; prompt and final-response text export is
+always disabled. The private telemetry config is mode `0600`; exporter headers
+are kept out of command-line and attempt arguments. Missing source files leave
+custom telemetry disabled. Set `options.otel_config` to `null` to opt out, or to
+an explicit TOML file for custom profiles. This never imports other user settings.
+Changes apply when a new child process starts; running children keep their current
+configuration. Local relay endpoints must remain reachable by the server process.
+
+Translation processes additionally send `X-Intelitex-Project` on OTLP/HTTP logs,
+and metrics when `book.json` contains `metadata.title`. The value is the
+full title (whitespace normalized, at most 250 Unicode characters), encoded with
+URL-safe Base64 (`utf8-base64:` prefix) for ASCII HTTP transport. Discovery processes have no book marker. The source
+Codex configuration is never modified.
+
+For the HomeStack relay in `/etc/rc.local`, the optional patch below assigns
+`project="intelitex/<title>"` only to marked Codex requests, removes the header
+before forwarding, and preserves existing attribution for unmarked requests.
+Apply from the repository root, then restart the relay **before** restarting
+Intelitex so new translation processes read the current relay configuration:
+
+```bash
+sudo patch --backup /etc/rc.local < tools/telemetry/intelitex-project.patch
+sudo systemctl restart homestack-agent-processes.service
+```
+
+The relay service also owns agent Remote Control processes; restarting it can
+briefly disconnect their clients. Restart the Intelitex server afterwards.
+The patch is not installed automatically and requires administrator access.
 
 Intelitex also provides central Codex profiles to every project without copying
 them into each book's `settings.json`. Profile names follow

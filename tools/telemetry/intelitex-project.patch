@@ -1,0 +1,70 @@
+--- /etc/rc.local
++++ /etc/rc.local
+@@ -1,6 +1,7 @@
+ #!/usr/bin/python3
+ """Boot configured agents using native accounts, configs and workspace trust."""
+ 
++import base64
+ import json
+ import copy
+ import http.server
+@@ -123,7 +124,7 @@
+     return group
+ 
+ 
+-def enrich_logs(home, payload, agent):
++def enrich_logs(home, payload, agent, project_override=None):
+     groups = []
+     cache = {}
+     for source in payload.get("resourceLogs", []):
+@@ -131,7 +132,7 @@
+         for scope in source.get("scopeLogs", []):
+             records = {}
+             for record in scope.get("logRecords", []):
+-                project = point_project(home, record, agent, cache)
++                project = project_override or point_project(home, record, agent, cache)
+                 records.setdefault(project, []).append(record)
+             for project, items in records.items():
+                 if project not in projects:
+@@ -144,7 +145,7 @@
+     return payload
+ 
+ 
+-def enrich_metrics(home, payload, agent):
++def enrich_metrics(home, payload, agent, project_override=None):
+     groups = []
+     cache = {}
+     for source in payload.get("resourceMetrics", []):
+@@ -156,7 +157,7 @@
+                         continue
+                     points = {}
+                     for point in metric[kind].get("dataPoints", []):
+-                        project = point_project(home, point, agent, cache)
++                        project = project_override or point_project(home, point, agent, cache)
+                         points.setdefault(project, []).append(point)
+                     for project, items in points.items():
+                         if project not in projects:
+@@ -185,12 +186,20 @@
+                     self.send_error(413)
+                     return
+                 payload = json.loads(self.rfile.read(length))
++                project_override = None
++                if self.path.startswith("/codex/"):
++                    title = self.headers.get("X-Intelitex-Project", "")
++                    if title.startswith("utf8-base64:"):
++                        title = base64.urlsafe_b64decode(title.removeprefix("utf8-base64:")).decode("utf-8")
++                    title = " ".join(title.split())[:250]
++                    if title:
++                        project_override = "intelitex/" + title
+                 if self.path.endswith("/logs"):
+-                    payload = enrich_logs(home, payload, self.path.split("/")[1])
++                    payload = enrich_logs(home, payload, self.path.split("/")[1], project_override)
+                 else:
+-                    payload = enrich_metrics(home, payload, self.path.split("/")[1])
++                    payload = enrich_metrics(home, payload, self.path.split("/")[1], project_override)
+                 headers = {k: v for k, v in self.headers.items() if k.lower() not in
+-                           ("host", "content-length", "content-type", "connection", "accept-encoding", "x-homestack-upstream")}
++                           ("host", "content-length", "content-type", "connection", "accept-encoding", "x-homestack-upstream", "x-intelitex-project")}
+                 request = urllib.request.Request(
+                     upstreams[self.path], data=json.dumps(payload).encode(),
+                     headers={**headers, "Content-Type": "application/json"}, method="POST",

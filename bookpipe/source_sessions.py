@@ -299,6 +299,7 @@ class PersistentSourceSessionManager:
     def connect(self, recorder):
         connected_at = time.monotonic()
         from . import codex_transport as transport
+        transport.install_otel(self.home, self.provider.settings.get("options", {}), title=transport.book_title(self.store.root))
         argv = transport.app_server_argv(self.executable) + ['-c', 'cli_auth_credentials_store="file"']
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.work,

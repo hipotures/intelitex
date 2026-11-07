@@ -30,6 +30,7 @@ def test_all_builtin_codex_profiles_default_to_shared_without_mutating_settings(
     advertised = builtin_codex_profiles()[name]
     assert advertised["options"] == {
         "auth_source": "~/.codex/auth.json",
+        "otel_config": "~/.codex/config.toml",
         "p1_wire_format": SHARED,
         "translation_wire_format": SHARED,
         "translation_thread_strategy": "paired-passes-v1",

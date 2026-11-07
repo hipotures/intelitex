@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .codex_otel import book_title, install_otel
 from .contracts import normalized_usage
 from .codex_cache import diagnostics, load_developer_contract, output_schema, serialize
 from . import codex_cache_v2
@@ -482,7 +483,7 @@ class CodexAppServerClient:
             raise PipelineError(f"Codex conservative request bound {required:,} exceeds configured context {self.context:,}; source was not altered.")
         return count
 
-    def _runtime(self, directory: Path) -> tuple[Path, Path, Path]:
+    def _runtime(self, directory: Path, *, translation: bool = False) -> tuple[Path, Path, Path]:
         attempt_tag = directory.name + "-" + str(os.getpid()) + "-" + str(time.time_ns())
         configured = self.settings.get("runtime_root")
         state_home = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
@@ -505,6 +506,7 @@ class CodexAppServerClient:
                 os.fsync(dst.fileno())
             os.chmod(temporary, 0o600)
             os.replace(temporary, target)
+        install_otel(home, self.settings.get("options", {}), title=book_title(self.project_root) if translation else None)
         return home, sqlite_home, work
 
     @staticmethod
@@ -566,7 +568,7 @@ class CodexAppServerClient:
         executable = shutil.which(self.executable)
         if not executable:
             raise PipelineError(f"Codex executable not found: {self.executable}")
-        home, sqlite_home, work = self._runtime(directory)
+        home, sqlite_home, work = self._runtime(directory, translation=True)
         installed = self._installed_effort_feature(executable, home, sqlite_home)
         effort_plan = resolve_effort_plan(body.get("effort"), None, feature_available=installed["available"])
         argv = app_server_argv(executable)

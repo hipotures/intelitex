@@ -51,7 +51,7 @@ def builtin_codex_profiles() -> dict[str, dict[str, Any]]:
                 "max_output_tokens": None,
                 "request_timeout": 3_600,
                 "reasoning_effort": effort,
-                "options": {"auth_source": "~/.codex/auth.json", **CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS},
+                "options": {"auth_source": "~/.codex/auth.json", "otel_config": "~/.codex/config.toml", **CODEX_WIRE_DEFAULTS, **CODEX_EXECUTION_DEFAULTS},
             }
     return result
 

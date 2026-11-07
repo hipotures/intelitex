@@ -383,6 +383,7 @@ def _semantic_execution_signature(value: dict) -> dict:
             options.pop("p1_wire_format", None)
             options.pop("translation_wire_format", None)
             options.pop("translation_thread_strategy", None)
+            options.pop("otel_config", None)  # Telemetry does not change model work.
             # Older Codex profiles may omit options entirely. Resolution now
             # spells out wire defaults, which add no execution semantics.
             if not options and resolved.get("provider") == "codex":
