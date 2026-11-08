@@ -296,13 +296,27 @@ class Store:
             return
         blockmap = {b["id"]: b for b in blocks}
         terms = self.terms()
+        observations = copy.deepcopy(delta["observations"])
         with self.db:
             for incoming in delta["terms"]:
                 names = unique([incoming["source"]] + incoming["aliases"])
                 wanted = {normalized(n) for n in names}
                 matches = [t for t in terms if wanted & {normalized(n) for n in [t["source"]] + t["aliases"]}]
                 if len(matches) > 1:
-                    raise PipelineError(f"Ambiguous alias merge for {incoming['source']!r}; review analysis rather than conflating two entities.")
+                    # An alias bridge is evidence for Review, not authority to
+                    # collapse existing identities or abort the whole book.
+                    sources = [term["source"] for term in matches]
+                    observations.append({
+                        "about": unique(names + sources), "kind": "reference",
+                        "statement": (f"Unresolved identity: {incoming['source']!r} with aliases "
+                            f"{incoming['aliases']!r} matches separate terminology entries {sources!r}. "
+                            "No entries were merged and no aliases were reassigned. Review source evidence "
+                            f"before treating them as one entity. Proposed interpretation: {incoming['meaning']}"),
+                        "confidence": "low", "evidence": incoming["evidence"],
+                    })
+                    self.note("analysis_alias_conflict", {"analysis_job": key,
+                        "term_ids": [term["id"] for term in matches], "proposal": incoming})
+                    continue
                 existing = matches[0] if matches else None
                 evidence = [{"block_id": bid, "chapter_id": chapter_id, "order": blockmap[bid]["order"],
                              "excerpt": blockmap[bid]["text"][:900]} for bid in incoming["evidence"]]
@@ -347,7 +361,7 @@ class Store:
                     data_for_index.update(id=f"T{tid:06d}", choice=None, approved=False)
                     terms.append(data_for_index)
                 self.note("term_evidence", {"term_id": f"T{tid:06d}", "analysis_job": key, "candidates": incoming["candidates"]})
-            for fact in delta["observations"]:
+            for fact in observations:
                 item = copy.deepcopy(fact)
                 item["chapter_id"] = chapter_id
                 item["available_from_order"] = max(blockmap[b]["order"] for b in item["evidence"])
