@@ -344,6 +344,22 @@ def test_whole_block_link_keeps_href_around_translation():
     assert str(soup.p) == '<p class="toc-item-title"><a href="prologue.xhtml">Prolog</a></p>'
 
 
+def test_whole_block_script_and_link_with_closing_punctuation_are_kept():
+    soup = BeautifulSoup('<p><sup>Copyright © 2024 by WordFire, Inc.</sup></p>', 'html.parser')
+    EpubPublicationBuilder._replace_block(soup.p, 'B1', 'Copyright © 2024 by WordFire, Inc.', 'Copyright © 2024 WordFire, Inc.')
+    assert str(soup.p) == '<p><sup>Copyright © 2024 WordFire, Inc.</sup></p>'
+    soup = BeautifulSoup('<p><a class="ext" href="https://x/join"><span class="underline">Join here</span></a>.</p>',
+                         'html.parser')
+    EpubPublicationBuilder._replace_block(soup.p, 'B2', 'Join here.', 'Dołącz tutaj.')
+    assert str(soup.p) == '<p><a class="ext" href="https://x/join">Dołącz tutaj</a>.</p>'
+
+
+def test_chemical_subscript_becomes_unicode_in_translation():
+    soup = BeautifulSoup('<p>three CO<sub>2</sub> tanks</p>', 'html.parser')
+    EpubPublicationBuilder._replace_block(soup.p, 'B1', 'three CO2 tanks', 'trzy zbiorniki CO2')
+    assert str(soup.p) == '<p>trzy zbiorniki CO₂</p>'
+
+
 def test_inline_link_inside_prose_still_stops_publication():
     soup = BeautifulSoup('<p>See <a href="x.xhtml">here</a>.</p>', 'html.parser')
     with pytest.raises(PipelineError, match='unsupported inline <a>'):

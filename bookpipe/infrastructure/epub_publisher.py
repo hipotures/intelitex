@@ -34,6 +34,9 @@ EPUB_MIMETYPE = b"application/epub+zip"
 DC_NAMESPACE = "http://purl.org/dc/elements/1.1/"
 XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace"
 SUPPORTED_INLINE = {"em", "i", "strong", "b", "br"}
+SCRIPT_DIGITS = {"sub": str.maketrans("0123456789+-=()", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎"),
+                 "sup": str.maketrans("0123456789+-=()", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾")}
+TRAILING_PUNCTUATION = re.compile(r"[\s.,;:!?…]*")
 PUBLICATION_FORMAT = "intelitex-epub-v1"
 INTELITEX_METADATA_IRI = "https://github.com/hipotures/intelitex/metadata#"
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -310,12 +313,24 @@ class EpubPublicationBuilder:
                 parent.insert(position + offset, child.extract())
             return 0
         elements = [child for child in node.contents if isinstance(child, Tag)]
-        if (len(elements) == 1 and elements[0].name.lower() == 'a' and elements[0].get('href')
-                and set(elements[0].attrs) <= {'href', 'class', 'id', 'title'}
-                and not any(isinstance(child, NavigableString) and str(child).strip() for child in node.contents)):
-            # A link spanning the whole block (e.g. a contents-page entry) is
-            # unambiguous: keep the link and translate its content in place.
-            node = elements[0]
+        wrapper = elements[0] if len(elements) == 1 else None
+        if wrapper is not None and (
+                (wrapper.name.lower() == 'a' and wrapper.get('href')
+                 and set(wrapper.attrs) <= {'href', 'class', 'id', 'title'})
+                or (wrapper.name.lower() in {'sup', 'sub'} and not wrapper.attrs)):
+            position = node.contents.index(wrapper)
+            before = ''.join(str(child) for child in node.contents[:position])
+            after = ''.join(str(child) for child in node.contents[position + 1:])
+            if not before.strip() and TRAILING_PUNCTUATION.fullmatch(after):
+                # A link or script wrapper spanning the whole block (contents
+                # entries, copyright lines), optionally followed by its closing
+                # punctuation, is unambiguous: keep it and translate inside.
+                trailing = after.strip()
+                if trailing and source_text.endswith(trailing):
+                    source_text = source_text[:-len(trailing)]
+                    if translated_text.rstrip().endswith(trailing):
+                        translated_text = translated_text.rstrip()[:-len(trailing)]
+                node = wrapper
         prefix_span = next((child for child in node.contents if isinstance(child, Tag)), None)
         if (prefix_span is not None and node.contents[0] is prefix_span
                 and prefix_span.name == 'span' and set(prefix_span.attrs) == {'class'}
@@ -343,6 +358,19 @@ class EpubPublicationBuilder:
                 child.get("id") or child.get("name")
             ):
                 anchors.append(copy.deepcopy(child))
+                continue
+            if (name in SCRIPT_DIGITS and not child.attrs and not child.find(True)
+                    and child.get_text() and all(ch in "0123456789+-=()" for ch in child.get_text())):
+                # A chemical/numeric script such as CO<sub>2</sub> becomes the
+                # Unicode character when the translation keeps the same token.
+                previous = child.previous_sibling
+                prefix = re.search(r"\w+$", str(previous)) if isinstance(previous, NavigableString) else None
+                if prefix is None:
+                    raise PipelineError(f"Block {block_id} contains a <{name}> that cannot be placed in the translation.")
+                token = prefix.group() + child.get_text()
+                translated_text = re.sub(rf"(?<!\w){re.escape(token)}(?!\w)",
+                                         prefix.group() + child.get_text().translate(SCRIPT_DIGITS[name]),
+                                         translated_text)
                 continue
             if name == 'span' and child.attrs == {'class': ['char-dcrit']} and not child.find(True):
                 # The imported plain text already contains this diacritic. The
