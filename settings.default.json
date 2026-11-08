@@ -9,7 +9,7 @@
   "seed": 42,
   "json_retries": 1,
   "analysis_source_limit": 0,
-  "memory_tokens": 12000,
+  "memory_tokens": 200000,
   "continuity_tokens": 600,
   "request_extra": {},
   "passes": {
