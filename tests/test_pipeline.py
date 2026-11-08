@@ -1294,3 +1294,30 @@ def test_later_chunk_can_run_alone_but_p5_stays_stale_until_context_is_complete(
     app.pipeline.translate(TranslateCommand(root, chunk_limit=2))
     assert app.web.translation_pass_preview(root, later['id'], 5)['current']
     assert all(state.calls[number] > before[number] for number in (2, 3, 4, 5))
+
+
+def test_translation_job_and_selection_commit_together(project, monkeypatch):
+    """A concurrent snapshot must never see a pass result without its selection (transient 'stale')."""
+    from bookpipe.state_files import StateConnection
+    root, args, _ = project
+    assert main(["analyze", *args]) == 0
+    review = read_json(root / "terms.review.json")
+    review["confirmed"] = True
+    atomic_json(root / "terms.review.json", review)
+    assert main(["approve", *args]) == 0
+    orphans, original = [], StateConnection.commit
+
+    def checked_commit(self):
+        if getattr(self, '_ready', False) and not self._readonly and self.in_transaction:
+            selected = {row[0][len('selected_pass:'):] for row in
+                        sqlite_rows(self, "SELECT key FROM kv WHERE key LIKE 'selected_pass:%'")}
+            orphans.extend(key for (key,) in sqlite_rows(self, "SELECT DISTINCT key FROM jobs WHERE key NOT LIKE 'pass1/%'")
+                           if key not in selected)
+        return original(self)
+
+    def sqlite_rows(connection, sql):
+        return [tuple(row) for row in connection.execute(sql).fetchall()]
+
+    monkeypatch.setattr(StateConnection, 'commit', checked_commit)
+    assert main(["translate", *args, "--continue", "1"]) == 0
+    assert orphans == []

@@ -707,9 +707,13 @@ class Runner:
                 "repairs": repairs,
             }
             atomic_json(work / "recovery.json", recovery)
-            self.store.save_job(key, fingerprint, path, {**meta, "recovered_from": recovery["source_attempt"],
-                                                        "validation_repairs": repairs,
-                                                        "settings": self.settings["passes"][str(pass_no)]})
+            # One commit: a snapshot must never see a result without its selection.
+            with self.store.db:
+                self.store.save_job(key, fingerprint, path, {**meta, "recovered_from": recovery["source_attempt"],
+                                                            "validation_repairs": repairs,
+                                                            "settings": self.settings["passes"][str(pass_no)]})
+                if pass_no > 1:
+                    self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             self.ui.emit(ProgressEvent(kind="pass_recovered", values={
                 "pass_no": pass_no, "task_key": key, "model_called": False,
             }))
@@ -718,8 +722,6 @@ class Runner:
                     "task_key": key, "repair_count": len(repairs),
                     "recovery_path": str(work / "recovery.json"),
                 }))
-            if pass_no > 1:
-                self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             if manager:
                 self._domain_acceptance(pass_no, key, fingerprint, value, str(path.relative_to(self.store.root)), inputs, unit_context)
                 recovered_recorder = AttemptRecorder.resume(attempt)
@@ -973,8 +975,12 @@ class Runner:
             acceptance_started = time.monotonic()
             recorder.finish(generation="completed", validation="passed", metadata={**meta, **measurement_meta,
                             "execution_signature": digest(_semantic_execution_signature(semantic.as_dict()))})
-            self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,
-                                                        "settings": self.settings["passes"][str(pass_no)]})
+            # One commit: a snapshot must never see a result without its selection.
+            with self.store.db:
+                self.store.save_job(key, fingerprint, path, {**meta, **measurement_meta,
+                                                            "settings": self.settings["passes"][str(pass_no)]})
+                if pass_no > 1:
+                    self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             recorder.mark_accepted()
             # Local chat servers may legitimately omit usage. Keep those values
             # unknown without preventing the next analysis/translation pass.
@@ -982,8 +988,6 @@ class Runner:
                 with self.store.db:
                     self.store.set("observability_hold", {"attempt": str(attempt.relative_to(self.store.root)),
                                                           "reason": "Provider completed without expected usage telemetry."})
-            if pass_no > 1:
-                self.store.record_translation_pass(key, base_fingerprint, fingerprint, inputs, generated=True)
             if manager:
                 self._domain_acceptance(pass_no, key, fingerprint, value, str(path.relative_to(self.store.root)), inputs, unit_context)
                 manager.timing("acceptance", acceptance_started, recorder)
