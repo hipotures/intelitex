@@ -309,6 +309,13 @@ class EpubPublicationBuilder:
             for offset, child in enumerate(list(holder.contents)):
                 parent.insert(position + offset, child.extract())
             return 0
+        elements = [child for child in node.contents if isinstance(child, Tag)]
+        if (len(elements) == 1 and elements[0].name.lower() == 'a' and elements[0].get('href')
+                and set(elements[0].attrs) <= {'href', 'class', 'id', 'title'}
+                and not any(isinstance(child, NavigableString) and str(child).strip() for child in node.contents)):
+            # A link spanning the whole block (e.g. a contents-page entry) is
+            # unambiguous: keep the link and translate its content in place.
+            node = elements[0]
         prefix_span = next((child for child in node.contents if isinstance(child, Tag)), None)
         if (prefix_span is not None and node.contents[0] is prefix_span
                 and prefix_span.name == 'span' and set(prefix_span.attrs) == {'class'}

@@ -337,6 +337,19 @@ def test_publication_renders_saved_translation_line_breaks_and_emphasis():
     assert str(soup.p) == '<p>Powiedział cześć.<br/><em class="char-i">Znowu.</em></p>'
 
 
+def test_whole_block_link_keeps_href_around_translation():
+    soup = BeautifulSoup('<p class="toc-item-title"><a href="prologue.xhtml">'
+                         '<span class="toc-item-title-text cspan">Prologue</span></a></p>', 'html.parser')
+    EpubPublicationBuilder._replace_block(soup.p, 'B0000158', 'Prologue', 'Prolog')
+    assert str(soup.p) == '<p class="toc-item-title"><a href="prologue.xhtml">Prolog</a></p>'
+
+
+def test_inline_link_inside_prose_still_stops_publication():
+    soup = BeautifulSoup('<p>See <a href="x.xhtml">here</a>.</p>', 'html.parser')
+    with pytest.raises(PipelineError, match='unsupported inline <a>'):
+        EpubPublicationBuilder._replace_block(soup.p, 'B0001', 'See here.', 'Zobacz tutaj.')
+
+
 def test_table_row_translation_preserves_separately_bound_cell():
     soup = BeautifulSoup(
         '<table><tr><td><span class="person">YURI ALSTER</span></td>'
