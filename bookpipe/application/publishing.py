@@ -425,6 +425,8 @@ class PublishingService:
                 record = {
                     "format_version": PUBLICATION_RECORD_VERSION,
                     "excluded_section_ids": sorted(self._selected_sections(book, record)[0]),
+                    **({"dropped_block_texts": record["dropped_block_texts"]}
+                       if record.get("dropped_block_texts") else {}),
                     "last_success": success,
                     "editions": editions,
                     "last_attempt": {
