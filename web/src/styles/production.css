@@ -123,7 +123,9 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .reader-block-wrap { position:relative; }
 .reader-gutter-marker { position:absolute;right:calc(100% + 2px);top:0;padding:2px;border:0;background:transparent;color:var(--accent);cursor:pointer; }
 .reader-marker-popover { position:absolute;z-index:4;width:min(100%,520px);max-height:min(55dvh,520px);overflow:auto;padding:16px 18px;border:1px solid color-mix(in srgb,var(--amber) 32%,var(--line-strong));border-left:3px solid color-mix(in srgb,var(--amber) 60%,var(--line-strong));border-radius:10px;background:color-mix(in srgb,var(--panel) 86%,var(--amber) 14%);box-shadow:0 8px 24px color-mix(in srgb,var(--bg) 42%,transparent);color:var(--text);font:13px Inter,system-ui,sans-serif;line-height:1.5; }
-.reader-marker-popover-title { margin-bottom:9px;color:var(--text-soft);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase; }
+.reader-marker-popover-title { display:flex;align-items:center;gap:4px;margin-bottom:9px;color:var(--text-soft);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase; }
+.reader-marker-popover-close { margin:-6px -8px -6px auto;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text-dim);font:20px/1 Inter,system-ui,sans-serif;cursor:pointer; }
+.reader-marker-popover-close:hover { color:var(--text);background:color-mix(in srgb,var(--text) 10%,transparent); }
 .reader-marker-popover-entry + .reader-marker-popover-entry { margin-top:14px;padding-top:14px;border-top:1px solid var(--line); }
 .reader-marker-id { display:block;color:var(--text-dim);font-size:11px; }
 .reader-marker-id code { color:var(--text-soft);font-size:inherit; }
