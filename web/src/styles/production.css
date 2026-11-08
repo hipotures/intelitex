@@ -156,7 +156,8 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .reader-mode .reader-progress-line { position:fixed;top:calc(var(--header-h) + 58px);left:280px;right:0;width:auto;height:12px;margin:0; }
 html.reader-chrome-hidden .app.reader-mode > .topbar { transform:translateY(-100%);opacity:0;pointer-events:none; }
 html.reader-chrome-hidden .reader-mode .reader-books { opacity:0;pointer-events:none; }
-html.reader-chrome-hidden .reader-mode .reader-reading-area .reader-controls { top:0;opacity:0;pointer-events:none; }
+html.reader-chrome-hidden .reader-mode .reader-reading-area .reader-controls { top:0;opacity:0;pointer-events:none;margin-bottom:-58px; }
+html.reader-chrome-hidden .reader-mode .reader-reading-area { padding-top:0; }
 html.reader-chrome-hidden .reader-mode .reader-progress-line { top:0;left:0;height:30px;background:transparent; }
 html.reader-chrome-hidden .reader-mode .reader-progress-popup { top:35px; }
 html[data-theme="sepia"] .reader-page { color:#302b25; }

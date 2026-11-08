@@ -209,9 +209,15 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     return () => { if (controlTimer.current) clearTimeout(controlTimer.current) }
   }, [headerAutoHide, settingsOpen, progressOpen, libraryOpen, chapterId, controlsHidden])
   useLayoutEffect(() => {
+    // Hiding the chrome drops the reading area's top padding so text starts at the very top. At the start of a
+    // chapter let the text move up; mid-chapter keep the block being read in place instead of jumping.
+    const area = scrollArea.current
+    const anchor = area && area.scrollTop > 1 ? Array.from(area.querySelectorAll<HTMLElement>('[data-block-id]')).find(n => n.getBoundingClientRect().bottom > area.getBoundingClientRect().top) : undefined
+    const before = anchor?.getBoundingClientRect().top
     document.documentElement.classList.toggle('reader-chrome-hidden', controlsHidden)
-    return () => document.documentElement.classList.remove('reader-chrome-hidden')
+    if (area && anchor && before !== undefined) area.scrollTop += anchor.getBoundingClientRect().top - before
   }, [controlsHidden])
+  useLayoutEffect(() => () => document.documentElement.classList.remove('reader-chrome-hidden'), [])
   useEffect(() => () => {
     if (gesture.current?.timer) clearTimeout(gesture.current.timer)
     if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current)

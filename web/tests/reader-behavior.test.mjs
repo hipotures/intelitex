@@ -167,6 +167,8 @@ test('Reader restores position, ignores vertical scroll gestures, and anchors ma
   await mobilePage.mouse.click(20, 650)
   await mobilePage.waitForFunction(() => document.documentElement.classList.contains('reader-chrome-hidden'), null, { timeout: 7000 })
   assert.equal(await mobilePage.evaluate(() => document.fullscreenElement === document.documentElement), true, 'browser remains fullscreen when Reader controls hide')
+  const hiddenTop = await mobilePage.locator('.reader-reading-area').evaluate(area => { const first = area.querySelector('.reader-controls')?.nextElementSibling; return first ? first.getBoundingClientRect().top - area.getBoundingClientRect().top + area.scrollTop : -1 })
+  assert.ok(hiddenTop >= 0 && hiddenTop < 20, `hidden Reader chrome leaves no top gap (content starts at ${hiddenTop}px)`)
   await mobilePage.screenshot({ path: evidence + '/mobile-fullscreen-hidden.png', fullPage: false, animations: 'disabled' })
   await mobilePage.locator('.reader-progress-line').evaluate(button => { button.click(); button.click() })
   await mobilePage.getByRole('button', { name: 'Reader settings' }).click()
