@@ -454,3 +454,13 @@ def test_publish_selection_omits_source_document_without_deleting_passes(tmp_pat
         assert removed_file.rsplit('/', 1)[-1] not in epub.read('EPUB/nav.xhtml').decode()
     assert all(path.is_file() for path in checkpoints)
     assert app.publishing.selection(project)['excluded_section_ids'] == [section['id']]
+
+
+def test_dropped_blocks_and_links_to_omitted_documents_are_removed():
+    from bookpipe.infrastructure.epub_publisher import _drop_links_to_omitted, _drop_nodes
+    soup = BeautifulSoup('<body><p>Kept</p><div style="x"><p><a href="https://x"><i>reklama</i></a></p></div>'
+                         '<p><a href="about.xhtml">About</a></p><p>See <a href="about.xhtml">this</a> page.</p></body>',
+                         'html.parser')
+    _drop_nodes([soup.find_all('p')[1]])
+    assert _drop_links_to_omitted(soup, 'OEBPS/contents.xhtml', {'OEBPS/about.xhtml'}) is True
+    assert str(soup.body) == '<body><p>Kept</p><p>See this page.</p></body>'

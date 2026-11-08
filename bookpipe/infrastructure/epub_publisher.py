@@ -198,6 +198,7 @@ class EpubPublicationBuilder:
         rendered: dict[str, bytes] = {}
         flattened_spans = 0
         excluded_files = set(request.excluded_source_files)
+        dropped_texts = set(request.dropped_block_texts)
         if excluded_files & set(replacements):
             raise PipelineError('Publication selection conflicts with translated source bindings.')
         for relative, bindings in replacements.items():
@@ -207,6 +208,8 @@ class EpubPublicationBuilder:
                 raise PipelineError(f"No frozen source record exists for translated file {relative!r}.")
             raw = source_path.read_bytes()
             blocks, _, soup, nodes = extract_publication_document(raw, encoding=encoding)
+            dropped_nodes = [node for block, node in zip(blocks, nodes)
+                             if node is not None and block["text"] in dropped_texts]
             seen_nodes: set[int] = set()
             for binding in bindings:
                 if binding.source_ordinal < 0 or binding.source_ordinal >= len(blocks):
@@ -228,11 +231,27 @@ class EpubPublicationBuilder:
                 flattened_spans += self._replace_block(
                     node, binding.id, binding.source_text, binding.translated_text,
                 )
+            _drop_nodes(dropped_nodes)
+            _drop_links_to_omitted(soup, relative, excluded_files)
             html = soup.find("html")
             if isinstance(html, Tag):
                 html["lang"] = request.target_language
                 html["xml:lang"] = request.target_language
             rendered[relative] = soup.encode("utf-8", formatter="minimal")
+
+        if dropped_texts or excluded_files:
+            # Untranslated documents are otherwise copied verbatim.
+            for relative, path in _source_members(request.source_root):
+                if relative in rendered or relative in excluded_files or not relative.endswith(('.xhtml', '.html', '.htm')):
+                    continue
+                encoding = next((item.encoding for item in request.source_files if item.path == relative), None)
+                blocks, _, soup, nodes = extract_publication_document(path.read_bytes(), encoding=encoding)
+                matches = [node for block, node in zip(blocks, nodes)
+                           if node is not None and block["text"] in dropped_texts]
+                _drop_nodes(matches)
+                unlinked = _drop_links_to_omitted(soup, relative, excluded_files)
+                if matches or unlinked:
+                    rendered[relative] = soup.encode("utf-8", formatter="minimal")
 
         package_relative = _safe_member(request.package_document, "package document")
         package_path = request.source_root / PurePosixPath(package_relative)
@@ -250,8 +269,8 @@ class EpubPublicationBuilder:
                     continue
                 member = _linked_member(package_relative, item.get('href', ''))
                 if member and member not in excluded_files:
-                    rendered[member] = _prune_navigation((request.source_root / member).read_bytes(),
-                                                          member, excluded_files)
+                    rendered[member] = _prune_navigation(
+                        rendered.get(member) or (request.source_root / member).read_bytes(), member, excluded_files)
 
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
@@ -543,6 +562,39 @@ class EpubPublicationBuilder:
                     archive, relative, rendered.get(relative, path.read_bytes()),
                     zipfile.ZIP_DEFLATED,
                 )
+
+
+def _drop_nodes(nodes: list[Tag]) -> None:
+    """Remove dropped leaf blocks and any wrapper left with no visible content."""
+    for node in nodes:
+        parent = node.parent
+        node.decompose()
+        while (isinstance(parent, Tag) and parent.name in {'div', 'section', 'aside', 'blockquote'}
+               and not parent.get_text(strip=True) and parent.find(['img', 'svg', 'image', 'hr', 'table']) is None):
+            grandparent = parent.parent
+            parent.decompose()
+            parent = grandparent
+
+
+def _drop_links_to_omitted(soup, relative: str, excluded_files: set[str]) -> bool:
+    """Remove content-page entries that only link to an omitted document.
+
+    Navigation documents are pruned separately. A link that is the whole visible
+    content of its block removes the block; a link inside prose is unwrapped.
+    """
+    if not excluded_files or soup.find('nav') is not None:
+        return False
+    changed = False
+    for link in soup.find_all('a', href=True):
+        if link.decomposed or _linked_member(relative, link['href']) not in excluded_files:
+            continue
+        block = link.find_parent(['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'dt', 'dd'])
+        if block is not None and block.get_text(strip=True).rstrip('.,;:') == link.get_text(strip=True):
+            _drop_nodes([block])
+        else:
+            link.unwrap()
+        changed = True
+    return changed
 
 
 def _parse_inline(text: str, block_id: str):

@@ -242,7 +242,12 @@ class PublishingService:
         return {'library_current': valid, 'library_filename': name if valid else None}
 
     def _prepare(self, root: Path, book: dict, store, target_language: str, *, approval_verified=False):
-        excluded_sections, excluded_files, _ = self._selected_sections(book, self._read_record(root))
+        record = self._read_record(root)
+        excluded_sections, excluded_files, _ = self._selected_sections(book, record)
+        dropped = record.get('dropped_block_texts', [])
+        if not isinstance(dropped, list) or any(not isinstance(value, str) or not value.strip() for value in dropped):
+            raise PipelineError('publication.json dropped_block_texts must be a list of non-empty strings.')
+        dropped = sorted(set(dropped))
         if not store.get("analysis_done"):
             raise PipelineError("Publishing requires completed P1 analysis.")
         if not approval_verified and not approval_current(store, self.dependencies.files):
@@ -355,6 +360,7 @@ class PublishingService:
             "target_language": target_language,
             "artifacts": artifact_inputs,
             "excluded_sections": sorted(excluded_sections),
+            **({"dropped_block_texts": dropped} if dropped else {}),
             **({'processing_revision': book['processing_revision']} if 'processing_revision' in book else {}),
         })
         output = root / "published" / f"{_safe_title(title)} [{target_language.upper()}].epub"
@@ -365,7 +371,7 @@ class PublishingService:
             target_language=target_language, title=title,
             source_files=source_files, blocks=tuple(bindings),
             excluded_source_files=tuple(sorted(excluded_files)),
-            metadata_corrections=corrections,
+            metadata_corrections=corrections, dropped_block_texts=tuple(dropped),
         )
         return publication_fingerprint, request
 

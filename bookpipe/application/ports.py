@@ -72,6 +72,9 @@ class PublicationRequest:
     blocks: tuple[PublicationBlock, ...]
     excluded_source_files: tuple[str, ...] = ()
     format_version: int = 1
+    # Leaf blocks whose extracted source text equals one of these are removed
+    # from the published XHTML (e.g. watermark lines); translations are untouched.
+    dropped_block_texts: tuple[str, ...] = ()
     metadata_corrections: dict | None = None
 
 
