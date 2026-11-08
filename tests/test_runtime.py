@@ -841,3 +841,25 @@ def test_analysis_memory_limit_has_actionable_safe_failure(tmp_path):
     public = Job('j', str(tmp_path), 'w', str(tmp_path / 'w'), 'analyze', state='failed', error=safe['error']).public()
     assert 'Increase the workspace memory limit' in public['error']['message']
     assert 'no model call' in public['error']['message']
+
+
+def test_alias_conflict_has_public_reason_and_private_diagnostic(tmp_path):
+    project = tmp_path / 'w'
+    project.mkdir()
+    frames = []
+
+    def conflicted(_sink):
+        raise PipelineError("Ambiguous alias merge for 'Ashe'; review analysis rather than conflating two entities.")
+
+    assert execute(JobSpec(str(tmp_path), 'w', str(project), 'analyze'),
+                   SimpleNamespace(send=frames.append), conflicted) == 1
+    frame = decode(json.dumps(frames[0]) + '\n')
+    assert frame['error']['code'] == 'analysis_alias_conflict'
+    public = Job('j', str(tmp_path), 'w', str(project), 'analyze', state='failed', error=frame['error']).public()
+    assert 'multiple terminology entries' in public['error']['message']
+    assert 'Ashe' not in json.dumps(public)
+    diagnostic = project / 'diagnostics/latest-worker-error.json'
+    data = json.loads(diagnostic.read_text())
+    assert 'Ashe' in data['message']
+    assert 'PipelineError' in data['traceback']
+    assert diagnostic.stat().st_mode & 0o777 == 0o600

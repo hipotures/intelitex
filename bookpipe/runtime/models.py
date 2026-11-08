@@ -110,6 +110,7 @@ class Job:
             error_type = 'WorkerError'
         message = 'Operation failed; inspect locally.'
         safe_errors = {
+            'analysis_alias_conflict': 'P1 stopped because a name or alias matches multiple terminology entries. The model response is saved. Resolve the entity conflict before retrying; restarting Run alone will not fix it.',
             'local_model_unavailable': 'The selected local model server is unavailable. Start llama.cpp or choose another profile for this pass.',
             'source_span_mismatch': 'Model output cited text that does not exactly match its source sentence. This attempt was not selected.',
             'draft_span_mismatch': 'P4 failed validation after its retry: the model cited draft text absent from the specified block. See Attempt diagnostics for the recorded attempts.',

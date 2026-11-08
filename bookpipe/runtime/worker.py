@@ -1,6 +1,8 @@
 """Internal one-operation entrypoint; stdout is exclusively structured JSONL."""
 import contextlib
 import json
+import os
+import traceback
 import signal
 import sys
 from pathlib import Path
@@ -85,9 +87,23 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
         while cause is not None and len(causes) < 4:
             causes.append(cause)
             cause = cause.__cause__
+        # Keep the actual failure locally; the public boundary stays metadata-only.
+        try:
+            from ..evidence import redact
+            from ..util import atomic_json
+            if Path(spec.project).is_dir():
+                diagnostic = Path(spec.project) / 'diagnostics' / 'latest-worker-error.json'
+                atomic_json(diagnostic, redact({'operation': spec.operation,
+                    'type': type(exc).__name__, 'message': str(exc),
+                    'traceback': traceback.format_exc()}))
+                os.chmod(diagnostic, 0o600)
+        except Exception:
+            pass  # Diagnostics must not replace the original operation failure.
         message = str(exc)
         if any(isinstance(item, httpx.ConnectError) for item in causes):
             code = 'local_model_unavailable'
+        elif message.startswith('Ambiguous alias merge for '):
+            code = 'analysis_alias_conflict'
         elif 'source_span is not an exact quote' in message:
             code = 'source_span_mismatch'
         elif 'draft_span is not found in the specified draft block' in message:
