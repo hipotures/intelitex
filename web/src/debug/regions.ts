@@ -50,6 +50,7 @@ export const debugRegions = [
   { id: 'RVM', description: 'Review navigation footer', source: 'features/review/Review.tsx' },
   { id: 'RMR', description: 'Reader markers in Work Review', source: 'features/review/ReaderMarkersReview.tsx' },
   { id: 'RUC', description: 'Unsaved Review form modal', source: 'features/review/Review.tsx' },
+  { id: 'RIM', description: 'Review import validation and category counts', source: 'features/review/Review.tsx' },
   { id: 'RBM', description: 'Bulk acceptance confirmation modal', source: 'features/review/Review.tsx' },
   { id: 'RAM', description: 'Review glossary approval modal', source: 'features/review/Review.tsx' },
   { id: 'RDR', description: 'Reader page', source: 'features/reader/Reader.tsx' },

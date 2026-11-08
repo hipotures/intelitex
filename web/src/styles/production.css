@@ -599,3 +599,9 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 .book-card .book-author { margin-top:auto;padding-top:6px;min-height:calc(2 * 1.35em + 6px);display:flex;align-items:flex-end;font-size:12.5px;line-height:1.35;color:var(--text-dim);overflow-wrap:anywhere; }
 /* The dim text color blends into the dark card; light and sepia are fine with it. */
 [data-theme="dark"] .book-card .book-author { color:var(--text-soft); }
+
+.review-transfer-actions { display:flex;gap:8px;flex-wrap:wrap; }
+.review-import-counts { width:100%;border-collapse:collapse;margin:16px 0; }
+.review-import-counts th,.review-import-counts td { text-align:left;padding:7px 10px;border-bottom:1px solid var(--line); }
+.review-import-counts th:last-child,.review-import-counts td:last-child { text-align:right; }
+@media (max-width:600px) { .review-bulk-bar > .review-transfer-actions { width:100%; } }

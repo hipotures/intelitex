@@ -460,15 +460,29 @@ class Store:
         self.backup_to(target)
         return target
 
-    def commit_approval(self, decisions: list[tuple[dict, str]], changed: set[str]) -> int:
+    def commit_approval(self, decisions: list[tuple[dict, str]], changed: set[str], *, review_entries=None) -> int:
         stale = 0
+        changed = set(changed)
+        entries = {entry['id']: entry for entry in review_entries or []}
+        aliases_changed = set()
         with self.db:
             for old, chosen in decisions:
+                entry = entries.get(old['id'])
+                if entry:
+                    data = json.loads(self.db.execute('SELECT data FROM terms WHERE id=?', (int(old['id'][1:]),)).fetchone()[0])
+                    if data['aliases'] != entry['aliases']:
+                        aliases_changed.add(old['id'])
+                    if data['meanings'] != entry['meaning_notes']:
+                        changed.add(old['id'])
+                    data['aliases'] = copy.deepcopy(entry['aliases'])
+                    data['meanings'] = copy.deepcopy(entry['meaning_notes'])
+                    data['candidates'] = [{k: v for k, v in candidate.items() if k != 'number'} for candidate in entry['candidates']]
+                    self.db.execute('UPDATE terms SET data=? WHERE id=?', (dumps(data), int(old['id'][1:])))
                 self.db.execute("UPDATE terms SET choice=?,approved=1 WHERE id=?", (chosen, int(old["id"][1:])))
                 if old["choice"] != chosen or not old["approved"]:
                     self.note("human_choice", {"id": old["id"], "old": old["choice"], "new": chosen})
             for row in self.db.execute("SELECT id,deps,status FROM chunks").fetchall():
-                affected = changed & set(json.loads(row['deps']))
+                affected = (changed & set(json.loads(row['deps']))) | aliases_changed
                 if affected:
                     self.invalidate_passes(row['id'], 2, 'terminology_changed', affected)
                     stale += row['status'] == 'done'

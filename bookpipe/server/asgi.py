@@ -15,13 +15,14 @@ from ..application.imports import DestinationConflict, ImportDisabled, workspace
 from ..application.projects import ReprepareLocked
 from ..application.analysis_reset import AnalysisResetLocked
 from ..application.reader import MarkerConflict
+from ..application.review_transfer import ReviewImportError
 from ..application.review import ReviewConflict
 from ..application.web import LifecycleConflict, WorkspaceArchived
 from ..processing import AnalysisMembershipLocked, ConfigConflict
 from ..runtime.supervisor import JobConflict, RequestConflict
 from ..book_metadata import MetadataConflict
 from ..util import LockConflict, PipelineError
-from .http import BODY_LIMIT
+from .http import request_body_limit
 from .routes import dispatch
 from .serialization import safe_json
 
@@ -32,11 +33,13 @@ HTTP_DRAIN_TIMEOUT = 30
 
 
 def json_response(status, value):
-    return Response(json.dumps(safe_json(value), ensure_ascii=True, allow_nan=False), status,
+    return Response(json.dumps(value if isinstance(value, dict) and value.get('format') == 'intelitex-review' else safe_json(value), ensure_ascii=True, allow_nan=False), status,
                     headers=HEADERS, media_type='application/json')
 
 
 def error(exc):
+    if isinstance(exc, ReviewImportError):
+        return json_response(422, {'error': {'code': 'invalid_review_import', 'message': str(exc), 'details': {}}})
     for kind, status, code, message in (
         (ReviewConflict, 409, 'review_revision_conflict', 'Review changed elsewhere. Reload the latest review to continue.'),
         (MarkerConflict, 409, 'marker_revision_conflict', 'Marker state or translated text changed.'),
@@ -69,12 +72,13 @@ async def body(request):
     if len(lengths) != 1:
         raise ValueError('One Content-Length required.')
     length = int(lengths[0])
-    if not 0 <= length <= BODY_LIMIT:
+    limit = request_body_limit(request.url.path)
+    if not 0 <= length <= limit:
         raise OverflowError()
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
-        if len(raw) > BODY_LIMIT:
+        if len(raw) > limit:
             raise OverflowError()
     if len(raw) != length:
         raise ValueError('Incomplete request.')

@@ -109,7 +109,7 @@ def dispatch(service, method, parts, body=None, query=None):
             if method == 'POST':
                 if tail == ['approve']:
                     return response(200, service.approve(ident, body))
-                for route, operation in [('prepare', 'prepare'), ('bulk-review', 'bulk'), ('confirmation', 'confirmation')]:
+                for route, operation in [('prepare', 'prepare'), ('bulk-review', 'bulk'), ('confirmation', 'confirmation'), ('import-preview', 'import-preview'), ('import', 'import')]:
                     if tail == ['review', route]:
                         return response(200, service.review(ident, operation, body))
                 if tail == ['reader', 'context']:
@@ -143,6 +143,8 @@ def dispatch(service, method, parts, body=None, query=None):
                 return response(200, service.pipeline_summary(ident))
             if tail in (['profiles'], ['settings']):
                 return response(200, service.settings(ident))
+            if tail == ['review', 'export']:
+                return response(200, service.review(ident, 'export'))
             if tail == ['review']:
                 return response(200, service.review(ident))
             if len(tail) == 4 and tail[:2] == ['review', 'terms'] and tail[3] == 'evidence':

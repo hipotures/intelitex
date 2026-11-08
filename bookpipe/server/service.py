@@ -615,7 +615,7 @@ class ServerService:
         return dto.source_preload(value)
 
     def review(self, workspace_id, operation='load', payload=None, term_id=None):
-        if operation in {'load', 'evidence'}:
+        if operation in {'load', 'evidence', 'export'}:
             return self._review(workspace_id, operation, payload, term_id)
         with self.mutable(workspace_id):
             return self._review(workspace_id, operation, payload, term_id)
@@ -631,7 +631,14 @@ class ServerService:
         if operation == 'evidence':
             return dto.evidence(service.query(root, term_id))
         repository = service.repository(root)
+        if operation == 'export':
+            from ..util import read_json
+            title = read_json(root / 'book.json').get('metadata', {}).get('title', 'book')
+            return repository.export_document(title)
         expected = revision(payload)
+        if operation in {'import-preview', 'import'}:
+            fields(payload, {'revision', 'document'}, {'document'})
+            return repository.import_document(payload['document'], expected, apply=operation == 'import')
         if operation == 'patch':
             fields(payload, {'revision', 'select', 'custom', 'reviewed', 'user_notes'})
             value = repository.patch_term(term_id, {k: v for k, v in payload.items() if k != 'revision'}, expected)

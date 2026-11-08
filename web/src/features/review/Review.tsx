@@ -1,11 +1,15 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useBlocker, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { endpoint, queryClient, Scope, useApi } from '../../api/client'
+import { z } from 'zod'
+import { endpoint, queryClient, request, reconcile, Scope, useApi } from '../../api/client'
 import { approvalSchema, bulkReviewSchema, evidenceSchema, patchSchema, pipelineSchema, reviewSchema, workspacesSchema, type Review, type Term } from '../../api/schema'
 import { useCommand } from '../../api/mutations'
 import { Back, Button, Empty, ErrorNote, Overlay } from '../../components/ui/common'
 import { debugTag } from '../../debug/regions'
 import { reviewCountLabel, reviewCounts, reviewStatus, reviewStatusLabel } from './reviewStatus'
+const transferSummarySchema = z.object({ total: z.number(), changed_count: z.number(), revision: z.string(), applied: z.boolean(),
+  categories: z.record(z.string(), z.object({ total: z.number(), changed: z.number() })) })
+const exportSchema = z.object({ title: z.string() }).passthrough()
 export const effective = (term: Term) => term.custom.trim() || term.candidates.find(c => c.number === term.select)?.text || ''
 export function matches(term: Term, query: string, category: string, status: string) {
   const text = [term.source, term.custom, term.user_notes, ...term.aliases,
@@ -48,6 +52,48 @@ export function ReviewPage() {
   const [bulkPending, setBulkPending] = useState<{ ids: string[]; revision: string; scope: string } | null>(null)
   const [bulkUnknown, setBulkUnknown] = useState(false)
   const [approvalPending, setApprovalPending] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [transferBusy, setTransferBusy] = useState(false)
+  const [importPending, setImportPending] = useState<{ document: unknown; summary: z.infer<typeof transferSummarySchema> } | null>(null)
+  async function exportReview() {
+    if (!await flush()) return
+    setTransferBusy(true); setLocalError(null)
+    try {
+      const document = await request(endpoint(id, 'review/export'), exportSchema)
+      const blob = new Blob([JSON.stringify(document, null, 2) + '\n'], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = window.document.createElement('a')
+      link.href = url; link.download = `${document.title.split('').map(c => c.charCodeAt(0) < 32 || '/\\:*?"<>|'.includes(c) ? '_' : c).join('').trim() || 'book'}-review.json`; link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { setLocalError(error instanceof Error ? error.message : 'Export failed.') }
+    finally { setTransferBusy(false) }
+  }
+  async function previewImport(file: File) {
+    if (!await flush()) return
+    setTransferBusy(true); setLocalError(null); command.clearError()
+    try {
+      if (file.size > 16 * 1024 * 1024) throw new Error('Review file is too large (maximum 16 MiB).')
+      const document: unknown = JSON.parse((await file.text()).replace(/^\uFEFF/, ''))
+      const current = currentReview()
+      if (!current) return
+      const summary = await request(endpoint(id, 'review/import-preview'), transferSummarySchema,
+        { method: 'POST', body: { document, revision: current._revision } })
+      setImportPending({ document, summary })
+    } catch (error) { setLocalError(error instanceof SyntaxError ? 'Invalid JSON file. Export a complete Review JSON document.' : error instanceof Error ? error.message : 'Import failed.') }
+    finally { setTransferBusy(false) }
+  }
+  async function applyImport() {
+    if (!importPending) return
+    const result = await command.send(endpoint(id, 'review/import'), transferSummarySchema,
+      { document: importPending.document, revision: importPending.summary.revision })
+    if (result) {
+      setImportPending(null); setDraft(null)
+      setReviewNotice(`Imported ${result.changed_count} changed terms out of ${result.total}. The complete Review was replaced and its choices bulk accepted.`)
+    } else if (command.unknownOutcome()) {
+      setImportPending(null)
+      await reconcile(id)
+    }
+  }
   const composing = useRef(false)
   const saving = useRef<Promise<boolean> | null>(null)
   const movingRef = useRef(false)
@@ -158,7 +204,7 @@ export function ReviewPage() {
   const p = pipeline.data
   const counts = reviewCounts(terms)
   const uncertain = terms.filter(t => [...t.meaning_notes, ...t.candidates].some(x => x.confidence === 'low' || x.confidence === 'medium')).length
-  const disabled = command.disabled || !!moving || !!p?.busy || !!p?.metadata.lifecycle.archived
+  const disabled = command.disabled || transferBusy || !!moving || !!p?.busy || !!p?.metadata.lifecycle.archived
   const navigationDisabled = !!moving || !query.data
   const remaining = filtered.filter(term => !term.reviewed).length
   const reviewScope = terms.filter(term => matches(term, search.q ?? '', category, status === 'Pending' ? 'All' : status))
@@ -177,7 +223,7 @@ export function ReviewPage() {
         const complete = base.length > 0 && base.every(term => term.reviewed)
         return <button className={`review-chip ${category === value ? 'active' : ''}${complete ? ' complete' : ''}`} key={value} disabled={navigationDisabled} aria-pressed={category === value} title={`${visible.length} matching terms; ${base.filter(term => !term.reviewed).length} remaining.`} onClick={async () => { if (await flush()) { setReviewNotice(null); setSearch({ category: value }, true) } }}>{complete ? '✓ ' : ''}{value} {visible.length}</button>
       })}</div>
-      <div className="review-bulk-bar" {...debugTag('RVB')}><div><span>This view: {reviewCountLabel(filtered)}.</span>{reviewNotice && <span className="review-bulk-notice" role="status">{reviewNotice}</span>}</div><Button disabled={disabled || remaining === 0} onClick={() => void openBulk()}>Bulk accept remaining in this view ({remaining})</Button></div>
+      <div className="review-bulk-bar" {...debugTag('RVB')}><div><span>This view: {reviewCountLabel(filtered)}.</span>{reviewNotice && <span className="review-bulk-notice" role="status">{reviewNotice}</span>}</div><div className="review-transfer-actions"><Button disabled={disabled || !query.data} onClick={() => void exportReview()}>Export</Button><Button disabled={disabled || !query.data} onClick={async () => { if (await flush()) fileInput.current?.click() }}>Import</Button><input hidden ref={fileInput} type="file" accept=".json,application/json" aria-label="Import Review JSON" onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file) void previewImport(file) }} /><Button disabled={disabled || remaining === 0} onClick={() => void openBulk()}>Bulk accept remaining in this view ({remaining})</Button></div></div>
       <div className="review-layout" {...debugTag('RVL')}><div className="review-term-card" {...debugTag('RFL')}><div className="review-term-scroll">{filtered.map(term => <button key={term.id} className={`review-term-row ${term.id === selected?.id ? 'active' : ''}`} disabled={navigationDisabled} onClick={async () => { if (await flush()) { setReviewNotice(null); setSearch({ term: term.id }, true) } }}><span className="review-term-title"><span>{term.source}</span><span className={`review-term-status status-${reviewStatus(term)}`}>{reviewStatusLabel(term)}</span></span><span className="review-term-sub">{term.category} · {effective(term)}</span></button>)}{!filtered.length && <Empty>{query.isPending ? 'Loading terminology…' : scopeComplete ? 'All terms in this scope are accepted.' : 'No terms match the current filters.'}</Empty>}<div className="review-term-list-tail" /></div></div>
       <div className="review-detail-wrap">{selected ? <div className="review-detail-card" {...debugTag('RVD', selected.id)}><div className="review-detail-body" ref={bodyRef}><div className="review-detail-heading"><div><h2>{selected.source}</h2><div className="review-id">{selected.id}</div></div><div className="review-tags"><span className="review-tag">{selected.category}</span></div></div>
         <div className="review-block"><div className="review-label">Meaning</div><div className="review-copy">{selected.meaning_notes.map((n,i) => <p key={i}>{n.text}{n.confidence ? ` · ${n.confidence}` : ''}</p>)}{selected.observations.map((n,i) => <p key={`observation-${i}`}>{n.statement}</p>)}{!selected.meaning_notes.length && !selected.observations.length && '—'}</div></div><div className="review-block"><div className="review-label">Aliases</div><div className="review-copy">{selected.aliases.join(' · ') || '—'}</div></div>
@@ -185,6 +231,7 @@ export function ReviewPage() {
         <div className="review-block" {...debugTag('RVE')}><div className="review-label">Evidence {evidence.data?.entries.length ?? '—'}</div><ErrorNote error={evidence.error} /><div className="evidence-list">{evidence.data?.entries.map((entry,i) => <div className="evidence-item" key={`${entry.block_id}-${i}`}><div className="evidence-id">{entry.chapter_id} · {entry.block_id}</div><div className="evidence-text">{entry.source_text ?? entry.message ?? 'Source evidence unavailable.'}</div>{entry.polish_text && <p className="evidence-text">{entry.polish_text}</p>}</div>)}{evidence.isPending ? <Empty>Loading evidence…</Empty> : evidence.data?.entries.length === 0 && <Empty>No evidence available.</Empty>}{evidence.data?.warnings.map((w,i) => <p className="subtitle" key={i}>{w}</p>)}</div></div>
       </div><div className="review-detail-footer" {...debugTag('RVM')}><div className={`review-term-status status-${reviewStatus(selected)}`}>{reviewStatusLabel(selected)}</div><div className="review-footer-actions"><Button id="reviewPrevBtn" disabled={disabled || filtered[0]?.id === selected.id} onClick={() => void next(false,-1,'previous')}>{moving === 'previous' ? 'Saving…' : '← Previous'}</Button><Button id="reviewNextBtn" variant="primary" disabled={disabled || (reviewStatus(selected) === 'individual' && !dirty && !nextPending)} onClick={() => void next(true)}>{moving === 'primary' ? 'Saving…' : 'Review individually & next'}</Button><Button id="reviewOnlyNextBtn" disabled={disabled || filtered.at(-1)?.id === selected.id} onClick={() => void next(false,1,'plain')}>{moving === 'plain' ? 'Saving…' : 'Next →'}</Button></div></div></div> : <Empty>Select a terminology item.</Empty>}</div></div>
     </>}
+    {importPending && <Overlay title="Import Review?" debugId="RIM" compact close={() => { if (!command.pending) setImportPending(null) }}><div className="modal-body"><p>{importPending.summary.changed_count} of {importPending.summary.total} terms changed. All term IDs, categories and counts match.</p><table className="review-import-counts"><thead><tr><th>Category</th><th>Changed / total</th></tr></thead><tbody><tr><td>All</td><td>{importPending.summary.changed_count} / {importPending.summary.total}</td></tr>{Object.entries(importPending.summary.categories).map(([name, counts]) => <tr key={name}><td>{name}</td><td>{counts.changed} / {counts.total}</td></tr>)}</tbody></table><p className="subtitle">Import replaces the complete Review and bulk accepts all its choices. A backup of the previous version will be saved. You can then approve the glossary without reading individual entries. Translation does not start automatically.</p><ErrorNote error={command.error} /></div><div className="modal-foot"><Button disabled={command.pending} onClick={() => setImportPending(null)}>Cancel</Button><Button variant="primary" disabled={disabled} onClick={() => void applyImport()}>Import and replace Review</Button></div></Overlay>}
     {bulkPending && <Overlay title="Bulk accept remaining terms?" debugId="RBM" compact close={() => { if (!command.pending) setBulkPending(null) }}><div className="modal-body"><p>Accept {bulkPending.ids.length} remaining {bulkPending.ids.length === 1 ? 'term' : 'terms'} in this view without individual review?</p><p className="subtitle">{bulkPending.scope}</p><p className="subtitle">Current candidate or custom forms and notes will be kept. Each term will be marked bulk accepted. This does not approve the glossary or call a model.</p>{bulkUnknown && <p className="subtitle">The outcome is unknown. Reload the current Review state before another attempt.</p>}<ErrorNote error={command.error} /></div><div className="modal-foot"><Button disabled={command.pending} onClick={() => setBulkPending(null)}>Cancel</Button><Button variant="primary" disabled={disabled || bulkUnknown} onClick={() => void confirmBulk()}>Bulk accept {bulkPending.ids.length} {bulkPending.ids.length === 1 ? 'term' : 'terms'}</Button></div></Overlay>}
     {approvalPending && <Overlay title="Approve glossary?" debugId="RAM" compact close={() => { if (!command.pending) setApprovalPending(false) }}><div className="modal-body"><p>This commits the selected glossary forms.</p><p>{reviewCountLabel(terms)}.</p><p className="subtitle">Bulk acceptance does not count as individual review. Approval will preserve each term’s review method.</p><ErrorNote error={command.error} /></div><div className="modal-foot"><Button disabled={command.pending} onClick={() => setApprovalPending(false)}>Cancel</Button><Button variant="primary" disabled={disabled || counts.pending !== 0 || dirty} onClick={async () => { const current = currentReview(); if (!current) return; const result = await command.send(endpoint(id, 'review/confirm-and-approve'), approvalSchema, { revision: current._revision }); if (result) setApprovalPending(false) }}>Approve selected forms</Button></div></Overlay>}
     {blocker.status === 'blocked' && <Overlay title="Keep your unsaved form?" debugId="RUC" compact close={() => blocker.reset()}><div className="modal-body">Your custom form has not been saved. Stay here to save it, or discard it before leaving.</div><div className="modal-foot"><Button onClick={() => blocker.reset()}>Stay</Button><Button variant="danger" disabled={command.pending} onClick={() => { setDraft(null); blocker.proceed() }}>Discard and leave</Button></div></Overlay>}

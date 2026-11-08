@@ -10,12 +10,21 @@ from ..application.analysis_reset import AnalysisResetLocked
 from ..processing import AnalysisMembershipLocked, ConfigConflict
 from ..book_metadata import MetadataConflict
 from ..util import PipelineError, LockConflict
+from ..application.review_transfer import ReviewImportError
 from ..application.review import ReviewConflict
 from ..application.reader import MarkerConflict
 from ..application.imports import ImportDisabled, DestinationConflict, workspace_destination
 from .serialization import safe_json
 
 BODY_LIMIT = 16 * 1024
+REVIEW_IMPORT_LIMIT = 16 * 1024 * 1024
+
+
+def request_body_limit(path):
+    parts = urlsplit(path).path.strip('/').split('/')
+    if len(parts) == 5 and parts[:2] == ['api', 'workspaces'] and parts[3] == 'review' and parts[4] in {'import', 'import-preview'}:
+        return REVIEW_IMPORT_LIMIT
+    return BODY_LIMIT
 
 
 class IntelitexHTTPServer(ThreadingHTTPServer):
@@ -42,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         return  # No request bodies, credentials, query strings or provider errors in logs.
 
     def _json(self, status, value):
-        raw = json.dumps(safe_json(value), ensure_ascii=True, allow_nan=False).encode()
+        raw = json.dumps(value if isinstance(value, dict) and value.get('format') == 'intelitex-review' else safe_json(value), ensure_ascii=True, allow_nan=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
@@ -70,7 +79,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(lengths) != 1:
             raise ValueError("One Content-Length is required.")
         length = int(lengths[0])
-        if length < 0 or length > BODY_LIMIT:
+        if length < 0 or length > request_body_limit(self.path):
             raise OverflowError("JSON body exceeds limit.")
         raw = self.rfile.read(length)
         if len(raw) != length:
@@ -127,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
         except Exception as exc:
             self.close_connection = True
+            if isinstance(exc, ReviewImportError):
+                return self._error(422, 'invalid_review_import', str(exc))
             known = (
                 (RequestConflict, 409, 'request_key_conflict', 'Request key already belongs to another operation.'),
                 (MetadataConflict, 409, 'metadata_revision_conflict', 'Book metadata changed. Reload before saving.'),

@@ -102,16 +102,21 @@ def review_impact(store, review):
     """Preview the same lexical dependency decision used by commit_approval."""
     stored = {term['id']: term for term in store.terms()}
     changed = []
+    aliases_changed = set()
     for entry in review.get('terms', []):
         choice = str(entry.get('custom', '')).strip() or next(
             (c['text'] for c in entry.get('candidates', []) if c.get('number') == entry.get('select')), None)
         old = stored.get(entry.get('id'))
-        if old and old.get('choice') and old['choice'] != choice:
+        if old and old.get('aliases', []) != entry.get('aliases', []):
+            aliases_changed.add(old['id'])
+        if old and ((old.get('choice') and old['choice'] != choice)
+                    or old.get('meanings', []) != entry.get('meaning_notes', [])
+                    or old['id'] in aliases_changed):
             changed.append(old['id'])
     changed_set = set(changed)
-    affected = [{'chunk_id': row['id'], 'term_ids': sorted(changed_set & set(row['deps']))}
+    affected = [{'chunk_id': row['id'], 'term_ids': sorted((changed_set & set(row['deps'])) | aliases_changed)}
                 for row in store.translated_dependencies()
-                if changed_set & set(row['deps'])]
+                if (changed_set & set(row['deps'])) or aliases_changed]
     return {'changed_term_ids': changed, 'affected_chunks': affected}
 
 
@@ -179,6 +184,27 @@ class ReviewRepository:
             for candidate in term.get("candidates", [])
         ):
             raise PipelineError(f"No valid selected/custom form for {term['id']}.")
+
+    def export_document(self, title: str) -> dict:
+        from .review_transfer import export_document
+        return export_document(self.load(), title)
+
+    def import_document(self, document: dict, expected_revision: str, *, apply=False) -> dict:
+        from .review_transfer import validate_document
+        with self.lock, self.mutation_lock():
+            review = self._load_state()
+            self._check_revision(review, expected_revision)
+            updated, summary = validate_document({**review, '_revision': digest(review)}, document)
+            if apply:
+                # Import intentionally accepts the complete external review in bulk.
+                for term in updated['terms']:
+                    term['reviewed'] = True
+                    term['review_method'] = 'bulk'
+                updated['confirmed'] = False
+                if updated != review:
+                    self._write(self.path.parent / 'history' / f'review_before_import_{digest(review)[:16]}.json', review)
+                    self._write(self.path, updated)
+            return {**summary, 'revision': digest(updated if apply else review), 'applied': apply}
 
     def evidence(self, term_id: str) -> dict:
         with self.lock, self.mutation_lock():
@@ -419,11 +445,11 @@ def execute_approval(store, fingerprint: str, accept_defaults: bool, files=None,
             number = entry.get("select")
             if type(number) is not int or not 1 <= number <= len(old["candidates"]):
                 raise PipelineError(f"Invalid candidate number for {entry['id']}.")
-            chosen = old["candidates"][number - 1]["text"]
+            chosen = entry["candidates"][number - 1]["text"]
         decisions.append((old, chosen))
     changed = {old["id"] for old, choice in decisions if old["choice"] and old["choice"] != choice}
     store.backup_approval(review)
-    stale = store.commit_approval(decisions, changed)
+    stale = store.commit_approval(decisions, changed, review_entries=entries)
     store.export_memory()
     review["analysis_revision"] = digest(store.terms())
     review["confirmed"] = True

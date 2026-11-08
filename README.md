@@ -119,6 +119,17 @@ unpacked EPUB/HTML folders); the server reads sources only from there. Each chil
    stops. Check the sections and their processing modes (F, T, E).
 3. **Run** the analysis (P1). It reads the whole book and stops at the terminology gate.
 4. Open **Review**, choose or enter a Polish form for each term, then **Approve glossary**.
+
+Review also offers **Export** and **Import** before the bulk acceptance button. Export
+saves the entire draft as `[book title]-review.json`, including editing instructions
+for an external AI. Import validates the export revision, book identity, term IDs,
+category counts, candidate counts and protected source evidence. Before writing,
+it shows only changed/total counts per category. Confirming **Import and replace
+Review** saves a backup, replaces the draft and bulk accepts all choices; no manual
+per-term acceptance is required. **Approve glossary** then commits those choices for
+translation. Import does not start translation. Export a fresh copy if Review has
+changed since the previous export.
+
 5. **Run** again to translate the book unit by unit (P2–P5). Read the finished part in the **Reader** while the
    rest continues. When the last unit is done, the translated EPUB is published automatically (**Publish**
    retries it).

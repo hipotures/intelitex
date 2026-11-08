@@ -754,3 +754,47 @@ def test_workspace_label_edit_is_per_workspace_and_validated(api):
         assert request(server, 'PATCH', path, bad)[0] == 400
     assert request(server, 'PATCH', path, {'label': ''})[1] == {'label': None}
     assert 'label' not in read_json(root / 'workspace.json')
+
+
+def test_review_export_import_replaces_and_accepts_complete_draft(api):
+    import copy
+
+    _, root, service, server = api
+    analyze(root)
+    base = '/api/workspaces/book/review'
+    code, draft = request(server, 'POST', base + '/prepare', {})
+    assert code == 200
+    # Export must be lossless even for book content that resembles a local path.
+    path = root / 'terms.review.json'
+    stored = read_json(path)
+    stored['terms'][0]['evidence'][0]['excerpt'] = '/home/a-fictional-book-path'
+    atomic_json(path, stored)
+    code, document = request(server, 'GET', base + '/export')
+    assert code == 200
+    assert document['review']['terms'][0]['evidence'][0]['excerpt'] == '/home/a-fictional-book-path'
+    before = path.read_bytes()
+    document['review']['terms'][0]['candidates'][0]['text'] = 'Nowa nazwa'
+    document['review']['terms'][0]['user_notes'] = 'Corrected by AI. ' * 2000
+    payload = {'document': document, 'revision': document['base_revision']}
+    code, preview = request(server, 'POST', base + '/import-preview', payload)
+    assert code == 200
+    assert preview['categories'] == {'people': {'changed': 1, 'total': 1}}
+    assert path.read_bytes() == before
+    broken = copy.deepcopy(payload)
+    broken['document']['review']['terms'].clear()
+    code, rejected = request(server, 'POST', base + '/import', broken)
+    assert code == 422
+    assert rejected['error']['message'] == 'Term count must remain 1.'
+    assert path.read_bytes() == before
+    code, imported = request(server, 'POST', base + '/import', payload)
+    assert code == 200 and imported['applied']
+    current = read_json(path)
+    assert current['terms'][0]['candidates'][0]['text'] == 'Nowa nazwa'
+    assert current['terms'][0]['reviewed'] is True
+    assert current['terms'][0]['review_method'] == 'bulk'
+    assert list((root / 'history').glob('review_before_import_*.json'))
+    code, result = request(server, 'POST', '/api/workspaces/book/review/confirm-and-approve', {'revision': imported['revision']})
+    assert code == 200
+    assert read_json(root / 'lexicon.approved.json')['terms'][0]['polish'] == 'Nowa nazwa'
+    code, stale = request(server, 'POST', base + '/import', payload)
+    assert code == 409
