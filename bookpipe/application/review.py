@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..review_context import EvidenceReader
 from ..util import PipelineError, atomic_json, digest, normalized, read_json
-from .commands import ApproveCommand, ReviewSessionCommand
+from .commands import ApproveCommand, ReviewModelCommand, ReviewSessionCommand
 from .ports import ApplicationDependencies, ProgressSink
 from .projects import load_valid_book
 from .results import ApprovalResult
@@ -396,6 +396,40 @@ class ReviewService:
             raise PipelineError("Prepare review first.")
         return ReviewRepository(root / "terms.review.json", self.dependencies.files,
                                 lambda: self.dependencies.project_lock(root))
+
+    def model_review(self, command: ReviewModelCommand) -> dict:
+        """Let the selected profile choose every term's form, then import the result.
+
+        The project lock is held from reading the draft until the import, so the
+        draft cannot change underneath the model. Nothing is written on failure.
+        """
+        from ..progress import ProgressEvent
+        from .projects import effective_settings
+        from .review_model import ReviewModelRun
+        root = command.project.resolve()
+        with OperationScope(self.dependencies, root, self.progress) as scope:
+            book = load_valid_book(root, self.dependencies.plan_fingerprint, self.dependencies.files)
+            if not scope.store.get("analysis_done"):
+                raise PipelineError("Analysis has not finished; run analyze to resume it.")
+            path = root / "terms.review.json"
+            if not self.dependencies.files.is_file(path):
+                raise PipelineError("Prepare review first.")
+            repository = ReviewRepository(path, self.dependencies.files)
+            review = repository.load()
+            if not review["terms"]:
+                raise PipelineError("The Review has no terms.")
+            settings = effective_settings(self.dependencies.bundle, root, files=self.dependencies.files)
+            # A pass override outranks the workspace's own P1 assignment.
+            pool = scope.providers(settings, pass_profiles={1: command.profile} if command.profile else None)
+            provider = pool.for_pass(1)
+            if getattr(provider, "provider", "llamacpp") in {"llamacpp", "vllm"}:
+                pool.discover(1)
+            title = book.get("metadata", {}).get("title", "book")
+            document = ReviewModelRun(root, review, title, provider, settings, self.progress).run()
+            summary = repository.import_document(document, review["_revision"], apply=True)
+            self.progress.emit(ProgressEvent(kind="review_model_completed", current=summary["changed_count"],
+                                             total=summary["total"]))
+            return summary
 
     def approve(self, command: ApproveCommand, *, confirm_review=False) -> ApprovalResult:
         root = command.project.resolve()

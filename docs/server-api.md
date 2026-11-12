@@ -95,7 +95,7 @@ as a heuristic and requires the user to verify the language before Save.
 
 ## Jobs and current state
 
-Job input is `{operation:"preload"|"analyze"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,unit_id?,pass_no?,rerun?,target_language?,preload_target_id?,expected_preload_revision?,request_key?}`.
+Job input is `{operation:"preload"|"analyze"|"review_model"|"translate"|"publish",profile?,chunk_limit?,chunk_id?,unit_id?,pass_no?,rerun?,target_language?,preload_target_id?,expected_preload_revision?,request_key?}`.
 `profile` selects an existing profile for analyze/translate. `chunk_limit` is a
 nonnegative integer, only for translation; omitted/zero processes all unfinished
 units. `target_language` is only for publication, defaults to `pl`, and must be a
@@ -144,6 +144,17 @@ is requested-only. Public P0 `attempt_id` and `accepted_attempt_id` use `pa_`
 opaque identities rather than internal artifact paths; P1–P5 IDs are unchanged.
 Pass-0 scope/slot/parent-pass metadata is safe for SSE; generation
 progress and consumer cleanup remain separate.
+For a model-made terminology choice, send `operation:"review_model"` with an enabled
+`profile` (omit it to use the P1 profile). The prepared Review is required. The
+model reads the Review export document in term batches and returns
+`{review:{terms:[{id,select,custom,user_notes}]}}`; the decisions are merged into a
+complete export document and imported like `review/import` (whole Review replaced,
+every term bulk accepted, backup in `history/`, glossary not approved). Progress is
+reported as `review_model_progress` (`current`/`total` terms) and
+`review_model_completed` (`current` changed of `total`). A stopped or failed job
+changes nothing; attempt evidence and reusable batch results are kept under
+`review-model/` in the workspace.
+
 For one P1 analysis unit, send `operation:"analyze"` with `unit_id` from the saved
 analysis plan, or the exact locally calculated P0 consumer projection before
 the first P1. The command persists and validates the execution plan. All earlier

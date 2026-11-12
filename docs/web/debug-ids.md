@@ -64,6 +64,7 @@ selectable text beside the header metadata. This is the value of `data-entity-id
 | RUC | Unsaved Review form modal | `web/src/features/review/Review.tsx` |
 | RIM | Review import validation and category counts | `web/src/features/review/Review.tsx` |
 | RBM | Bulk acceptance confirmation modal | `web/src/features/review/Review.tsx` |
+| RMM | Model review profile selection modal | `web/src/features/review/Review.tsx` |
 | RAM | Review glossary approval modal | `web/src/features/review/Review.tsx` |
 | RDR | Reader page | `web/src/features/reader/Reader.tsx` |
 | RSH | Reader shell | `web/src/features/reader/Reader.tsx` |

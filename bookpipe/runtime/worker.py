@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from ..application.commands import AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand, PreloadCommand
+from ..application.commands import ReviewModelCommand, AnalyzeCommand, TranslateCommand, PublishCommand, ImportBookCommand, PreloadCommand
 from ..application.pipeline import ReloadAtCheckpoint
 from ..bootstrap import create_application
 from ..client import StructuredOutputRejected
@@ -60,6 +60,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             app.source_preload.run(PreloadCommand(project, spec.preload_target_id, spec.expected_preload_revision), sink)
         elif spec.operation == "analyze":
             app.pipeline.analyze(AnalyzeCommand(project, profile=spec.profile, unit_id=spec.unit_id))
+        elif spec.operation == "review_model":
+            app.review.model_review(ReviewModelCommand(project, profile=spec.profile))
         elif spec.operation == "translate":
             result = app.pipeline.translate(TranslateCommand(project, profile=spec.profile, chunk_limit=spec.chunk_limit,
                                                     chunk_id=spec.chunk_id, pass_no=spec.pass_no, rerun=spec.rerun))
@@ -116,6 +118,8 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
             code = 'model_control_token_loop'
         elif "Incomplete completion (finish_reason='length')" in message:
             code = 'output_length_limit'
+        elif any(type(item).__name__ == 'ReviewModelError' for item in causes):
+            code = 'review_model_invalid'
         elif any(isinstance(item, StructuredOutputRejected) for item in causes):
             code = 'structured_output_rejected'
         elif 'has no current saved result for this chunk' in message:

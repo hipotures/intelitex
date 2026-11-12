@@ -447,10 +447,18 @@ class ServerService:
             raise ValueError('target_language only applies to publish.')
         if operation == 'publish' and 'profile' in payload:
             raise ValueError('profile does not apply to publish.')
+        if operation == 'review_model' and 'profile' in payload:
+            known = {p['name'] for p in self.application.workflow.settings(self.workspaces.resolve(workspace_id))['profiles']
+                     if p.get('enabled', True)}
+            if payload['profile'] not in known:
+                raise ValueError('Unknown or disabled profile.')
         spec = JobSpec(str(self.workspaces.root), workspace_id,
                        str(self.workspaces.resolve(workspace_id)), **payload,
                        import_root=str(self.imports.root) if operation in {'translate', 'publish'} and self.imports.root else None)
         with self.mutable(workspace_id):
+            if operation == 'review_model':
+                # Fail before a worker starts when there is no draft to review.
+                self.application.review.repository(Path(spec.project))
             if operation == 'preload':
                 value = self.application.source_preload.inventory(Path(spec.project))
                 target = next((t for c in value['chapters'] for t in c['targets'] if t['target_id'] == spec.preload_target_id), None)

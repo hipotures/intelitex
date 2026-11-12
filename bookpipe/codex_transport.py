@@ -431,6 +431,10 @@ class CodexAppServerClient:
                     "scene_ids": list(transport.scene_ids),
                 },
             }
+        return self.canonical_body(prompt, inputs, schema, pass_no)
+
+    def canonical_body(self, prompt: str, inputs: dict, schema: dict, pass_no: int) -> dict[str, Any]:
+        """Plain JSON request without a pass codec; also used outside P1-P5."""
         return {
             "model": self.model,
             "effort": self.settings.get("reasoning_effort"),

@@ -798,3 +798,16 @@ def test_review_export_import_replaces_and_accepts_complete_draft(api):
     assert read_json(root / 'lexicon.approved.json')['terms'][0]['polish'] == 'Nowa nazwa'
     code, stale = request(server, 'POST', base + '/import', payload)
     assert code == 409
+
+
+def test_model_review_job_requires_a_prepared_review_and_known_profile(api):
+    _, root, service, server = api
+    analyze(root)
+    code, _ = request(server, 'POST', '/api/workspaces/book/jobs', {'operation': 'review_model', 'profile': 'local'})
+    assert code == 422
+    code, _ = request(server, 'POST', '/api/workspaces/book/review/prepare', {})
+    assert code == 200
+    code, _ = request(server, 'POST', '/api/workspaces/book/jobs', {'operation': 'review_model', 'profile': 'no-such-profile'})
+    assert code == 400
+    code, job = request(server, 'POST', '/api/workspaces/book/jobs', {'operation': 'review_model', 'profile': 'local'})
+    assert code in {200, 202} and job['operation'] == 'review_model'

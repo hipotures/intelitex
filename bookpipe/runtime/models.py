@@ -37,8 +37,8 @@ class JobSpec:
     expected_preload_revision: str | None = None
 
     def __post_init__(self):
-        if self.operation not in {"preload", "analyze", "translate", "publish"}:
-            raise ValueError("Unsupported operation; use preload, analyze, translate or publish.")
+        if self.operation not in {"preload", "analyze", "review_model", "translate", "publish"}:
+            raise ValueError("Unsupported operation; use preload, analyze, review_model, translate or publish.")
         if self.operation == 'preload':
             if (not isinstance(self.preload_target_id, str) or not re.fullmatch(r'pt_[0-9a-f]{64}', self.preload_target_id)
                     or not isinstance(self.expected_preload_revision, str) or not re.fullmatch(r'[0-9a-f]{64}', self.expected_preload_revision)
@@ -121,6 +121,7 @@ class Job:
             'structured_output_rejected': 'The local server rejected the model response as invalid JSON or a schema mismatch after its configured retries. Saved checkpoints remain available; retry this unit.',
             'missing_prerequisite': 'An earlier pass has no current saved result for this chunk. Run that pass first.',
             'pass_already_saved': 'This pass already has a saved result. Refresh the page and choose Run again.',
+            'review_model_invalid': 'The model did not return a valid choice for every term after its retries. The Review was not changed; retry or choose another model.',
             'analysis_memory_limit': 'P1 cannot start this unit because its required terminology memory exceeds memory_tokens. Increase the workspace memory limit, then retry. Saved analysis remains available; no model call was made for this unit.',
         }
         error_code = self.error.get('code') if self.error else None

@@ -68,6 +68,12 @@ class ReviewSessionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class ReviewModelCommand:
+    project: Path
+    profile: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ReaderSessionCommand:
     project: Path
 

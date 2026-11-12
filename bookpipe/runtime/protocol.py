@@ -102,7 +102,7 @@ def decode(line: str) -> dict:
         safe_codes = {'local_model_unavailable', 'source_span_mismatch', 'draft_span_mismatch',
                       'p3_id_coverage', 'p5_id_coverage', 'model_control_token_loop',
                       'output_length_limit', 'structured_output_rejected', 'missing_prerequisite', 'pass_already_saved'}
-        safe_codes.update({'analysis_memory_limit', 'analysis_alias_conflict'})
+        safe_codes.update({'analysis_memory_limit', 'analysis_alias_conflict', 'review_model_invalid'})
         raw_code = error.get('code')
         code = raw_code if isinstance(raw_code, str) and raw_code in safe_codes else None
         value = {"type": "failure", "error": {"type": error_type,
