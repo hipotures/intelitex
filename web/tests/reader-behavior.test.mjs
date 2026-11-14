@@ -40,6 +40,12 @@ test('Reader restores position, ignores vertical scroll gestures, and anchors ma
   page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
   page.on('response', response => { if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`) })
   page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/reader/markers')) markerPosts.push(request.url()) })
+  // Since bba63f4 a pointerdown outside the marker popover (such as the theme button) closes it; reopen it from the gutter.
+  const openMarkerDetails = async () => {
+    if (await page.locator('.reader-marker-popover').count()) return
+    await page.locator('.reader-gutter-marker').first().click()
+    await page.getByRole('complementary', { name: 'Marker details' }).waitFor()
+  }
   const setTheme = async theme => {
     for (let i = 0; i < 3; i++) {
       if (await page.locator('html').getAttribute('data-theme') === theme) return
@@ -101,6 +107,8 @@ test('Reader restores position, ignores vertical scroll gestures, and anchors ma
   assert.ok(Math.abs(markerGap.gap - 2 * markerGap.line) < 3, `marker panel gap ${markerGap.gap} should equal two lines`)
   await page.screenshot({ path: evidence + '/marker-dark-1440.png', fullPage: false, animations: 'disabled' })
   await setTheme('light')
+  assert.equal(await page.locator('.reader-marker-popover').count(), 0, 'an outside click closes the marker details')
+  await openMarkerDetails()
   await page.screenshot({ path: evidence + '/marker-light-1440.png', fullPage: false, animations: 'disabled' })
   await setTheme('dark')
 
@@ -121,6 +129,7 @@ test('Reader restores position, ignores vertical scroll gestures, and anchors ma
   await page.setViewportSize({ width: 390, height: 400 })
   await page.screenshot({ path: evidence + '/marker-dark-390.png', fullPage: false, animations: 'disabled' })
   await setTheme('light')
+  await openMarkerDetails()
   const mobileMarker = await paragraph.evaluate(node => {
     const range = document.createRange()
     range.setStart(node.firstChild, 12)

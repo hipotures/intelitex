@@ -37,6 +37,8 @@ test('Library searches all titles from two characters and clearing restores the 
   await input.scrollIntoViewIfNeeded()
   await page.locator('.book-card').first().waitFor()
   assert.equal(await page.locator('[data-source-id="book-29"]').count(), 0, 'matching book starts beyond the loaded page')
+  const cardIds = () => page.locator('.book-card').evaluateAll(nodes => nodes.map(node => node.dataset.sourceId))
+  const unfiltered = await cardIds()
   await input.fill('v')
   await page.waitForTimeout(400)
   assert.ok(requests.every(url => !new URL(url).searchParams.has('title')), 'one character never activates filtering')
@@ -55,7 +57,10 @@ test('Library searches all titles from two characters and clearing restores the 
   await input.fill('no-matching-title')
   await page.getByText('No titles match this search', { exact: true }).waitFor()
   await input.fill('')
-  await page.locator('[data-source-id="second-book"]').waitFor()
-  assert.ok(await page.locator('.book-card').count() > 1)
+  // Clearing restores the unfiltered first page. With 32 sources, epub-source and second-book sort after book-29
+  // and stay beyond that page, so wait for its first card and compare the whole page instead.
+  await page.locator(`[data-source-id="${unfiltered[0]}"]`).waitFor()
+  assert.ok(unfiltered.length > 1)
+  assert.deepEqual(await cardIds(), unfiltered)
   assert.deepEqual(errors, [])
 })
