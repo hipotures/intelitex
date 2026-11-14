@@ -296,13 +296,19 @@ class WebCatalog:
                            'workspace_id': entry['workspace_id'] if entry else None})
         return result
 
-    def library_page(self, after, limit, sort=None, gutenberg=False):
+    def library_page(self, after, limit, sort=None, gutenberg=False, title=''):
         if self.imports.root is None:
             return [], None
-        if gutenberg and sort is None:
+        if (gutenberg or title) and sort is None:
             sort = 'author'  # Filtering needs the complete, ordered listing.
         if sort is not None:
-            sources = ordered_sources([s for s in self.library() if s.get('gutenberg')] if gutenberg else self.library(), sort)
+            sources = self.library()
+            if gutenberg:
+                sources = [s for s in sources if s.get('gutenberg')]
+            if title:
+                fragment = title.strip().casefold()
+                sources = [s for s in sources if fragment in s['title'].casefold()]
+            sources = ordered_sources(sources, sort)
             start = 0
             if after is not None:
                 positions = {source['source_id']: i for i, source in enumerate(sources)}

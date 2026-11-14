@@ -113,7 +113,8 @@ def _prune_navigation(raw: bytes, member: str, excluded_files: set[str]) -> byte
     parent = {child: node for node in root.iter() for child in node}
     is_ncx = root.tag.rsplit('}', 1)[-1] == 'ncx'
     if is_ncx:
-        for content in list(root.iter()):
+        # Prune descendants first so an omitted subtree is removed completely.
+        for content in reversed(list(root.iter())):
             if content.tag.rsplit('}', 1)[-1] != 'content':
                 continue
             if _linked_member(member, content.get('src', '')) not in excluded_files:
@@ -121,10 +122,16 @@ def _prune_navigation(raw: bytes, member: str, excluded_files: set[str]) -> byte
             point = parent.get(content)
             if point is None or point.tag.rsplit('}', 1)[-1] not in {'navPoint', 'pageTarget', 'navTarget'}:
                 raise PipelineError('Cannot remove an unknown EPUB navigation target.')
-            if point.tag.rsplit('}', 1)[-1] == 'navPoint' and any(
-                    child.tag.rsplit('}', 1)[-1] == 'navPoint' for child in point):
-                raise PipelineError('Cannot omit a navigation parent that contains retained chapters.')
-            parent[point].remove(point)
+            container = parent[point]
+            position = list(container).index(point)
+            # If only the parent's page is omitted, keep its retained children
+            # at the same reading-order position instead of deleting chapters.
+            for child in list(point):
+                if child.tag.rsplit('}', 1)[-1] == 'navPoint':
+                    point.remove(child)
+                    container.insert(position, child)
+                    position += 1
+            container.remove(point)
     else:
         for link in list(root.iter()):
             if link.tag.rsplit('}', 1)[-1] != 'a' or _linked_member(member, link.get('href', '')) not in excluded_files:
@@ -396,10 +403,12 @@ class EpubPublicationBuilder:
                 # source wrapper only selects a font for that one character.
                 flattened_spans += 1
                 continue
-            if name == 'span' and set(child.attrs) == {'class'} and not child.find(True):
+            if name == 'span' and set(child.attrs) == {'class'}:
                 # The importer and P5 store prose, not a span-to-translation
                 # alignment. Keep all translated text, but never guess which
                 # Polish words inherit source-only presentation classes.
+                # Nested descendants are checked separately by this traversal;
+                # a presentation wrapper must not hide links or other markup.
                 flattened_spans += 1
                 continue
             if name not in SUPPORTED_INLINE:
@@ -415,7 +424,9 @@ class EpubPublicationBuilder:
                 )
             if name == "br":
                 breaks += 1
-            else:
+            elif child.get_text(strip=True):
+                # Import emits emphasis markers only for nonblank contents.
+                # Source EPUBs sometimes italicize just an inter-word space.
                 semantics.append("em" if name in {"em", "i"} else "strong")
                 emphasized.append(child)
 

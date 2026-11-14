@@ -824,6 +824,25 @@ def test_owned_remains_until_stop_cleanup_finishes_and_shutdown_waits(runtime, m
     assert supervisor.get(job.job_id).state == "cancelled"
 
 
+def test_codex_usage_limit_has_safe_public_reason(tmp_path):
+    from types import SimpleNamespace
+    from bookpipe.runtime.worker import execute
+    from bookpipe.runtime.models import Job, JobSpec
+    from bookpipe.source_sessions import NativeSourceTurnError
+    (tmp_path / 'w').mkdir()
+    frames = []
+    def fail(_sink):
+        raise NativeSourceTurnError({'status': 'failed', 'error': {
+            'codexErrorInfo': 'usageLimitExceeded', 'message': 'private provider detail'}}, preload=True)
+    assert execute(JobSpec(str(tmp_path), 'w', str(tmp_path / 'w'), 'translate'),
+                   SimpleNamespace(send=frames.append), fail) == 1
+    assert frames[0]['error']['code'] == 'codex_usage_limit'
+    public = Job('j', str(tmp_path), 'w', str(tmp_path / 'w'), 'translate',
+                 state='failed', error=frames[0]['error']).public()
+    assert 'Codex usage limit reached' in public['error']['message']
+    assert 'private provider detail' not in json.dumps(public)
+
+
 def test_analysis_memory_limit_has_actionable_safe_failure(tmp_path):
     from types import SimpleNamespace
     from bookpipe.runtime.worker import execute

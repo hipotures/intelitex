@@ -102,7 +102,11 @@ def execute(spec: JobSpec | ImportJobSpec, sink: JsonlProgressSink, application_
         except Exception:
             pass  # Diagnostics must not replace the original operation failure.
         message = str(exc)
-        if any(isinstance(item, httpx.ConnectError) for item in causes):
+        from ..source_sessions import NativeSourceTurnError
+        native_error = next((item for item in causes if isinstance(item, NativeSourceTurnError) and item.code), None)
+        if native_error is not None:
+            code = native_error.code
+        elif any(isinstance(item, httpx.ConnectError) for item in causes):
             code = 'local_model_unavailable'
         elif message.startswith('Ambiguous alias merge for '):
             code = 'analysis_alias_conflict'

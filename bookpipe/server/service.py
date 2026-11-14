@@ -341,8 +341,11 @@ class ServerService:
         return {'sources': sources, 'configured': self.imports.root is not None}
 
     def library_page(self, query):
-        if set(query) - {'after', 'limit', 'links', 'sort', 'gutenberg'}:
+        if set(query) - {'after', 'limit', 'links', 'sort', 'gutenberg', 'title'}:
             raise ValueError('Invalid Library query.')
+        title = query.get('title', '')
+        if not isinstance(title, str) or len(title) > 200 or (title and len(title.strip()) < 2):
+            raise ValueError('Library title filter requires 2–200 characters.')
         sort = query.get('sort')
         if sort not in {None, 'author', 'title', 'language'}:
             raise ValueError('Invalid Library sort order.')
@@ -363,7 +366,7 @@ class ServerService:
                                   or any(part in {'', '.', '..'} for part in after.split('/'))
                                   or ':' in after or '\\' in after or '\x00' in after):
             raise ValueError('Invalid Library cursor.')
-        sources, next_cursor = self.catalog.library_page(after, limit, sort, gutenberg == 'true')
+        sources, next_cursor = self.catalog.library_page(after, limit, sort, gutenberg == 'true', title=title)
         imported = ({str(self._book_summary(self.workspaces.resolve(i))[1]): i for i in self.workspaces.list()}
                     if links == 'true' else {})
         if self.imports.root and links == 'true':

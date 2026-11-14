@@ -32,6 +32,15 @@ STATES = {"absent", "preparing", "baseline_ready", "submission_pending", "runnin
           "reverting", "recovery_required"}
 
 
+class NativeSourceTurnError(PipelineError):
+    def __init__(self, turn, *, preload=False):
+        error = turn.get("error") or {}
+        self.code = ("codex_usage_limit" if error.get("codexErrorInfo") == "usageLimitExceeded"
+                     else "source_preload_failed" if preload else None)
+        super().__init__("Codex source-session turn did not complete with a final answer; "
+                         "evidence retained for recovery. " + str(error.get("message") or turn.get("status")))
+
+
 def validate_execution(settings):
     mode = settings.get("pipeline_execution")
     if mode is None:
@@ -507,7 +516,7 @@ class PersistentSourceSessionManager:
             self.transition("recovery_required", reason="compaction/context alteration")
             raise PipelineError("Native source history was compacted; preserve evidence and rebuild explicitly.")
         if terminal.get("status") != "completed" or not answer or self.rpc.state.get("terminal_error"):
-            raise PipelineError("Codex source-session turn did not complete with a final answer; evidence retained for recovery.")
+            raise NativeSourceTurnError(terminal, preload=pass_no == 0)
         return answer, meta
 
     def verify_completion(self, submission, recorder, meta, observation=None):
@@ -682,6 +691,10 @@ class PersistentSourceSessionManager:
             meta = self.verify_completion(active, recorder, meta, observation)
         validation = recorder.manifest.get("lifecycle", {}).get("validation", "not_run")
         recorder.finish(generation="completed" if turn["status"] == "completed" else "failed", validation=validation, metadata=meta)
+        if active["pass_no"] == 0 and turn["status"] != "completed":
+            # A failed preload has no answer to read and cannot be a baseline.
+            # Keep its owned native history intact for explicit session rebuild.
+            raise NativeSourceTurnError(turn, preload=True)
         if active["pass_no"] and self.store.job(active["task_key"], active["fingerprint"]):
             self.transition("accepted_cleanup_pending", active=active, cleanup_required=True)
         elif active["pass_no"] and turn["status"] != "completed":

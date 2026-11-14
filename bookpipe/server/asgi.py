@@ -4,7 +4,7 @@ import re
 import socket
 import threading
 from pathlib import Path
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, quote
 
 from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
@@ -121,6 +121,10 @@ def create_app(service, allowed_hosts, *, frontend=None):
                      or is_analysis_preview_path(route_parts) or is_preload_preview_path(route_parts))):
                     raise ValueError('Unexpected query parameters.')
                 parts = [unquote(part) for part in request.scope['raw_path'].decode('ascii').split('/')[1:]]
+                if request.method == 'GET' and len(parts) == 5 and parts[:3] == ['api', 'library', 'sources'] and parts[4] == 'download':
+                    filename, data = await run_in_threadpool(service.imports.download, parts[3])
+                    return Response(data, media_type='application/epub+zip', headers={**HEADERS,
+                                    'Content-Disposition': "attachment; filename=\"book.epub\"; filename*=UTF-8''" + quote(filename, safe='')})
                 if request.method == 'GET' and len(parts) == 5 and parts[:2] == ['api', 'workspaces'] and parts[3:] == ['publication', 'download']:
                     data = await run_in_threadpool(service.publication_resource, parts[2])
                     return Response(data, media_type='application/epub+zip', headers={**HEADERS,

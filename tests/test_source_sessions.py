@@ -678,6 +678,26 @@ def test_crash_before_p0_submission_does_not_create_false_readiness(project, tmp
     assert len(native_mock['calls']) == 2
 
 
+def test_failed_p0_recovery_preserves_failure_without_reading_missing_answer(project, tmp_path, native_mock):
+    from bookpipe.source_sessions import NativeSourceTurnError
+    native_mock['failed'].add(1)
+    with pytest.raises(NativeSourceTurnError) as initial:
+        run(project, tmp_path, 2)
+    assert initial.value.code == 'source_preload_failed'
+    original = manifest(project)
+    attempt = project / original['active']['attempt']
+    assert not (attempt / 'answer.txt').exists()
+    for _ in range(2):
+        with pytest.raises(NativeSourceTurnError) as recovered:
+            run(project, tmp_path, 2)
+        assert recovered.value.code == 'source_preload_failed'
+    assert len(native_mock['calls']) == 1
+    assert manifest(project)['p0_status'] != 'ready'
+    assert manifest(project)['active']['intent_id'] == original['active']['intent_id']
+    assert read_json(attempt / 'response_meta.json')['status'] == 'failed'
+    assert not any(m == 'thread/revert' for m, _ in native_mock['rpc'])
+
+
 def test_clean_checkpoint_no_provider_work_and_explicit_rebuild(project, tmp_path, native_mock, monkeypatch):
     from bookpipe.source_sessions import retire_session, session_inventory
     run(project, tmp_path, 2)

@@ -110,6 +110,8 @@ class Job:
             error_type = 'WorkerError'
         message = 'Operation failed; inspect locally.'
         safe_errors = {
+            'codex_usage_limit': 'Codex usage limit reached. Wait for the limit to reset or change the profile. If P0 failed, rebuild its source session before retrying. Saved checkpoints remain available.',
+            'source_preload_failed': 'P0 did not complete. Rebuild the failed source session before retrying. Saved checkpoints and attempt diagnostics remain available.',
             'analysis_alias_conflict': 'P1 stopped because a name or alias matches multiple terminology entries. The model response is saved. Resolve the entity conflict before retrying; restarting Run alone will not fix it.',
             'local_model_unavailable': 'The selected local model server is unavailable. Start llama.cpp or choose another profile for this pass.',
             'source_span_mismatch': 'Model output cited text that does not exactly match its source sentence. This attempt was not selected.',

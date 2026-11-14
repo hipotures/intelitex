@@ -51,6 +51,14 @@ class ImportQueries:
         if self.root is not None and not self.root.is_dir():
             raise ValueError('Import root must be a directory.')
 
+    def download(self, source_id: str) -> tuple[str, bytes]:
+        if self.root is None:
+            raise ImportDisabled('Web import is disabled.')
+        source = confined_source(self.root, source_id)
+        if not source.is_file() or source.suffix.lower() != '.epub' or not zipfile.is_zipfile(source):
+            raise KeyError('No downloadable EPUB for this source.')
+        return source.name, source.read_bytes()
+
     def sources(self) -> list[dict]:
         if self.root is None:
             raise ImportDisabled('Web import is disabled.')

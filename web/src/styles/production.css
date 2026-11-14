@@ -223,6 +223,8 @@ h1,h2,h3 { font-weight:700; }
 
 .section-header > .subtitle { margin:0; }
 .library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
+.section-title:has(.library-title-filter) { flex-wrap:wrap; }
+.library-title-filter { width:260px;max-width:100%;min-width:0;padding:7px 10px;font-size:13px; }
 .library-sort { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim); }
 .library-sort select { width:auto;min-width:100px;padding:5px 8px; }
 .library-filter { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer; }

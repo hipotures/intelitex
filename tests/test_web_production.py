@@ -616,6 +616,49 @@ def _packed_opf_epub(path, identifier, source=None):
         archive.writestr('package.opf', opf)
 
 
+def test_library_download_serves_exact_epub_with_original_filename(api, tmp_path):
+    _, _, service, server = api
+    folder = service.imports.root / 'Series'
+    folder.mkdir()
+    path = folder / 'Żółw [PL].epub'
+    _packed_opf_epub(path, 'urn:test:download')
+    endpoint = '/api/library/sources/' + quote('Series/' + path.name, safe='') + '/download'
+    host, port = server.server_address[:2]
+    with httpx.Client(base_url=f'http://{host}:{port}') as client:
+        response = client.get(endpoint)
+        assert response.status_code == 200
+        assert response.content == path.read_bytes()
+        assert response.headers['content-type'] == 'application/epub+zip'
+        assert "filename*=UTF-8''" + quote(path.name, safe='') in response.headers['content-disposition']
+        assert response.headers['cache-control'] == 'no-store'
+        assert client.get(endpoint, headers={'Origin': 'http://evil.test'}).status_code == 403
+        assert client.get('/api/library/sources/book/download').status_code == 404
+        (service.imports.root / 'fake.epub').write_text('not an EPUB')
+        assert client.get('/api/library/sources/fake.epub/download').status_code == 404
+        assert client.get('/api/library/sources/..%2Fprivate.epub/download').status_code == 400
+        outside = tmp_path / 'outside.epub'
+        _packed_opf_epub(outside, 'urn:test:outside')
+        (service.imports.root / 'escape.epub').symlink_to(outside)
+        assert client.get('/api/library/sources/escape.epub/download').status_code == 400
+
+
+def test_library_title_filter_searches_all_titles_before_pagination(api):
+    _, _, service, server = api
+    for name in ('First Vortex', 'Last VORTEX', 'Unrelated'):
+        _packed_opf_epub(service.imports.root / (name + '.epub'), 'urn:test:' + name)
+    code, first = request(server, 'GET', '/api/library?title=vOrTeX&sort=title&limit=1&links=false')
+    assert code == 200 and first['sources'][0]['title'] == 'First Vortex'
+    assert first['next_cursor']
+    code, last = request(server, 'GET', '/api/library?title=vOrTeX&sort=title&limit=1&links=false&after=' + quote(first['next_cursor']))
+    assert code == 200 and last['sources'][0]['title'] == 'Last VORTEX'
+    assert last['next_cursor'] is None
+    assert len(request(server, 'GET', '/api/library?title=VORTEX&links=false')[1]['sources']) == 2
+    assert request(server, 'GET', '/api/library?title=absent&links=false')[1]['sources'] == []
+    assert request(server, 'GET', '/api/library?title=vortex&gutenberg=true&links=false')[1]['sources'] == []
+    for value in ('v', '%20%20', 'a' * 201):
+        assert request(server, 'GET', '/api/library?title=' + value)[0] == 400
+
+
 def test_library_project_gutenberg_filter_uses_opf_metadata_not_file_names(api):
     _, _, service, server = api
     library = service.imports.root

@@ -124,6 +124,18 @@ class Handler(BaseHTTPRequestHandler):
             if not mutation and parts == ['api', 'events']:
                 return self._events(parse_qs(parsed.query))
             from .routes import dispatch
+            if self.command == 'GET' and len(parts) == 5 and parts[:3] == ['api', 'library', 'sources'] and parts[4] == 'download':
+                from urllib.parse import quote
+                filename, data = service.imports.download(parts[3])
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/epub+zip')
+                self.send_header('Content-Disposition', "attachment; filename=\"book.epub\"; filename*=UTF-8''" + quote(filename, safe=''))
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                self.wfile.write(data)
+                return
             library_query = None
             if parsed.query:
                 query = parse_qs(parsed.query, keep_blank_values=True)

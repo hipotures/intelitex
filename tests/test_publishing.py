@@ -409,6 +409,49 @@ def test_class_only_source_span_keeps_all_translated_prose_without_guessing_its_
     assert soup.p.find('span') is None
 
 
+def test_nested_class_only_spans_on_title_page_keep_author_text():
+    soup = BeautifulSoup(
+        '<h2 class="title-page-contributor"><span class="title-page-contributor-name case-upper">'
+        '<span class="ttext">KEVIN J. ANDERSON</span></span></h2>', 'html.parser',
+    )
+    flattened = EpubPublicationBuilder._replace_block(
+        soup.h2, 'B0000116', 'KEVIN J. ANDERSON', 'KEVIN J. ANDERSON',
+    )
+    assert flattened == 2
+    assert str(soup.h2) == '<h2 class="title-page-contributor">KEVIN J. ANDERSON</h2>'
+
+
+def test_nested_presentation_spans_preserve_saved_emphasis():
+    soup = BeautifulSoup(
+        '<p><span class="outer"><span class="inner">An <i class="italic">old</i> story.</span></span></p>',
+        'html.parser',
+    )
+    assert EpubPublicationBuilder._replace_block(
+        soup.p, 'B1', 'An *old* story.', '*Stara* opowieść.',
+    ) == 2
+    assert str(soup.p) == '<p><em class="italic">Stara</em> opowieść.</p>'
+
+
+@pytest.mark.parametrize('tag', ['i', 'em', 'b', 'strong'])
+def test_whitespace_only_emphasis_matches_imported_plain_space(tag):
+    soup = BeautifulSoup(f'<p>They traveled<{tag}> </{tag}>through Nether.</p>', 'html.parser')
+    EpubPublicationBuilder._replace_block(
+        soup.p, 'B0000622', 'They traveled through Nether.', 'Podróżowali przez Otchłań.',
+    )
+    assert str(soup.p) == '<p>Podróżowali przez Otchłań.</p>'
+
+
+@pytest.mark.parametrize('markup', [
+    '<a href="reference.xhtml">here</a>', '<span id="reference">here</span>',
+])
+def test_presentation_span_still_validates_nested_meaningful_markup(markup):
+    soup = BeautifulSoup(f'<p>See <span class="outer">{markup}</span>.</p>', 'html.parser')
+    original = str(soup.p)
+    with pytest.raises(PipelineError, match='unsupported inline'):
+        EpubPublicationBuilder._replace_block(soup.p, 'B1', 'See here.', 'Zobacz tutaj.')
+    assert str(soup.p) == original
+
+
 def test_meaningful_inline_link_fails_instead_of_being_silently_discarded(tmp_path):
     source = _unpack_public_domain_epub(tmp_path)
     chapter = source / "EPUB" / "text" / "the-buckwheat.xhtml"
@@ -464,3 +507,28 @@ def test_dropped_blocks_and_links_to_omitted_documents_are_removed():
     _drop_nodes([soup.find_all('p')[1]])
     assert _drop_links_to_omitted(soup, 'OEBPS/contents.xhtml', {'OEBPS/about.xhtml'}) is True
     assert str(soup.body) == '<body><p>Kept</p><p>See this page.</p></body>'
+
+
+@pytest.mark.parametrize('excluded, expected', [
+    ({'preview.xhtml', 'dedication.xhtml', 'preview-chapter.xhtml'}, ['before', 'after']),
+    ({'preview.xhtml'}, ['before', 'dedication', 'chapter', 'after']),
+    ({'preview.xhtml', 'dedication.xhtml'}, ['before', 'chapter', 'after']),
+    ({'dedication.xhtml', 'preview-chapter.xhtml'}, ['before', 'preview', 'after']),
+    (set(), ['before', 'preview', 'dedication', 'chapter', 'after']),
+])
+def test_ncx_omitted_parent_prunes_descendants_before_preserving_retained_children(excluded, expected):
+    from bookpipe.infrastructure.epub_publisher import _prune_navigation
+    raw = b'''<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>
+      <navPoint id="before"><content src="before.xhtml"/></navPoint>
+      <navPoint id="preview"><navLabel><text>Preview</text></navLabel><content src="preview.xhtml"/>
+        <navPoint id="dedication"><content src="dedication.xhtml"/></navPoint>
+        <navPoint id="chapter"><content src="preview-chapter.xhtml"/></navPoint>
+      </navPoint>
+      <navPoint id="after"><content src="after.xhtml"/></navPoint>
+    </navMap></ncx>'''
+    rendered = _prune_navigation(raw, 'OEBPS/toc.ncx', {'OEBPS/' + name for name in excluded})
+    root = ET.fromstring(rendered)
+    assert [p.get('id') for p in root.findall('.//{*}navPoint')] == expected
+    assert all(c.get('src') not in excluded for c in root.findall('.//{*}content'))
+    assert [p.get('id') for p in root.find('{*}navMap')] == (
+        expected if 'preview.xhtml' in excluded else [i for i in expected if i not in {'dedication', 'chapter'}])
