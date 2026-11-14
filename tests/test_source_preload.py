@@ -35,6 +35,8 @@ def make_preload_book(tmp_path, paragraphs=1):
     settings['profiles']['preload-test'] = {'provider': 'codex', 'model': 'gpt-5.6-sol',
         'context_size': 200000, 'reasoning_effort': 'medium', 'runtime_root': str(tmp_path / 'native-private'),
         'options': {'late_usage_wait': .02}, 'request_timeout': 20}
+    # Fixture-sized memory reservation: the shipped default would consume the whole 200000 context in P1 planning.
+    settings['memory_tokens'] = 12000
     settings['default_profile'] = 'preload-test'
     settings['pass_profiles'] = {}
     settings['pipeline_execution'] = copy.deepcopy(DEFAULT_EXECUTION)

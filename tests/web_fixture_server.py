@@ -34,6 +34,9 @@ with tempfile.TemporaryDirectory(prefix='intelitex-browser-') as directory:
     settings['port'] = port
     settings['profiles']['local']['options']['port'] = port
     settings['profiles'] = {'local': settings['profiles']['local']}
+    # Pin the memory reservation to this tiny book and the fake 64k llama.cpp context; the shipped default
+    # (sized for long Codex/OpenAI chapters) would leave Pass 1 no source budget.
+    settings['memory_tokens'] = 12000
     (bundle / 'settings.default.json').write_text(json.dumps(settings))
     bootstrap.BUNDLE = bundle
     sources, workspaces = base / 'sources', base / 'workspaces'
