@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useState, type KeyboardEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Scope, useApi } from '../api/client'
 import { capabilitiesSchema, profilesSchema } from '../api/schema'
@@ -16,10 +16,11 @@ function ConnectedShell({ scope, importEnabled }: { scope: string; importEnabled
   const location = useLocation()
   const navigate = useNavigate()
   const [settings, setSettings] = useState(false)
-  const [notice,setNotice] = useState('')
+  // Each notice gets a new id so a repeated message is re-inserted into the live region and announced again.
+  const [notice,setNotice] = useState<{ id: number; text: string } | null>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
-    const receive = (event: Event) => { setNotice((event as CustomEvent<string>).detail); clearTimeout(timer); timer = setTimeout(() => setNotice(''),4000) }
+    const receive = (event: Event) => { const text = (event as CustomEvent<string>).detail; setNotice(previous => ({ id: (previous?.id ?? 0) + 1, text })); clearTimeout(timer); timer = setTimeout(() => setNotice(null),4000) }
     window.addEventListener('intelitex:notice',receive)
     return () => { window.removeEventListener('intelitex:notice',receive); clearTimeout(timer) }
   }, [])
@@ -33,16 +34,29 @@ function ConnectedShell({ scope, importEnabled }: { scope: string; importEnabled
     const target = preference(scope,`${next}.route`, `/${next}`)
     void navigate({ href: target.startsWith(`/${next}`) && !target.startsWith('//') ? target : `/${next}` })
   }
-  return <div className={`app ${mode === 'reader' ? 'reader-mode' : ''}`}><Realtime /><header className="topbar" {...debugTag('HDR')}><div className="brand"><div className="brand-mark">IX</div><div className="brand-name">Intelitex</div></div><div className="mode-switch" aria-label="Application mode"><button className={mode === 'work' ? 'active' : ''} onClick={() => switchMode('work')}>Work</button><button className={mode === 'reader' ? 'active' : ''} onClick={() => switchMode('reader')}>Reader</button></div><div className="top-actions"><ConnectionStatus /><Button variant="icon" aria-label={`Theme: ${theme}. Switch theme`} onClick={() => setTheme(theme === 'dark' ? 'sepia' : theme === 'sepia' ? 'light' : 'dark')}>◐</Button><Button variant="icon" aria-label="Settings" onClick={() => setSettings(true)}>⚙</Button></div></header><Outlet />{notice && <div className="toast show" role="status">{notice}</div>}{settings && <SettingsDialog scope={scope} importEnabled={importEnabled} theme={theme} setTheme={setTheme} debug={debug} setDebug={setDebug} close={() => setSettings(false)} />}</div>
+  return <div className={`app ${mode === 'reader' ? 'reader-mode' : ''}`}><Realtime /><header className="topbar" {...debugTag('HDR')}><div className="brand"><div className="brand-mark">IX</div><div className="brand-name">Intelitex</div></div><div className="mode-switch" role="group" aria-label="Application mode"><button type="button" className={mode === 'work' ? 'active' : ''} aria-pressed={mode === 'work'} onClick={() => switchMode('work')}>Work</button><button type="button" className={mode === 'reader' ? 'active' : ''} aria-pressed={mode === 'reader'} onClick={() => switchMode('reader')}>Reader</button></div><div className="top-actions"><ConnectionStatus /><Button variant="icon" aria-label={`Theme: ${theme}. Switch theme`} onClick={() => setTheme(theme === 'dark' ? 'sepia' : theme === 'sepia' ? 'light' : 'dark')}>◐</Button><Button variant="icon" aria-label="Settings" onClick={() => setSettings(true)}>⚙</Button></div></header><Outlet /><div className={`toast${notice ? ' show' : ''}`} role="status">{notice && <span key={notice.id}>{notice.text}</span>}</div>{settings && <SettingsDialog scope={scope} importEnabled={importEnabled} theme={theme} setTheme={setTheme} debug={debug} setDebug={setDebug} close={() => setSettings(false)} />}</div>
 }
 function ConnectionStatus() { const live = useLive(); return <span className={`connection-status ${live.connection === 'Live' ? 'live' : ''}`} role="status">{live.connection}</span> }
+const settingsTabs = ['paths','models','library','interface','debug']
 function SettingsDialog({ scope, importEnabled, theme, setTheme, debug, setDebug, close }: { scope: string; importEnabled: boolean; theme: string; setTheme: (s: string) => void; debug: boolean; setDebug: (value: boolean) => void; close: () => void }) {
   const [tab,setTab] = useState(() => preference(scope,'settings.tab','paths'))
   const profiles = useApi('/api/profiles',profilesSchema,tab === 'models')
   const { hidden, setVisible } = useModelVisibility()
   const [reset,setReset] = useState(false)
   const showGutenberg = usePreference(scope, 'library.gutenberg.show', 'false') === 'true'
-  return <Overlay title="Settings" eyebrow="Application" debugId="SET" close={close}><div className="settings-tabs" role="tablist" {...debugTag('STB')}>{['paths','models','library','interface','debug'].map(t => <button role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} key={t} onClick={() => { setTab(t); savePreference(scope,'settings.tab',t) }}>{t[0]!.toUpperCase() + t.slice(1)}</button>)}</div><div className="modal-body">
+  const ids = useId()
+  // One tab stop for the tablist (roving tabindex); arrow keys, Home and End move between tabs and select them.
+  const focusable = settingsTabs.includes(tab) ? tab : settingsTabs[0]!
+  const moveTab = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = settingsTabs.indexOf(focusable)
+    const next = event.key === 'ArrowRight' ? (index + 1) % settingsTabs.length : event.key === 'ArrowLeft' ? (index - 1 + settingsTabs.length) % settingsTabs.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : -1
+    if (next < 0) return
+    event.preventDefault()
+    setTab(settingsTabs[next]!); savePreference(scope,'settings.tab',settingsTabs[next]!)
+    event.currentTarget.querySelector<HTMLElement>(`[id="${ids}-${settingsTabs[next]}"]`)?.focus()
+  }
+  return <Overlay title="Settings" eyebrow="Application" debugId="SET" close={close}><div className="settings-tabs" role="tablist" aria-label="Settings sections" {...debugTag('STB')} onKeyDown={moveTab}>{settingsTabs.map(t => <button type="button" role="tab" id={`${ids}-${t}`} aria-selected={tab === t} tabIndex={t === focusable ? 0 : -1} className={tab === t ? 'active' : ''} key={t} onClick={() => { setTab(t); savePreference(scope,'settings.tab',t) }}>{t[0]!.toUpperCase() + t.slice(1)}</button>)}</div><div className="modal-body" role="tabpanel" aria-labelledby={`${ids}-${focusable}`} tabIndex={0}>
     {tab === 'paths' && <section className="settings-section" {...debugTag('SPA')}><h3>Server configuration</h3><dl className="phase-kv"><dt>Workspace directory</dt><dd>Configured by the running server</dd><dt>Source library</dt><dd>{importEnabled ? 'Configured by the running server' : 'Not configured'}</dd></dl><p className="subtitle">Directories are set when starting Intelitex. Restart the server to change them.</p></section>}
     {tab === 'models' && <section className="settings-section" {...debugTag('SPM')}><h3>Model profiles</h3><p className="subtitle">Choose which profiles appear in model lists. Changes are saved automatically in this browser for this server. Existing assignments are kept when a profile is hidden.</p><ErrorNote error={profiles.error} retry={() => void profiles.refetch()} /><div className="model-config-list">{profiles.data?.profiles.map(p => <div className="model-config-row" key={p.name} {...debugTag('MPR', p.name)}><div><div className="model-config-name"><ProfileSwatch index={p.stable_palette_index} name={p.name} /> {p.name}</div><div className="model-config-desc">{p.provider ?? '—'} · {p.model ?? '—'}</div></div><span className="health">{p.enabled ? 'Configured · not tested' : 'Disabled'}</span><label className="model-visibility"><input type="checkbox" aria-label={`Show ${p.name} in model lists`} checked={p.enabled && !hidden.has(p.name)} disabled={!p.enabled} onChange={event => setVisible(p.name, event.target.checked)} />Show in lists</label></div>)}</div><p className="subtitle">Edit profile definitions in server configuration. Workspace and section pass assignments are available in each workspace.</p></section>}
     {tab === 'library' && <section className="settings-section" {...debugTag('SPL')}><h3>Library filters</h3><label className="field debug-setting"><input type="checkbox" checked={showGutenberg} onChange={e => savePreference(scope, 'library.gutenberg.show', String(e.target.checked))} />Show the “Project Gutenberg” filter on the Work page</label><p className="subtitle">Adds a checkbox to the Library header that lists only books whose EPUB metadata names Project Gutenberg (gutenberg.org) as the source. Turning this off also turns the filter off. Saved in this browser only.</p></section>}

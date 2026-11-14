@@ -610,3 +610,12 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 .review-import-counts th,.review-import-counts td { text-align:left;padding:7px 10px;border-bottom:1px solid var(--line); }
 .review-import-counts th:last-child,.review-import-counts td:last-child { text-align:right; }
 @media (max-width:600px) { .review-bulk-bar > .review-transfer-actions { width:100%; } }
+/* Accessibility (audit A1): the workspace label is a <button> for keyboard access; keep the former block <div> geometry. */
+button.workspace-label { display:block;width:100%;margin-inline:0;margin-bottom:0;padding:0;border:0;background:transparent;text-align:start;line-height:inherit; }
+/* Audit A2: the toast stays mounted as a persistent live region. It used to mount already shown, so it never animated; keep that. */
+.toast { transition:none; }
+/* Audit A7: reduced motion for the remaining animations. The slide is dropped and the Reader chrome only fades. */
+@media (prefers-reduced-motion:reduce) {
+  .pass-mark.active::after { animation:none; }
+  .app.reader-mode > .topbar,.reader-reading-area .reader-controls,.reader-mobile-books { transition-property:opacity; }
+}

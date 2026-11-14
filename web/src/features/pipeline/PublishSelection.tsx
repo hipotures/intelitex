@@ -97,9 +97,9 @@ export function PublishSelection({ id, pipeline }: { id: string; pipeline: Pipel
     <Panel debugId="PSP" title="Book text preview">
       <div id="publish-source-preview" className="publish-source-preview">
         {!selectedSection ? <Empty>Select a section to inspect its content.</Empty> : <>
-          <div className="review-filter-row publish-preview-tabs" role="tablist" aria-label="Preview text language">
-            <button className={`review-chip ${previewKind === 'translated' ? 'active' : ''}`} role="tab" aria-selected={previewKind === 'translated'} onClick={() => setPreviewKind('translated')}>Polish translation</button>
-            <button className={`review-chip ${previewKind === 'source' ? 'active' : ''}`} role="tab" aria-selected={previewKind === 'source'} onClick={() => setPreviewKind('source')}>Original source</button>
+          <div className="review-filter-row publish-preview-tabs" role="group" aria-label="Preview text language">
+            <button type="button" className={`review-chip ${previewKind === 'translated' ? 'active' : ''}`} aria-pressed={previewKind === 'translated'} onClick={() => setPreviewKind('translated')}>Polish translation</button>
+            <button type="button" className={`review-chip ${previewKind === 'source' ? 'active' : ''}`} aria-pressed={previewKind === 'source'} onClick={() => setPreviewKind('source')}>Original source</button>
           </div>
           <div className="publish-preview-heading"><span>{selectedSection.id} · {titles.get(selectedSection.id) ?? selectedSection.title ?? 'Untitled section'}</span><span>{groups.get(selectedSection.id)?.section_ids.every(sectionId => selected.has(sectionId)) ? 'Omitted from EPUB' : 'Included in EPUB'}</span></div>
           {untranslated && previewKind === 'translated' && <p className="subtitle">This section is not translated (mode E); its original source text is shown.</p>}

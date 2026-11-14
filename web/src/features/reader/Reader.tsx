@@ -24,6 +24,17 @@ function paintRanges(layer: HTMLDivElement | null, ranges: Range[]) {
   }
   layer.replaceChildren(fragment)
 }
+/**
+ * Heading semantics for a Reader block. The block stays a <p data-block-id> because position anchoring, gestures and
+ * selection resolve blocks through that element. Source EPUB blocks carry their HTML level (h1–h6); workspace blocks are
+ * "heading" without a level and sit below the chapter <h2>, except when such a block replaces that <h2> as the chapter title.
+ */
+export function headingSemantics(kind: string, isChapterTitle: boolean) {
+  const level = /^h([1-6])$/.exec(kind)?.[1]
+  if (level) return { role: 'heading', 'aria-level': Number(level) } as const
+  if (kind === 'heading') return { role: 'heading', 'aria-level': isChapterTitle ? 2 : 3 } as const
+  return {}
+}
 const mobileReader = () => window.matchMedia?.('(max-width: 720px) and (pointer: coarse)').matches ?? false
 export function ReaderPage() {
   const { workspaceId, sourceId } = useParams({ strict: false })
@@ -492,6 +503,8 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
     return () => window.removeEventListener('resize', position)
   }, [activeMarker, markerAnchor, chapterMarkers, chapter.data, fontSize, fontFamily, lineHeight, contentWidth])
   const percent = progress.data?.total_words ? Math.min(100, Math.round(readWords / progress.data.total_words * 100)) : 0
+  const availableThrough = progress.data?.last_chapter ? `Available through ${titleOf(progress.data.last_chapter.id, progress.data.last_chapter.title)}` : 'No verified text yet'
+  const chapterTitleShown = !(chapter.data?.blocks[0]?.kind === 'heading' && chapter.data.blocks[0].text.trim() === titleOf(chapterId, ''))
   return <div className="reader-reading-area" ref={scrollArea} onClickCapture={event => {
     if (!(event.target as Element).closest('.reader-settings, [aria-label="Toggle fullscreen"]')) requestAutoFullscreen()
   }}>
@@ -514,7 +527,9 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       }}>⛶</Button>
     </div>
     <button className="reader-progress-line" aria-label={sourceId ? 'Show Reader controls' : 'Show reading progress'} aria-expanded={sourceId ? undefined : progressOpen} onClick={sourceId ? chromeActivity : tapProgress}>{!sourceId && <span style={{ width: `${percent}%` }} />}</button>
-    {progressOpen && <div className="reader-progress-popup" role="status"><strong>{percent}% of available translation</strong><span>{readWords} of {progress.data?.total_words ?? 0} available words</span><span>{progress.data?.last_chapter ? `Available through ${titleOf(progress.data.last_chapter.id, progress.data.last_chapter.title)}` : 'No verified text yet'}</span></div>}
+    {progressOpen && <div className="reader-progress-popup"><strong>{percent}% of available translation</strong><span>{readWords} of {progress.data?.total_words ?? 0} available words</span><span>{availableThrough}</span></div>}
+    {/* Persistent live region: the popup and the marker popover mount with their text already inside, which screen readers often skip. */}
+    <div className="translate-working-announce" role="status">{recentMarker && <span key={recentMarker}>Marker saved. </span>}{progressOpen && <span>{`${percent}% of available translation. ${readWords} of ${progress.data?.total_words ?? 0} available words. ${availableThrough}.`}</span>}</div>
     {settingsOpen && <aside className="reader-settings" aria-label="Reader settings" {...debugTag('RST')}><h3>Reading settings</h3>
       <label>Font size <input type="range" min="15" max="30" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /><output>{fontSize}px</output></label>
       <label>Font family <select value={fontFamily} onChange={e => setFontFamily(e.target.value)}><option value="serif">Serif</option><option value="sans">Sans serif</option><option value="mono">Monospace</option></select></label>
@@ -536,9 +551,9 @@ export function ReadingBook({ id, libraryOpen, archived = false, sourceId, onOpe
       onPointerCancel={() => { if (gesture.current?.timer) clearTimeout(gesture.current.timer); if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current); previewFrame.current = null; gesture.current = null; paintRanges(previewLayer.current, []) }}
       onContextMenu={event => { if (((!archived && markerGesture === 'long') || contextGesture === 'long') && (event.target as Element).closest('[data-block-id]')) event.preventDefault() }}
       onMouseUp={() => { if (sourceId) return; const value = selectedRange(window.getSelection()); if (value) setSelection(value) }} onKeyUp={() => { if (sourceId) return; const value = selectedRange(window.getSelection()); if (value) setSelection(value) }}>
-      {!(chapter.data?.blocks[0]?.kind === 'heading' && chapter.data.blocks[0].text.trim() === titleOf(chapterId, '')) &&
+      {chapterTitleShown &&
         <h2>{titleOf(chapterId, chapter.data?.title ?? metadata.data?.title ?? 'Loading translated text…')}</h2>}
-      {chapter.data?.blocks.map(block => <div className="reader-block-wrap" key={block.id}>{chapterMarkers.some(m => m.block_id === block.id) && <button className="reader-gutter-marker" aria-label={`Markers in ${block.id}`} onClick={() => { setMarkerAnchor(chapterMarkers.find(m => m.block_id === block.id)?.id ?? null); setActiveMarker(activeMarker === block.id ? null : block.id) }}>▮</button>}<p data-block-id={block.id} className={block.kind.startsWith('h') ? 'reader-heading' : undefined}>{inlineRuns(block.text, block.formatting).map((run,i) => run.style === 'em' ? <em key={i}>{run.text}</em> : run.style === 'strong' ? <strong key={i}>{run.text}</strong> : run.text)}</p>{activeMarker === block.id && chapterMarkers.some(m => m.block_id === block.id) && <aside ref={markerPopover} className="reader-marker-popover" aria-label="Marker details" {...debugTag('RMP', block.id)}><div className="reader-marker-popover-title">Marker {recentMarker === markerAnchor && <span role="status">saved</span>}<button type="button" className="reader-marker-popover-close" aria-label="Close marker details" onClick={() => { setActiveMarker(null); setMarkerAnchor(null) }}>×</button></div>{chapterMarkers.filter(m => m.block_id === block.id).map(m => <div className="reader-marker-popover-entry" key={m.id}><span className="reader-marker-id">ID <code>{m.id}</code></span><blockquote>{m.text}</blockquote>{!archived && <Button className="reader-delete-marker" disabled={markerPending || connection !== 'Live'} onClick={() => void deleteMarker(m.id)}>Delete marker</Button>}</div>)}<Link className="reader-work-link" to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">View markers in Work →</Link></aside>}</div>)}
+      {chapter.data?.blocks.map((block, blockIndex) => <div className="reader-block-wrap" key={block.id}>{chapterMarkers.some(m => m.block_id === block.id) && <button className="reader-gutter-marker" aria-label={`Markers in ${block.id}`} onClick={() => { setMarkerAnchor(chapterMarkers.find(m => m.block_id === block.id)?.id ?? null); setActiveMarker(activeMarker === block.id ? null : block.id) }}>▮</button>}<p data-block-id={block.id} className={block.kind.startsWith('h') ? 'reader-heading' : undefined} {...headingSemantics(block.kind, blockIndex === 0 && !chapterTitleShown)}>{inlineRuns(block.text, block.formatting).map((run,i) => run.style === 'em' ? <em key={i}>{run.text}</em> : run.style === 'strong' ? <strong key={i}>{run.text}</strong> : run.text)}</p>{activeMarker === block.id && chapterMarkers.some(m => m.block_id === block.id) && <aside ref={markerPopover} className="reader-marker-popover" aria-label="Marker details" {...debugTag('RMP', block.id)}><div className="reader-marker-popover-title">Marker {recentMarker === markerAnchor && <span>saved</span>}<button type="button" className="reader-marker-popover-close" aria-label="Close marker details" onClick={() => { setActiveMarker(null); setMarkerAnchor(null) }}>×</button></div>{chapterMarkers.filter(m => m.block_id === block.id).map(m => <div className="reader-marker-popover-entry" key={m.id}><span className="reader-marker-id">ID <code>{m.id}</code></span><blockquote>{m.text}</blockquote>{!archived && <Button className="reader-delete-marker" disabled={markerPending || connection !== 'Live'} onClick={() => void deleteMarker(m.id)}>Delete marker</Button>}</div>)}<Link className="reader-work-link" to="/work/workspaces/$workspaceId/review" params={{workspaceId:id}} hash="reader-markers">View markers in Work →</Link></aside>}</div>)}
       {chapter.data && !chapter.data.blocks.length && <Empty>{sourceId ? 'This EPUB section has no readable text.' : 'No completed translation segments are available for this chapter yet. Reader checks for new segments automatically.'}</Empty>}
       {chapter.data?.unavailable && chapter.data.blocks.length > 0 && <div className="reader-boundary">End of currently available translation. {chapter.data.unavailable.reason}</div>}
       {chapter.data && <footer className="reader-chapter-end">{chapters[index + 1] && availableChapters.has(chapters[index + 1]!.id) ? <Button variant="ghost" onClick={() => choose(chapters[index + 1]!.id)}>Next chapter → {titleOf(chapters[index + 1]!.id, chapters[index + 1]!.title)}</Button> : sourceId ? 'End of book' : 'End of available translation'}</footer>}

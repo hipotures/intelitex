@@ -38,4 +38,6 @@ export function Overlay({ title, eyebrow, children, close, drawer = false, compa
 }
 export function Panel({ title, children, debugId }: { title: string; children: ReactNode; debugId: DebugId }) { return <section className="phase-detail-card" {...debugTag(debugId)}><div className="phase-detail-card-head"><h2>{title}</h2></div><div className="phase-detail-card-body">{children}</div></section> }
 
-export function ProfileSwatch({ index, name }: { index: number | null | undefined; name: string }) { return <span className="profile-swatch" data-palette={index == null ? undefined : index % 18} title={name} aria-label={name} /> }
+// Decorative: every use sits next to the profile name (visible text or the selected option), so the swatch is
+// hidden from assistive technologies instead of repeating the name inside labels such as "Pass 1".
+export function ProfileSwatch({ index, name }: { index: number | null | undefined; name: string }) { return <span className="profile-swatch" data-palette={index == null ? undefined : index % 18} title={name} aria-hidden="true" /> }
