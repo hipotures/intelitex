@@ -1,4 +1,6 @@
+import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import test from 'node:test'
@@ -26,11 +28,13 @@ test('Prepare edits shared metadata, preserves original and restores it', { time
   await dialog.getByLabel('Title', { exact: true }).fill('My corrected book title')
   await dialog.getByLabel('Authors (one per line)').fill('Author One\nAuthor Two')
   await dialog.getByLabel('Source language', { exact: true }).fill('eng-US')
+  const evidence = testEvidence('intelitex-metadata-evidence')
+  await mkdir(evidence, { recursive: true })
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 })
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     assert.ok(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1))
-    await page.screenshot({ path: `/tmp/intelitex-metadata-${width}.png` })
+    await page.screenshot({ path: `${evidence}/metadata-${width}.png` })
   }
   await dialog.getByRole('button', { name: 'Save metadata' }).click()
   await dialog.waitFor({ state: 'detached' })
