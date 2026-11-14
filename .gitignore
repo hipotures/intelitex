@@ -31,3 +31,6 @@ web/*.tsbuildinfo
 
 # local machine-specific launcher
 /run.sh
+
+# Local scratch space for tests, browser profiles and tool temp files (used instead of /tmp).
+/tmp/
