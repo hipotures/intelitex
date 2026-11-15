@@ -76,3 +76,28 @@
 }
 .command .notice { font-size:12px;white-space:normal; }
 .prepare-source-preview .empty-note { padding:12px 0;text-align:left; }
+
+/* (intelitex/components.css, kept before the field rules: in the legacy cascade .field select overrode it) */
+.drawer-model-slot select {
+  width:100%;
+  min-width:0;
+  background:transparent;
+  border:1px solid var(--line);
+  border-radius:var(--ds-radius-control);
+  color:var(--text);
+  padding:9px 11px;
+}
+
+/* Form fields (intelitex/components.css, library.css); context rules renamed in the app */
+.field { margin-bottom:16px; }
+.field label { display:block;font-size:var(--ds-text-sm);color:var(--text-dim);font-weight:var(--ds-weight-semibold);margin-bottom:7px; }
+.field-row { display:grid;grid-template-columns:1fr 1fr;gap:var(--ds-space-6); }
+.field input,.field select {
+  width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--ds-radius-control);color:var(--text);padding:9px 10px;
+}
+.setup-body .field small { display:block;margin-top:6px;color:var(--text-dim);font-size:11px;line-height:1.45; }
+.drawer .field select { transition:var(--ds-duration-fast) var(--ds-ease); }
+.field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:var(--ds-weight-regular); }
+@media (max-width:560px) {
+  .setup-body .field-row { grid-template-columns:1fr;gap:0; }
+}

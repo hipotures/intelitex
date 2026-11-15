@@ -98,6 +98,7 @@ test('Intelitex compatibility layer keeps the legacy interaction states', async 
     for (const id of ['danger-off', 'icon-off']) assert.deepEqual([(await h.style(id)).opacity, (await h.style(id)).cursor], ['1', 'not-allowed'], id)
     for (const id of ['primary-off', 'secondary-off', 'ghost-off']) assert.equal((await h.style(id)).opacity, '0.45', id)
     assert.equal((await h.style('primary', ['hover'])).transform, lift)
+    assert.deepEqual([(await h.style('locked')).opacity, (await h.style('locked')).cursor], ['1', 'default'], 'disabled field controls are not dimmed')
     await h.close()
     const r = await harness(browser, appFiles, 'reduce')
     assert.equal((await r.style('primary', ['hover'])).transform, lift, 'legacy keeps the lift under reduced motion')

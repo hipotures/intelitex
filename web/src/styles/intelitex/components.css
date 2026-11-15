@@ -1,6 +1,7 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
 /* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card.
-   Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. Notices: .ds-notice[data-tone], .ds-empty. */
+   Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. Notices: .ds-notice[data-tone], .ds-empty.
+   Fields: .ds-field, .ds-field-row, .ds-field-hint. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
 .filter-segment {
@@ -8,7 +9,7 @@
 }
 .filter-segment button { border:0;background:transparent;color:var(--text-dim);padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-xs);cursor:pointer;font-size:var(--ds-text-sm); }
 .filter-segment button.active { background:var(--panel-3);color:var(--text); }
-.drawer .field select { transition:var(--ds-duration-fast) var(--ds-ease); }
+.drawer .ds-field select { transition:var(--ds-duration-fast) var(--ds-ease); }
 .autosave-note {
   margin-top:-4px;
   margin-bottom:16px;
@@ -32,7 +33,6 @@
 .drawer-head { padding:var(--ds-space-9);border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:18px; }
 .drawer-body { padding:var(--ds-space-9);overflow:auto;flex:1; }
 .preview-text { background:var(--bg-soft);border:1px solid var(--line);border-radius:var(--ds-radius-md);padding:var(--ds-space-8);line-height:1.75;color:var(--text-soft);font-family:var(--ds-font-serif);font-size:15px;margin-top:18px; }
-.field { margin-bottom:16px; }
 .drawer-model-grid {
   margin-top:8px;
   display:flex;
@@ -64,20 +64,8 @@
   font-weight:var(--ds-weight-bold);
   white-space:nowrap;
 }
-.drawer-model-slot select {
-  width:100%;
-  min-width:0;
-  background:transparent;
-  border:1px solid var(--line);
-  border-radius:var(--ds-radius-control);
-  color:var(--text);
-  padding:9px 11px;
-}
-.field label { display:block;font-size:var(--ds-text-sm);color:var(--text-dim);font-weight:var(--ds-weight-semibold);margin-bottom:7px; }
-.field input,.field select {
-  width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--ds-radius-control);color:var(--text);padding:9px 10px;
-}
-.field-row { display:grid;grid-template-columns:1fr 1fr;gap:var(--ds-space-6); }
+/* The slot only appears inside a .ds-field, whose control style it keeps (the other declarations never applied). */
+.drawer-model-slot select { min-width:0; }
 .modal-card { width:min(850px,96vw);max-height:88vh;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:var(--ds-radius-xl);box-shadow:var(--shadow);display:flex;flex-direction:column;transform:translateY(8px) scale(.99);transition:.18s ease; }
 .modal-head { padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:var(--ds-space-8); }
 .modal-body { overflow:auto;padding:var(--ds-space-9); }
@@ -131,7 +119,7 @@
 dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
 dialog.compact-modal { width:min(520px,94vw); }
 dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw;right:0;left:auto;transform:none; }
-.field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:var(--ds-weight-regular); }
+.ds-field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:var(--ds-weight-regular); }
 .preview-pagination { display:flex;gap:10px;align-items:center;margin-top:16px;font-size:12px; }
 .phase-kv { display:grid;grid-template-columns:minmax(95px,1fr) 2fr;gap:var(--ds-space-5);font-size:var(--ds-text-md); }
 .phase-kv dt { color:var(--text-dim); }

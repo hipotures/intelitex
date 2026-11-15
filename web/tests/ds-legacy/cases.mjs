@@ -55,3 +55,25 @@ export const notices = [
   { name: 'empty note', legacy: '<div class="empty-note" data-target>None</div>', migrated: '<div class="ds-empty" data-target>None</div>' },
   { name: 'source preview empty', context: '<div class="prepare-source-preview">{}</div>', legacy: '<div class="empty-note" data-target>None</div>', migrated: '<div class="ds-empty" data-target>None</div>' },
 ]
+
+const setupForm = (field, row, hint, d) => `<div class="modal-body setup-body"><div class="${field}"><label for="l">Workspace label</label><input id="l" value="Astra"${d} data-target></div>
+  <div class="${row}"><div class="${field}"><label for="s">Source language</label><input id="s" value="en"${d} data-target><small${hint}>Local detection: en</small></div>
+  <div class="${field}"><label for="t">Target language</label><select id="t"${d} data-target><option>Polish (pl)</option></select><small${hint}>Available.</small></div></div></div>`
+const drawerField = (field, d) => `<dialog open class="drawer open overlay-dialog"><div class="drawer-body"><div class="${field}"><label>Model overrides · optional</label>
+  <div class="drawer-model-grid"><div class="drawer-model-slot"><label class="drawer-model-label" for="o1"><span class="profile-swatch" data-palette="0"></span>Pass 1</label>
+  <select id="o1"${d} data-target><option>local</option></select></div></div></div></div></dialog>`
+export const fields = [
+  ...['', ' disabled'].flatMap(d => [
+    { name: 'setup form' + d, legacy: setupForm('field', 'field-row', '', d), migrated: setupForm('ds-field', 'ds-field-row', ' class="ds-field-hint"', d) },
+    { name: 'drawer model field' + d, legacy: drawerField('field', d), migrated: drawerField('ds-field', d) },
+    { name: 'review model select' + d, context: '<div class="modal-body">{}</div>',
+      legacy: `<div class="field"><label for="m">Model</label><select id="m"${d} data-target><option>Choose a model…</option></select></div>`,
+      migrated: `<div class="ds-field"><label for="m">Model</label><select id="m"${d} data-target><option>Choose a model…</option></select></div>` },
+  ]),
+  { name: 'settings theme label', context: '<section class="settings-section">{}</section>',
+    legacy: '<label class="field">Theme<select data-target><option>Dark</option></select></label>', migrated: '<label class="ds-field">Theme<select data-target><option>Dark</option></select></label>' },
+  { name: 'settings checkbox', context: '<section class="settings-section">{}</section>',
+    legacy: '<label class="field debug-setting"><input type="checkbox" data-target>Show panel identifiers</label>', migrated: '<label class="ds-field debug-setting"><input type="checkbox" data-target>Show panel identifiers</label>' },
+  { name: 'readonly field', legacy: '<div class="field-row"><div class="field"><label>Processing</label><div class="readonly-field" data-target>Full</div></div></div>',
+    migrated: '<div class="ds-field-row"><div class="ds-field"><label>Processing</label><div class="readonly-field" data-target>Full</div></div></div>' },
+]

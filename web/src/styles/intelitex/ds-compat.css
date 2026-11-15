@@ -15,3 +15,10 @@
 @media (prefers-reduced-motion: reduce) {
   .ds-btn-primary:hover:where(:not(:disabled)) { transform:translateY(-1px); }
 }
+/* Field labels: every label inside a field gets the field-label style (legacy descendant selector), not only the
+   field's own child label; the section drawer nests profile labels in its model grid. */
+.ds-field label {
+  display:block; font-size:var(--ds-text-sm); color:var(--text-dim); font-weight:var(--ds-weight-semibold); margin-bottom:7px;
+}
+/* Disabled field controls keep their normal look (no dimming, browser cursor). */
+.ds-field :is(input, select, textarea):disabled { opacity:revert; cursor:revert; }
