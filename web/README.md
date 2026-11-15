@@ -50,10 +50,17 @@ Browser tests need Playwright Chromium and its system libraries/fonts. They laun
 a disposable Python server with an in-process offline provider and temporary projects.
 They never use the user's translation workspaces or contact a real model service.
 `test` runs unit/component and browser suites; `test:browser` aliases `test:e2e`.
-Visual tests read the unchanged original v33, render matching test-only data, and
-assert an unmasked 1% pixel budget for the stable Work fixtures at six widths/two themes.
-Additional screen screenshots are manually reviewed against the original.
-Artifacts are under `/tmp/intelitex-browser-evidence` and `/tmp/intelitex-visual-evidence`.
+`test:visual` compares the current Work page (six widths × dark/light, Inter embedded,
+reduced motion, settled-state waits) with the approved images in `web/tests/visual-baseline/`
+at an unmasked 1% pixel budget, and runs the 12 P0 preload layout checks. Every comparison
+runs before failures are reported together; a missing baseline is a failure. The suite never
+writes baselines: `INTELITEX_VISUAL_CANDIDATES=1` also saves each screenshot as a candidate
+under the evidence directory, and adopting one is a reviewed copy into `visual-baseline/`.
+`test:visual:v33` is a separate, explicitly invoked diagnostic against the historical v33
+mockup (`INTELITEX_V33_REFERENCE=<path>`, recoverable from commit `b0c40df`); the current UI,
+not v33, is authoritative, so it is not part of the standard suite.
+Artifacts go under `$INTELITEX_TEST_EVIDENCE_ROOT` (default: the system temp directory; `intelitex-browser-evidence`,
+`intelitex-visual-evidence`, `intelitex-visual-v33-evidence`).
 
 See [contract map](../docs/web/contract-map.md), [verification](../docs/web/verification.md)
 and [intentional differences](../docs/web/differences.md). Do not copy mock execution

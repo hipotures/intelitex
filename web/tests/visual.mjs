@@ -1,107 +1,80 @@
+// Standard visual regression suite: the current Work UI against approved, version-controlled baseline images
+// in tests/visual-baseline/, plus the 12 P0 preload layout comparisons. Every comparison runs; failures are
+// reported together at the end. The historical v33 comparison is separate: npm run test:visual:v33.
+//
+// Baselines are never written here. With INTELITEX_VISUAL_CANDIDATES=1 the run also saves each screenshot as a
+// candidate under the test evidence root (./tmp); adopting candidates is a deliberate, reviewed copy into
+// tests/visual-baseline/. A missing baseline is a failure, never a skip.
 import { testEvidence } from './paths.mjs'
 import { verifyPreloadVisual } from './preload-visual.mjs'
-import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { createInterface } from 'node:readline'
-import { mkdir,readFile,writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
-import pixelmatch from 'pixelmatch'
-import { PNG } from 'pngjs'
-const output=testEvidence('intelitex-visual-evidence')
-await mkdir(output,{recursive:true})
-const referencePath=process.env.INTELITEX_V33_REFERENCE ?? resolve('../.agents/skills/intelitex-web/assets/intelitex_workspace_mockup_v33.html')
-if (existsSync(referencePath)) await legacyVisual()
-else {
- const browser=await chromium.launch()
- try {
-  const preloadResults=await verifyPreloadVisual(browser,output+'/preload')
-  const legacy={status:'unrun',reason:'The optional immutable v33 reference HTML is absent. Set INTELITEX_V33_REFERENCE to the approved asset to run pixel comparisons.'}
-  await writeFile(output+'/report.json',JSON.stringify({browser:browser.version(),legacy,preloadResults},null,2))
-  console.log(JSON.stringify({legacy,preloadComparisons:preloadResults.length}))
- } finally { await browser.close() }
-}
+import { DIFF_BUDGET, THEMES, WORK_VIEWPORTS, compare, embedInter, failureCollector, readyWork, setTheme, startFixtureServer } from './visual-support.mjs'
 
-async function legacyVisual() {
-const server=spawn('uv',['run','--group','dev','python','tests/web_fixture_server.py'],{cwd:'..',stdio:['pipe','pipe','inherit']})
-const lines=createInterface({input:server.stdout})
-const config=await new Promise((resolve,reject)=>{lines.on('line',line=>{try{const data=JSON.parse(line);if(data.url)resolve(data)}catch{}});server.once('exit',reject)})
-const browser=await chromium.launch()
+const baselineDir = resolve(import.meta.dirname, 'visual-baseline')
+const output = testEvidence('intelitex-visual-evidence')
+const candidates = process.env.INTELITEX_VISUAL_CANDIDATES === '1' ? `${output}/candidates` : null
+await mkdir(output, { recursive: true })
+if (candidates) await mkdir(candidates, { recursive: true })
+
+const { config, stop } = await startFixtureServer()
+const browser = await chromium.launch()
+const { failures, check } = failureCollector()
+const results = []
+let preloadResults = []
 try {
- const reference=await browser.newPage({viewport:{width:1440,height:1000}})
- const actual=await browser.newPage({viewport:{width:1440,height:1000},colorScheme:'dark'})
- const errors=[];actual.on('pageerror',e=>errors.push(e.message));actual.on('console',m=>{if(m.type()==='error')errors.push(m.text())})
- const referenceURL=pathToFileURL(referencePath).href
- await reference.goto(referenceURL)
- await reference.screenshot({path:output+'/original-work-dark-1440.png',fullPage:true,animations:'disabled'})
- await reference.locator('.workspace-row').first().click()
- await reference.screenshot({path:output+'/original-workspace-dark-1440.png',fullPage:true,animations:'disabled'})
- await reference.locator('.section-name').first().click()
- await reference.locator('#previewDrawer.open').waitFor()
- await reference.screenshot({path:output+'/original-drawer-dark-1440.png',fullPage:true,animations:'disabled'})
- await reference.keyboard.press('Escape')
- await reference.evaluate(()=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'review',id:'silent-ws'};localStorage.setItem(key,JSON.stringify(s))})
- await reference.reload();await reference.screenshot({path:output+'/original-review-dark-1440.png',fullPage:true,animations:'disabled'})
- await reference.setViewportSize({width:390,height:844})
- await reference.screenshot({path:output+'/original-review-dark-390.png',fullPage:true,animations:'disabled'})
- await reference.setViewportSize({width:1440,height:1000})
- for (const [phase,id] of [['prepare','silent-ws'],['p1','silent-ws'],['translation','glass-ws'],['publish','archive-ws']]) {
-  await reference.evaluate(({phase,id})=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'phase',id,phase};localStorage.setItem(key,JSON.stringify(s))},{phase,id})
-  await reference.reload();await reference.locator('.phase-detail-page').waitFor()
-  await reference.screenshot({path:`${output}/original-phase-${phase}-dark-1440.png`,fullPage:true,animations:'disabled'})
- }
- await reference.getByRole('button',{name:'Reader',exact:true}).click()
- await reference.screenshot({path:output+'/original-reader-dark-1440.png',fullPage:true,animations:'disabled'})
- await reference.setViewportSize({width:390,height:844})
- await reference.screenshot({path:output+'/original-reader-dark-390.png',fullPage:true,animations:'disabled'})
- await reference.getByRole('button',{name:'Work',exact:true}).click()
- await reference.evaluate(()=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'home'};localStorage.setItem(key,JSON.stringify(s))})
- await reference.reload()
- await reference.getByRole('button',{name:'Archive →'}).click()
- await reference.screenshot({path:output+'/original-archive-dark-390.png',fullPage:true,animations:'disabled'})
- await reference.keyboard.press('Escape')
- await reference.getByRole('button',{name:'Settings',exact:true}).click()
- await reference.screenshot({path:output+'/original-settings-dark-390.png',fullPage:true,animations:'disabled'})
- await reference.keyboard.press('Escape')
- await reference.setViewportSize({width:1440,height:1000})
- // Test-only fixture adapts data, never the reference bytes, CSS, or production state.
- const fixture=await reference.evaluate(()=>{const key='intelitex-mockup-v22';const s=JSON.parse(localStorage.getItem(key));s.route={kind:'home'};s.settings.sourcePath='Configured';s.library=[{id:'source',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:1,workspaceId:'prepared'},{id:'second',title:'Relay Book',author:'Test Author',words:'—',lang:'en',cover:2,workspaceId:null}];s.workspaces=[{...s.workspaces[2],id:'prepared',bookId:'source',analysisDone:false,prepared:true,error:null,lastUpdated:Date.now(),sections:[{id:'one',name:'Chapter 1',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}},{id:'two',name:'Chapter 2',mode:'Full',passes:{1:'pending',2:'pending',3:'pending',4:'pending',5:'pending'}}]}];return JSON.stringify(s)})
- const results=[]
- for(const [width,height] of [[1440,1000],[1920,1080],[1024,1000],[820,1000],[720,1000],[390,844]]) {
-  for(const theme of ['dark','light']) {
-   const fixtureState=JSON.parse(fixture);fixtureState.theme=theme
-   const referenceView=await browser.newPage({viewport:{width,height}})
-   await referenceView.addInitScript(value=>localStorage.setItem('intelitex-mockup-v22',value),JSON.stringify(fixtureState))
-   await referenceView.goto(referenceURL)
-   await referenceView.locator('.book-card').first().waitFor()
-   await actual.setViewportSize({width,height})
-   await actual.goto(config.url+'/work');await actual.locator('.book-card').first().waitFor()
-   for(let tries=0;tries<3 && await actual.locator('html').getAttribute('data-theme')!==theme;tries++)await actual.getByRole('button',{name:/Theme: .*\. Switch theme/}).click()
-   assert.equal(await actual.locator('html').getAttribute('data-theme'),theme)
-   await actual.locator('.workspace-state').waitFor({state:'attached'})
-   await actual.evaluate(()=>document.fonts.ready);await referenceView.evaluate(()=>document.fonts.ready)
-   // Disable only visual transition timing, equally on both pages.
-   for(const page of [actual,referenceView])await page.emulateMedia({reducedMotion:'reduce'})
-   const name=`work-${theme}-${width}`
-   const a=await actual.screenshot({path:`${output}/${name}-actual.png`,animations:'disabled'})
-   const b=await referenceView.screenshot({path:`${output}/${name}-reference.png`,animations:'disabled'})
-   const one=PNG.sync.read(a),two=PNG.sync.read(b),diff=new PNG({width,height})
-   const pixels=pixelmatch(one.data,two.data,diff.data,width,height,{threshold:.15,includeAA:false})
-   await writeFile(`${output}/${name}-diff.png`,PNG.sync.write(diff))
-   assert.ok(pixels/(width*height) <= .01, `${name}: ${100*pixels/(width*height)}% exceeds the 1% stable-fixture budget`)
-   const geometry=await actual.locator('.topbar').evaluate(n=>n.getBoundingClientRect().height)
-   assert.equal(geometry,64)
-   assert.equal(await actual.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false)
-   const measure=page=>page.locator('.book-card,.cover').evaluateAll(nodes=>nodes.map(n=>({class:n.className,rect:n.getBoundingClientRect().toJSON(),font:getComputedStyle(n).font,align:getComputedStyle(n).alignItems,padding:getComputedStyle(n).padding})))
-   results.push({name,differingPixels:pixels,percent:100*pixels/(width*height),actualGeometry:await measure(actual),referenceGeometry:await measure(referenceView)})
-   await referenceView.close()
+  for (const [width, height] of WORK_VIEWPORTS) {
+    for (const theme of THEMES) {
+      const name = `work-${theme}-${width}`
+      await check(name, async () => {
+        // A fresh context per comparison: no state, hover or scroll position carries over between screenshots.
+        const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce' })
+        const page = await context.newPage()
+        const errors = []
+        page.on('pageerror', error => errors.push(error.message))
+        page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+        try {
+          await page.goto(config.url + '/work')
+          await embedInter(page)
+          await setTheme(page, theme)
+          await readyWork(page)
+          const actual = await page.screenshot({ path: `${output}/${name}-actual.png`, animations: 'disabled' })
+          if (candidates) await writeFile(`${candidates}/${name}.png`, actual)
+          const problems = []
+          const topbar = await page.locator('.topbar').evaluate(n => n.getBoundingClientRect().height)
+          if (topbar !== 64) problems.push(`topbar height ${topbar} ≠ 64`)
+          if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) problems.push('horizontal scroll')
+          if (errors.length) problems.push(`console errors: ${errors.join(' | ')}`)
+          const baselinePath = `${baselineDir}/${name}.png`
+          const result = { name, baseline: existsSync(baselinePath) }
+          if (!result.baseline) problems.push(`no approved baseline at tests/visual-baseline/${name}.png`)
+          else {
+            const comparison = compare(actual, await readFile(baselinePath))
+            if (comparison.diff) await writeFile(`${output}/${name}-diff.png`, comparison.diff)
+            Object.assign(result, { differingPixels: comparison.pixels, percent: comparison.percent })
+            if (comparison.sizeMismatch) problems.push(`size ${comparison.sizeMismatch}`)
+            else if (comparison.pixels / (width * height) > DIFF_BUDGET) problems.push(`${comparison.percent}% exceeds the 1% budget`)
+          }
+          results.push(result)
+          if (problems.length) throw new Error(problems.join('; '))
+        } finally { await context.close() }
+      })
+    }
   }
- }
- assert.deepEqual(errors,[])
- const preloadResults=await verifyPreloadVisual(browser,output+'/preload')
- await writeFile(output+'/report.json',JSON.stringify({browser:browser.version(),unmasked:true,results,preloadResults,consoleErrors:errors},null,2))
- console.log(JSON.stringify(results,null,2))
-} finally { await browser.close();server.stdin.end('quit\n') }
+  await check('p0 preload', async () => {
+    const preload = await verifyPreloadVisual(browser, output + '/preload')
+    preloadResults = preload.results
+    failures.push(...preload.failures)
+  })
+} finally { await browser.close(); stop() }
+
+await writeFile(output + '/report.json', JSON.stringify({ browser: browser.version(), unmasked: true, candidates, results, preloadComparisons: preloadResults.length, preloadResults, failures }, null, 2))
+for (const r of results) console.log(`${r.name.padEnd(17)} ${r.baseline ? `${r.percent.toFixed(4)}%` : 'no baseline'}`)
+console.log(`P0 preload comparisons: ${preloadResults.length}${candidates ? `; candidates written to ${candidates}` : ''}`)
+if (failures.length) {
+  console.error(`Visual regression: ${failures.length} failure(s):\n- ${failures.join('\n- ')}`)
+  process.exit(1)
 }
+console.log(`Visual regression: all ${results.length} Work comparisons and ${preloadResults.length} P0 comparisons passed.`)

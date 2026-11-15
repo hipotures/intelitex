@@ -17,6 +17,7 @@
     "test:browser": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:visual": "node tests/visual.mjs",
+    "test:visual:v33": "node tests/visual-v33.mjs",
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
