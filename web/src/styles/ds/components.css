@@ -27,13 +27,14 @@
   width:36px; height:36px; background:var(--panel); display:grid; place-items:center; color:var(--text-soft);
   font-size:var(--ds-text-lg);
 }
-.ds-icon-btn:hover:not(:disabled), .ds-btn:hover:not(:disabled, .ds-btn-primary, .ds-btn-danger) {
+/* State conditions sit in :where() so a state rule weighs (0,2,0), like `.x .ds-btn` context rules in applications. */
+.ds-icon-btn:hover:where(:not(:disabled)), .ds-btn:hover:where(:not(:disabled, .ds-btn-primary, .ds-btn-danger)) {
   border-color:var(--line-strong); background:var(--panel-2);
 }
-.ds-btn-primary:hover:not(:disabled) { filter:brightness(1.07); transform:translateY(-1px); }
+.ds-btn-primary:hover:where(:not(:disabled)) { filter:brightness(1.07); transform:translateY(-1px); }
 .ds-btn:disabled, .ds-icon-btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
 @media (prefers-reduced-motion: reduce) {
-  .ds-btn-primary:hover:not(:disabled) { transform:none; }
+  .ds-btn-primary:hover:where(:not(:disabled)) { transform:none; }
 }
 
 /* ---- Panels and cards ------------------------------------------------------------------------------------- */

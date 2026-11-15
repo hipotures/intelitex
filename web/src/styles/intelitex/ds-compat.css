@@ -1,0 +1,17 @@
+/* Production parity for ds primitives used by Intelitex.
+   The ds primitives deliberately improve a few interaction states (ds/README.md, "Differences"). Intelitex keeps
+   its current behavior until those changes are approved, so this file restores it for the ds classes. Removing a
+   block here is how a deferred improvement would ship; tests/ds-states.test.mjs pins both behaviors. */
+
+/* Hover also styles disabled buttons (legacy :hover rules had no :not(:disabled)). */
+.ds-btn:hover:where(:disabled:not(.ds-btn-primary, .ds-btn-danger)), .ds-icon-btn:hover:where(:disabled) {
+  border-color:var(--line-strong); background:var(--panel-2);
+}
+/* Weights match the legacy (0,2,0) state rules so application context rules still override them. */
+.ds-btn-primary:hover:where(:disabled) { filter:brightness(1.07); }
+/* Disabled danger and icon buttons keep full opacity; only the global disabled cursor applies. */
+.ds-btn-danger:disabled, .ds-icon-btn:disabled { opacity:1; }
+/* The primary hover lift stays under prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  .ds-btn-primary:hover:where(:not(:disabled)) { transform:translateY(-1px); }
+}

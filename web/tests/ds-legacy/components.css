@@ -1,0 +1,32 @@
+/* Frozen legacy Intelitex component CSS, removed from the app when the components moved to ds- primitives.
+   Test fixture only (tests/ds-gallery.test.mjs, tests/ds-states.test.mjs): ds primitives plus
+   intelitex/ds-compat.css must keep computing exactly these styles. Never imported by the app. */
+
+/* Buttons (from intelitex/components.css) */
+.icon-btn, .ghost-btn, .secondary-btn, .primary-btn, .danger-btn {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  cursor:pointer;
+  transition:var(--ds-duration-base) var(--ds-ease);
+}
+.icon-btn {
+  width:36px;height:36px;background:var(--panel);display:grid;place-items:center;color:var(--text-soft);
+  font-size:var(--ds-text-lg);
+}
+.icon-btn:hover, .ghost-btn:hover, .secondary-btn:hover { border-color:var(--line-strong); background:var(--panel-2); }
+.primary-btn {
+  background:var(--accent); border-color:transparent; color:#fff; padding:9px 15px; font-weight:var(--ds-weight-bold);
+}
+.primary-btn:hover { filter:brightness(1.07); transform:translateY(-1px); }
+.danger-btn {
+  background:var(--red-soft); border-color:color-mix(in srgb,var(--red) 55%,var(--line)); color:var(--red); padding:9px 15px;font-weight:var(--ds-weight-bold);
+}
+.secondary-btn { background:var(--panel); padding:9px 15px; font-weight:var(--ds-weight-semibold); }
+.ghost-btn { background:transparent; padding:var(--ds-space-4) var(--ds-space-6); color:var(--text-soft); }
+.ghost-btn.compact { padding:var(--ds-space-3) var(--ds-space-5);font-size:var(--ds-text-md); }
+.primary-btn:disabled,.secondary-btn:disabled,.ghost-btn:disabled { opacity:.45;cursor:not-allowed;transform:none; }
+
+/* Context rules that named legacy button classes (from intelitex/reader.css; now .ds-btn-ghost). Their (0,2,0) weight
+   outranks every legacy base rule above, so the earlier position here does not change the result. */
+.reader-controls .ghost-btn { padding:5px;text-align:center;font-size:19px; }
+.reader-status .ghost-btn { font-size:11px; }

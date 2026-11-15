@@ -1,26 +1,5 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
-.icon-btn, .ghost-btn, .secondary-btn, .primary-btn, .danger-btn {
-  border:1px solid var(--line);
-  border-radius:var(--radius-sm);
-  cursor:pointer;
-  transition:var(--ds-duration-base) var(--ds-ease);
-}
-.icon-btn {
-  width:36px;height:36px;background:var(--panel);display:grid;place-items:center;color:var(--text-soft);
-  font-size:var(--ds-text-lg);
-}
-.icon-btn:hover, .ghost-btn:hover, .secondary-btn:hover { border-color:var(--line-strong); background:var(--panel-2); }
-.primary-btn {
-  background:var(--accent); border-color:transparent; color:#fff; padding:9px 15px; font-weight:var(--ds-weight-bold);
-}
-.primary-btn:hover { filter:brightness(1.07); transform:translateY(-1px); }
-.danger-btn {
-  background:var(--red-soft); border-color:color-mix(in srgb,var(--red) 55%,var(--line)); color:var(--red); padding:9px 15px;font-weight:var(--ds-weight-bold);
-}
-.secondary-btn { background:var(--panel); padding:9px 15px; font-weight:var(--ds-weight-semibold); }
-.ghost-btn { background:transparent; padding:var(--ds-space-4) var(--ds-space-6); color:var(--text-soft); }
-.ghost-btn.compact { padding:var(--ds-space-3) var(--ds-space-5);font-size:var(--ds-text-md); }
-.primary-btn:disabled,.secondary-btn:disabled,.ghost-btn:disabled { opacity:.45;cursor:not-allowed;transform:none; }
+/* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
 .status-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-dim); }

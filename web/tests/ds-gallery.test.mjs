@@ -45,7 +45,8 @@ const pairs = [
   ['<div class="empty-note">None</div>', '<div class="ds-empty">None</div>'],
 ]
 // Files that hold the original components; loaded only for the parity check, after the gallery's own styles.
-const intelitex = ['intelitex/shell.css', 'intelitex/components.css', 'intelitex/library.css']
+// Components already migrated to ds- primitives are compared with their frozen legacy CSS (tests/ds-legacy/).
+const intelitex = ['intelitex/shell.css', '../../tests/ds-legacy/components.css', 'intelitex/components.css', 'intelitex/library.css']
 // Buttons animate color changes (transition), so wait for the settled value.
 const primaryBackground = (page, expected) => page.waitForFunction(value =>
   getComputedStyle(document.querySelector('.ds-btn-primary')).backgroundColor === value, expected, { timeout: 2000 })

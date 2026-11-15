@@ -235,7 +235,7 @@ test('Prepare rebuild is explicit and F/T/E responds before slow background read
         'P1 column means membership, not completed analysis')
       const rebuildButton = page.getByRole('button', { name: 'Rebuild', exact: true })
       await rebuildButton.waitFor()
-      assert.equal(await rebuildButton.evaluate(button => button.classList.contains('primary-btn')), true,
+      assert.equal(await rebuildButton.evaluate(button => button.classList.contains('ds-btn-primary')), true,
         'Prepare rebuild has a prominent button style')
       assert.equal(await rebuildButton.evaluate(button => {
         const actions = button.parentElement.getBoundingClientRect()

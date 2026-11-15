@@ -4,7 +4,7 @@ import { cva } from 'class-variance-authority'
 import { ArrowLeft, X } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { debugTag, type DebugId } from '../../debug/regions'
-const button = cva('', { variants: { variant: { primary: 'primary-btn', secondary: 'secondary-btn', ghost: 'ghost-btn', danger: 'danger-btn', icon: 'icon-btn' } }, defaultVariants: { variant: 'secondary' } })
+const button = cva('', { variants: { variant: { primary: 'ds-btn ds-btn-primary', secondary: 'ds-btn', ghost: 'ds-btn ds-btn-ghost', danger: 'ds-btn ds-btn-danger', icon: 'ds-icon-btn' } }, defaultVariants: { variant: 'secondary' } })
 export function Button({ variant, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary'|'secondary'|'ghost'|'danger'|'icon' }) {
   return <button type="button" className={button({ variant, className })} {...props} />
 }
