@@ -1,5 +1,5 @@
 /* Design tokens: framework-independent foundations shared by applications. Plain CSS custom properties, no
-   build step. Values reproduce the current Intelitex appearance exactly; colors live in the theme files.
+   build step. Colors live in themes.css.
    New tokens use the --ds- prefix: --text-*, --font-*, --radius-* and --shadow-* are Tailwind v4 theme
    namespaces, and redefining them would silently restyle utilities in applications that use Tailwind. */
 :root {
