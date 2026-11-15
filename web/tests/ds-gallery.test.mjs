@@ -46,7 +46,7 @@ const pairs = [
 ]
 // Files that hold the original components; loaded only for the parity check, after the gallery's own styles.
 // Components already migrated to ds- primitives are compared with their frozen legacy CSS (tests/ds-legacy/).
-const intelitex = ['intelitex/shell.css', '../../tests/ds-legacy/components.css', 'intelitex/components.css', 'intelitex/library.css']
+const intelitex = ['intelitex/tokens.css', 'intelitex/base.css', 'intelitex/shell.css', '../../tests/ds-legacy/components.css', 'intelitex/components.css', 'intelitex/library.css']
 // Buttons animate color changes (transition), so wait for the settled value.
 const primaryBackground = (page, expected) => page.waitForFunction(value =>
   getComputedStyle(document.querySelector('.ds-btn-primary')).backgroundColor === value, expected, { timeout: 2000 })
@@ -79,7 +79,7 @@ test('design-system gallery works standalone and matches Intelitex components', 
     await page.keyboard.press('Tab'); await page.keyboard.press('Space')
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
     assert.equal(await page.locator('#theme button[data-theme-value="light"]').getAttribute('aria-pressed'), 'true')
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)', 'light background')
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(245, 246, 248)', 'light background')
     await primaryBackground(page, 'rgb(47, 126, 209)')   // light accent
     await page.mouse.move(0, 0); await page.waitForTimeout(300)   // let hover and color transitions settle before the screenshot
     await page.screenshot({ path: resolve(evidence, 'gallery-light.png'), fullPage: true })

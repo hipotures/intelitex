@@ -71,9 +71,4 @@
   --ds-header-h: 64px;
   --ds-content-max: 1480px;
   --ds-content-max-wide: 1520px;
-
-  /* Historical Intelitex names, kept as aliases. */
-  --radius: var(--ds-radius);
-  --radius-sm: var(--ds-radius-sm);
-  --header-h: var(--ds-header-h);
 }

@@ -13,8 +13,9 @@ import * as legacyCases from './ds-legacy/cases.mjs'
 // 'ds/…' names the design-system package (web/design-system/), anything else an Intelitex stylesheet in src/styles/.
 const cssPath = f => f.startsWith('ds/') ? resolve('design-system', f.slice(3)) : resolve('src/styles', f)
 const read = files => Promise.all(files.map(f => readFile(cssPath(f), 'utf8'))).then(parts => parts.join('\n'))
-const dsFiles = ['ds/tokens.css', 'ds/themes.css', 'ds/base.css', 'ds/components.css', 'ds/state.css']
-const appFiles = ['ds/tokens.css', 'ds/themes.css', 'ds/base.css', 'ds/components.css', 'intelitex/ds-compat.css', 'ds/state.css']
+// The standalone package only: no document defaults, no CSS reset, nothing from Intelitex.
+const dsFiles = ['ds/tokens.css', 'ds/themes.css', 'ds/components.css', 'ds/state.css']
+const appFiles = ['ds/tokens.css', 'intelitex/tokens.css', 'ds/themes.css', 'intelitex/base.css', 'ds/components.css', 'intelitex/ds-compat.css', 'ds/state.css', 'intelitex/state.css']
 
 const MARKUP = `
   <button id="primary" class="ds-btn ds-btn-primary">Run</button>
@@ -109,15 +110,19 @@ test('Intelitex compatibility layer keeps the legacy interaction states', async 
 
 // Migrated Intelitex components against their frozen legacy CSS: the full app stylesheet stack with the legacy
 // rules at their former cascade position versus the stack the app ships, every theme, motion preference and state.
-const appStack = ['ds/tokens.css', 'ds/themes.css', 'intelitex/themes.css', 'ds/base.css', 'ds/components.css', 'intelitex/ds-compat.css',
+const appStack = ['ds/tokens.css', 'intelitex/tokens.css', 'ds/themes.css', 'intelitex/themes.css', 'intelitex/base.css', 'ds/components.css', 'intelitex/ds-compat.css',
   'intelitex/shell.css', 'intelitex/components.css', 'intelitex/library.css', 'intelitex/pipeline.css', 'intelitex/review.css',
-  'intelitex/reader.css', 'ds/state.css', 'intelitex/debug.css']
+  'intelitex/reader.css', 'ds/state.css', 'intelitex/state.css', 'intelitex/debug.css']
 const legacyFixture = resolve('tests/ds-legacy/components.css')
 const STATES = [[], ['hover'], ['focus', 'focus-visible'], ['active'], ['hover', 'active']]
 
 test('migrated components keep the legacy styles in every interaction state', async () => {
-  const appCss = await read(appStack)
-  const legacyCss = (await read(appStack.slice(0, 7))) + '\n' + await readFile(legacyFixture, 'utf8') + '\n' + await read(appStack.slice(7))
+  // The app bundle starts with Tailwind's preflight in a cascade layer; without it browser defaults (for example
+  // checkbox margins) would differ between the two sides only because one of them has a zero-specificity reset.
+  const preflight = `@layer base {\n${await readFile(resolve('node_modules/tailwindcss/preflight.css'), 'utf8')}\n}\n`
+  const appCss = preflight + await read(appStack)
+  const afterShell = appStack.indexOf('intelitex/shell.css') + 1   // where intelitex/components.css used to hold these rules
+  const legacyCss = preflight + (await read(appStack.slice(0, afterShell))) + '\n' + await readFile(legacyFixture, 'utf8') + '\n' + await read(appStack.slice(afterShell))
   const cases = Object.values(legacyCases).flat()
   const browser = await chromium.launch()
   const diffs = []

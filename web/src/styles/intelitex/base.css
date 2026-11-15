@@ -1,0 +1,43 @@
+/* Intelitex element defaults: page typography, every table styled like .ds-table with clickable rows, native progress,
+   form controls, scrollbars. Global by design for this application; the design system offers the same looks only
+   through opt-in classes (web/design-system/). Values come from the original v33 mockup geometry. */
+* { box-sizing: border-box;scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent; }
+html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family: var(--ds-font-sans); }
+body { min-height:100vh;line-height:normal; }
+button, input, select { font:inherit; }
+button { color:inherit;text-align:left; }
+[hidden] { display:none !important; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:var(--ds-text-4xl);letter-spacing:-.035em;line-height:1.15; }
+h2 { font-size:var(--ds-text-xl);letter-spacing:-.02em; }
+table { width:100%;border-collapse:collapse;table-layout:fixed; }
+th {
+  text-align:left;
+  color:var(--text-dim);
+  font-size:var(--ds-text-xs);
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  padding:11px 12px;
+  background:var(--panel-2);
+  border-bottom:1px solid var(--line);
+  font-weight:750;
+}
+td { padding:var(--ds-space-5) var(--ds-space-6);border-bottom:1px solid var(--line);font-size:var(--ds-text-md);vertical-align:middle; }
+tbody tr:last-child td { border-bottom:0; }
+tbody tr { cursor:pointer;transition:var(--ds-duration-fast) var(--ds-ease); }
+tbody tr:hover { background:var(--panel-2); }
+tbody tr.excluded { opacity:.42;background:var(--bg-soft); }
+/* Production semantics and accessible native elements added to v33 geometry. */
+*::-webkit-scrollbar { width:8px;height:8px; }
+*::-webkit-scrollbar-track,*::-webkit-scrollbar-corner { background:transparent; }
+*::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb);border:2px solid transparent;background-clip:padding-box;border-radius:999px; }
+*::-webkit-scrollbar-thumb:hover { background:var(--scrollbar-thumb-hover);background-clip:padding-box; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; text-decoration: none; }
+progress { appearance:none; width:100%; height:6px; border:0; border-radius:20px; overflow:hidden; background:var(--panel-3); }
+progress::-webkit-progress-bar { background:var(--panel-3); }
+progress::-webkit-progress-value { background:var(--accent); border-radius:20px; }
+progress::-moz-progress-bar { background:var(--accent); }
+progress:indeterminate { opacity:.4; }
+select,input,textarea { background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px;max-width:100%; }
+h1,h2,h3 { font-weight:var(--ds-weight-bold); }

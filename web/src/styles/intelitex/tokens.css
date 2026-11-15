@@ -1,0 +1,6 @@
+/* Historical Intelitex token names, kept as aliases of the design-system tokens. */
+:root {
+  --radius: var(--ds-radius);
+  --radius-sm: var(--ds-radius-sm);
+  --header-h: var(--ds-header-h);
+}

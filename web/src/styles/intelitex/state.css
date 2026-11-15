@@ -1,0 +1,5 @@
+/* Intelitex keyboard focus ring for every focusable element (the design system scopes its ring to ds- classes).
+   Loaded after the component files so it wins over their outline rules. `button:disabled` stays in
+   intelitex/pipeline.css: its cursor must beat earlier component buttons and lose to later ones, which only its
+   original position in the cascade reproduces. */
+:focus-visible { outline: var(--ds-focus-ring-width) solid var(--accent); outline-offset: var(--ds-focus-ring-offset); }

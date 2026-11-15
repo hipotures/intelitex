@@ -1,9 +1,10 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import '../design-system/tokens.css';
+@import './styles/intelitex/tokens.css';
 @import '../design-system/themes.css';
 @import './styles/intelitex/themes.css';
-@import '../design-system/base.css';
+@import './styles/intelitex/base.css';
 @import '../design-system/components.css';
 @import './styles/intelitex/ds-compat.css';
 @import './styles/intelitex/shell.css';
@@ -13,5 +14,6 @@
 @import './styles/intelitex/review.css';
 @import './styles/intelitex/reader.css';
 @import '../design-system/state.css';
+@import './styles/intelitex/state.css';
 @import './styles/intelitex/debug.css';
 @import './styles/intelitex/legacy.css';

@@ -1,4 +1,6 @@
-/* Shared interaction states that must win over component defaults: the keyboard focus ring.
-   `button:disabled` stays in intelitex/pipeline.css: its cursor must beat earlier component buttons and lose to later
-   ones, which only its original position in the cascade reproduces. */
-:focus-visible { outline: var(--ds-focus-ring-width) solid var(--accent); outline-offset: var(--ds-focus-ring-offset); }
+/* Keyboard focus ring for the design-system controls. Load it after component CSS (also an application's) so it
+   wins over their outline rules. Elements outside the design system can opt in with .ds-focus-ring. */
+:where(.ds-btn, .ds-icon-btn, .ds-segmented button, .ds-field input, .ds-field select, .ds-field textarea,
+  button.ds-panel-head, .ds-focus-ring):focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--accent); outline-offset: var(--ds-focus-ring-offset);
+}
