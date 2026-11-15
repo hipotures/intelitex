@@ -59,6 +59,25 @@ These differences are intentional:
 - Hover never applies to a disabled control.
 - Danger and icon buttons also get the disabled look.
 - The primary-button hover lift is turned off under `prefers-reduced-motion`.
-- `.ds-field` adds disabled and `aria-invalid` styles.
+- `.ds-field` styles only its own child `<label>`, and adds disabled and `aria-invalid` styles.
+- `.ds-segmented` marks the selected option with `aria-pressed="true"`.
 
-The app does not use these classes yet. Migrating components to them is follow-up work.
+## How Intelitex uses it
+
+Intelitex renders these primitives for buttons, panels, the sections table card, status badges, count badges, status
+dots, notices, empty states, form fields and the Sections filter. `../intelitex/ds-compat.css` (loaded right after
+`components.css`) keeps the production behavior where the primitives differ:
+
+- hover still styles disabled buttons;
+- disabled danger and icon buttons keep full opacity;
+- the hover lift stays under reduced motion;
+- every label inside a field gets the field-label style;
+- disabled field controls are not dimmed;
+- `.active` marks the Sections filter option, because adding `aria-pressed` there would change what assistive
+  technologies announce.
+
+Deleting a block from that file is how one of those improvements would ship.
+
+`tests/ds-states.test.mjs` forces hover, focus-visible and active through the DevTools protocol, in every theme,
+both motion preferences and at 1280 and 390px. It pins the plain ds behavior and the compatibility layer, and it
+compares every migrated component with the frozen legacy CSS in `tests/ds-legacy/`.
