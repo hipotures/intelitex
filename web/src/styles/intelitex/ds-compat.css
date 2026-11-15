@@ -22,3 +22,6 @@
 }
 /* Disabled field controls keep their normal look (no dimming, browser cursor). */
 .ds-field :is(input, select, textarea):disabled { opacity:revert; cursor:revert; }
+/* The Sections filter marks its current option with the .active class and no aria-pressed (adding the attribute would
+   change what assistive technologies announce, so it is deferred). */
+.ds-segmented button.active { background:var(--panel-3); color:var(--text); }

@@ -101,3 +101,10 @@
 @media (max-width:560px) {
   .setup-body .field-row { grid-template-columns:1fr;gap:0; }
 }
+
+/* Section filter segmented control (intelitex/components.css) */
+.filter-segment {
+  display:flex;background:var(--panel);border:1px solid var(--line);padding:3px;border-radius:var(--radius-sm);
+}
+.filter-segment button { border:0;background:transparent;color:var(--text-dim);padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-xs);cursor:pointer;font-size:var(--ds-text-sm); }
+.filter-segment button.active { background:var(--panel-3);color:var(--text); }

@@ -77,3 +77,8 @@ export const fields = [
   { name: 'readonly field', legacy: '<div class="field-row"><div class="field"><label>Processing</label><div class="readonly-field" data-target>Full</div></div></div>',
     migrated: '<div class="ds-field-row"><div class="ds-field"><label>Processing</label><div class="readonly-field" data-target>Full</div></div></div>' },
 ]
+
+const filter = (cls, current) => `<div class="${cls}">${['All', 'Full', 'Translate only'].map(l => `<button${l === current ? ' class="active"' : ''} data-target>${l}</button>`).join('')}</div>`
+export const segmented = [
+  { name: 'sections filter', context: '<div class="workspace-toolbar">{}</div>', legacy: filter('filter-segment', 'Full'), migrated: filter('ds-segmented', 'Full') },
+]

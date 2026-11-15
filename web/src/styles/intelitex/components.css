@@ -1,14 +1,9 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
 /* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card.
    Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. Notices: .ds-notice[data-tone], .ds-empty.
-   Fields: .ds-field, .ds-field-row, .ds-field-hint. */
+   Fields: .ds-field, .ds-field-row, .ds-field-hint. Section filter: .ds-segmented. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
-.filter-segment {
-  display:flex;background:var(--panel);border:1px solid var(--line);padding:3px;border-radius:var(--radius-sm);
-}
-.filter-segment button { border:0;background:transparent;color:var(--text-dim);padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-xs);cursor:pointer;font-size:var(--ds-text-sm); }
-.filter-segment button.active { background:var(--panel-3);color:var(--text); }
 .drawer .ds-field select { transition:var(--ds-duration-fast) var(--ds-ease); }
 .autosave-note {
   margin-top:-4px;
