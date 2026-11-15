@@ -78,17 +78,27 @@
       <button type="button" class="ds-btn ds-btn-danger" disabled>Danger (disabled)</button>
       <button type="button" class="ds-icon-btn" aria-label="Close" disabled>×</button>
     </div>
+    <p style="margin-top:var(--ds-space-6)">An inline <code>&lt;svg aria-hidden="true"&gt;</code> child sits next to the label. Applications whose body text is larger than
+      their controls set <code>--ds-control-font-size</code>.</p>
+    <div class="g-row">
+      <button type="button" class="ds-btn ds-btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Sync</button>
+      <button type="button" class="ds-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Refresh</button>
+      <button type="button" class="ds-btn ds-btn-compact" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Syncing…</button>
+    </div>
   </section>
 
   <section aria-labelledby="status">
     <h2 id="status">Badges and status</h2>
-    <p><code>.ds-badge</code> with <code>data-tone="success|accent|danger"</code>, <code>.ds-count</code>, and
+    <p><code>.ds-badge</code> with <code>data-tone="neutral|success|accent|warning|danger"</code> (neutral is the default), <code>.ds-count</code>, and
       <code>.ds-status-dot</code> with <code>data-status="running|waiting|error|done"</code>. Dots are decorative: keep a text label next to them.</p>
     <div class="g-row">
       <span class="ds-badge">Not started</span>
       <span class="ds-badge" data-tone="accent">Running</span>
       <span class="ds-badge" data-tone="success">Complete</span>
+      <span class="ds-badge" data-tone="warning">Stale</span>
       <span class="ds-badge" data-tone="danger">Failed</span>
+      <span class="ds-badge" data-tone="neutral">v0.2.0</span>
+      <span class="ds-badge" data-tone="accent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M6 9v1a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9M12 12v3"/></svg>Fork</span>
       <span class="ds-count">12</span>
     </div>
     <div class="g-row" style="margin-top:var(--ds-space-5)">
@@ -124,6 +134,11 @@
         <div class="ds-panel-body"><table class="ds-table"><thead><tr><th scope="col">Pass</th><th scope="col">Units</th></tr></thead>
           <tbody><tr><td>P1</td><td>120</td></tr><tr><td>P2</td><td>88</td></tr><tr><td>P5</td><td>31</td></tr></tbody></table></div>
       </article>
+      <article class="ds-panel ds-panel-overflow-visible" id="panel-visible">
+        <div class="ds-panel-head"><h3 class="ds-panel-title">Overflow visible</h3><code>.ds-panel-overflow-visible</code></div>
+        <div class="ds-panel-body"><p>Content that sticks out is shown, not clipped (also <code>.ds-panel-overflow-auto</code> to scroll).</p>
+          <span class="ds-badge" style="margin-right:-40px">Sticks out</span></div>
+      </article>
     </div>
     <div class="ds-table-card g-table">
       <table class="ds-table ds-table-interactive">
@@ -149,6 +164,36 @@
       <div class="ds-field"><label for="f-label">Label</label><input id="f-label" value="" aria-invalid="true" aria-describedby="f-label-error"><small class="ds-field-error" id="f-label-error">Enter a label.</small></div>
       <div class="ds-field"><label for="f-model">Model (locked)</label><input id="f-model" value="local" disabled></div>
     </div>
+    <p style="margin-top:var(--ds-space-6)">Outside a field: <code>.ds-input</code>, <code>.ds-select</code> (native picker) and <code>.ds-textarea</code>, each labelled by its own <code>&lt;label&gt;</code>.</p>
+    <div class="g-row">
+      <label for="s-sort" class="visually-hidden">Sort order</label>
+      <select class="ds-select" id="s-sort"><option>Name</option><option>Last active</option></select>
+      <label for="s-dir" class="visually-hidden">Direction (locked)</label>
+      <select class="ds-select" id="s-dir" disabled><option>Ascending</option></select>
+      <label for="s-branch" class="visually-hidden">Branch</label>
+      <input class="ds-input" id="s-branch" placeholder="main">
+      <label for="s-bad" class="visually-hidden">Invalid input</label>
+      <input class="ds-input" id="s-bad" value="no spaces" aria-invalid="true">
+    </div>
+    <div style="margin-top:var(--ds-space-5);max-width:520px">
+      <label for="s-notes" class="visually-hidden">Notes</label>
+      <textarea class="ds-textarea" id="s-notes" placeholder="One email per line"></textarea>
+    </div>
+  </section>
+
+  <section aria-labelledby="dialogs">
+    <h2 id="dialogs">Dialog</h2>
+    <p><code>&lt;dialog class="ds-dialog" aria-labelledby&gt;</code> opened with <code>showModal()</code>: the browser makes the page inert, keeps focus inside,
+      closes on <kbd>Esc</kbd> and returns focus. <code>.ds-dialog-title</code> and <code>.ds-dialog-actions</code> lay it out.</p>
+    <button type="button" class="ds-btn ds-btn-danger" id="dialog-open">Delete workspace…</button>
+    <dialog class="ds-dialog" id="dialog-demo" aria-labelledby="dialog-demo-title" closedby="any">
+      <h3 class="ds-dialog-title" id="dialog-demo-title">Delete workspace?</h3>
+      <p>All translations and reviews in this workspace are removed.</p>
+      <form method="dialog" class="ds-dialog-actions">
+        <button class="ds-btn" value="cancel">Cancel</button>
+        <button class="ds-btn ds-btn-danger" value="delete">Delete</button>
+      </form>
+    </dialog>
   </section>
 
   <section aria-labelledby="segmented">
@@ -189,6 +234,8 @@
   for (const b of document.querySelectorAll('#filter button')) b.addEventListener('click', () => {
     for (const o of document.querySelectorAll('#filter button')) o.setAttribute('aria-pressed', String(o === b))
   })
+  const dialog = document.getElementById('dialog-demo')
+  document.getElementById('dialog-open').addEventListener('click', () => dialog.showModal())
   // Accent hook: one custom property per theme, no theme selectors needed.
   const accent = document.getElementById('accent')
   accent.addEventListener('input', () => {

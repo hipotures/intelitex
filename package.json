@@ -1,6 +1,6 @@
 {
   "name": "intelitex-design-system",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Plain-CSS design system: tokens, dark and light themes, and opt-in ds- primitives. No framework, no build step.",
   "license": "CC0-1.0",
