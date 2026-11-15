@@ -56,7 +56,7 @@ export async function readyWork(page) {
     const main = document.querySelector('main')
     const refresh = document.querySelector('.library-refresh')
     return !!main && !/Loading/.test(main.innerText) && !!refresh && !refresh.disabled &&
-      ![...document.querySelectorAll('.count-badge')].some(badge => badge.textContent === '—')
+      ![...document.querySelectorAll('.ds-count')].some(badge => badge.textContent === '—')
   })
   await page.evaluate(() => document.fonts.ready)
   // Park the pointer away from controls so no hover state is captured, then let two frames paint.

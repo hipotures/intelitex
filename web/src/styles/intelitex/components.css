@@ -1,12 +1,8 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
-/* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card. */
+/* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card.
+   Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
-.status-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-dim); }
-.status-dot.running { background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft); }
-.status-dot.waiting { background:var(--amber); }
-.status-dot.error { background:var(--red); }
-.status-dot.done { background:var(--green); }
 .notice {
   margin-top:14px;
   border:1px solid color-mix(in srgb,var(--amber) 36%,var(--line));
@@ -123,14 +119,6 @@
 .phase-detail-title { min-width:0; }
 .phase-detail-title h1 { display:flex;align-items:center;gap:10px; }
 .phase-detail-meta { margin-top:7px;color:var(--text-dim);font-size:13px; }
-.phase-status-badge {
-  display:inline-flex;align-items:center;gap:7px;padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-pill);
-  border:1px solid var(--line);background:var(--panel);font-size:var(--ds-text-sm);font-weight:var(--ds-weight-bold);color:var(--text-soft);
-  white-space:nowrap;
-}
-.phase-status-badge.done { color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line));background:color-mix(in srgb,var(--green) 9%,var(--panel)); }
-.phase-status-badge.active { color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft); }
-.phase-status-badge.error { color:var(--red);border-color:color-mix(in srgb,var(--red) 42%,var(--line));background:var(--red-soft); }
 .phase-metric { border:1px solid var(--line);background:var(--panel);border-radius:var(--ds-radius-lg);padding:13px 14px;min-width:0; }
 .phase-metric-label { color:var(--text-dim);font-size:var(--ds-text-2xs);text-transform:uppercase;letter-spacing:.08em;font-weight:750; }
 .phase-metric-value { margin-top:5px;font-size:var(--ds-text-xl);font-weight:760;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }

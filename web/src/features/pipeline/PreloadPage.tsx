@@ -6,7 +6,7 @@ import { endpoint, queryClient, reconcile, request, Scope, useApi } from '../../
 import { jobSchema, preloadPreviewSchema, sourcePreloadSchema, type Pipeline, type PreloadTarget, type Profiles, type Usage, type Workspace } from '../../api/schema'
 import { createRequestKey } from '../../api/requestKey'
 import { useCommand } from '../../api/mutations'
-import { Back, Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch } from '../../components/ui/common'
+import { Back, Button, Empty, ErrorNote, Overlay, Panel, ProfileSwatch, badgeTone } from '../../components/ui/common'
 import { useConnection, useLive } from '../../realtime/coordinator'
 import { preloadFields, preloadLabels, preloadLedger, preloadTotals, preloadModel, groupPreload, provisionalPreload, type PreloadRecord } from './preloadUsage'
 import { usePreviewPosition } from './usePreviewPosition'
@@ -171,7 +171,7 @@ export function PreloadPage({ id, workspace, pipeline, usage, profiles, usageErr
     finally { latch.current = false }
   }
 
-  return <><Back id={id} /><div className="phase-detail-head"><div className="phase-detail-title"><div className="eyebrow">Preload · {workspace?.metadata.title ?? 'Workspace'}</div><h1>Preload · P0</h1><div className="phase-detail-meta">{value ? `${view === 'analysis' ? 'Analysis units · same order as P1' : 'Translation fragments'} · ${visibleTargets.length} units` : 'Source preload and session readiness'}</div></div><span className={`phase-status-badge ${displayState === 'completed' ? 'done' : displayState === 'running' ? 'active' : displayState ?? ''}`}>{statusLabel(displayState)}</span></div>
+  return <><Back id={id} /><div className="phase-detail-head"><div className="phase-detail-title"><div className="eyebrow">Preload · {workspace?.metadata.title ?? 'Workspace'}</div><h1>Preload · P0</h1><div className="phase-detail-meta">{value ? `${view === 'analysis' ? 'Analysis units · same order as P1' : 'Translation fragments'} · ${visibleTargets.length} units` : 'Source preload and session readiness'}</div></div><span className="ds-badge" data-tone={badgeTone(displayState === 'completed' ? 'done' : displayState === 'running' ? 'active' : displayState)} data-state={displayState === 'completed' ? 'done' : displayState === 'running' ? 'active' : displayState ?? ''}>{statusLabel(displayState)}</span></div>
     <ErrorNote error={inventory.error ?? pipelineError ?? usageError} retry={() => void inventory.refetch()} />
     {connection !== 'Live' && <div className="notice" role="status">{connection}. Showing the last available snapshot; Run is unavailable.</div>}
     {value && <p className="subtitle preload-freshness" title={`Saved evidence observed ${new Date(value.observed_at).toLocaleString()}; native compatibility is checked on use.`}>P0 prepares source text only. {pipeline?.approved ? 'Translation follows its normal pass order.' : 'Translation waits for whole-book analysis and Review approval.'}</p>}

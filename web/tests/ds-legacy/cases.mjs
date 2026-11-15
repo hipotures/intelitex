@@ -29,3 +29,15 @@ export const panels = [
   { name: 'table card', legacy: '<div class="table-card"><table class="sections-table"><tbody><tr data-target><td>1</td></tr></tbody></table></div>',
     migrated: '<div class="ds-table-card"><table class="sections-table"><tbody><tr data-target><td>1</td></tr></tbody></table></div>' },
 ]
+
+const phaseStates = ['done', 'active', 'error', 'partial', 'blocked', 'ready', '']
+const tone = s => ({ done: 'success', active: 'accent', error: 'danger' })[s]
+export const status = [
+  ...phaseStates.map(s => ({ name: `phase badge ${s || 'none'}`, context: '<div class="phase-detail-head">{}</div>',
+    legacy: `<span class="phase-status-badge ${s}" data-target>State</span>`,
+    migrated: `<span class="ds-badge"${tone(s) ? ` data-tone="${tone(s)}"` : ''} data-state="${s}" data-target>State</span>` })),
+  { name: 'count badge', context: '<div class="section-header"><div class="section-title"><h2>T</h2>{}</div></div>',
+    legacy: '<span class="count-badge" data-target>3</span>', migrated: '<span class="ds-count" data-target>3</span>' },
+  ...['', 'running'].map(s => ({ name: `status dot ${s || 'idle'}`, context: '<div class="workspace-state">{}Idle</div>',
+    legacy: `<span class="status-dot ${s}" data-target></span>`, migrated: `<span class="ds-status-dot"${s ? ` data-status="${s}"` : ''} data-target></span>` })),
+]

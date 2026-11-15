@@ -51,7 +51,6 @@
 .section { margin-top:30px; }
 .section-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
 .section-title { display:flex;align-items:center;gap:9px; }
-.count-badge { font-size:var(--ds-text-sm);color:var(--text-dim);border:1px solid var(--line);background:var(--panel);padding:2px 7px;border-radius:20px; }
 .back-row { margin-bottom:18px; }
 .back-link { border:0;background:transparent;color:var(--text-soft);padding:0;cursor:pointer;font-weight:var(--ds-weight-semibold);display:flex;align-items:center;gap:7px; }
 .back-link:hover { color:var(--text); }

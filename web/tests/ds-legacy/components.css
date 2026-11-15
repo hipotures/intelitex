@@ -39,3 +39,21 @@
 .phase-detail-card-body { padding:14px 15px; }
 .phase-detail-card-body:has(> .prepare-structure-scroll) { padding:0; }
 .phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }
+
+/* Status dots and phase status badge (intelitex/components.css), count badge (intelitex/shell.css) */
+.status-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-dim); }
+.status-dot.running { background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft); }
+.status-dot.waiting { background:var(--amber); }
+.status-dot.error { background:var(--red); }
+.status-dot.done { background:var(--green); }
+.phase-status-badge {
+  display:inline-flex;align-items:center;gap:7px;padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-pill);
+  border:1px solid var(--line);background:var(--panel);font-size:var(--ds-text-sm);font-weight:var(--ds-weight-bold);color:var(--text-soft);
+  white-space:nowrap;
+}
+.phase-status-badge.done { color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line));background:color-mix(in srgb,var(--green) 9%,var(--panel)); }
+.phase-status-badge.active { color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft); }
+.phase-status-badge.error { color:var(--red);border-color:color-mix(in srgb,var(--red) 42%,var(--line));background:var(--red-soft); }
+.count-badge { font-size:var(--ds-text-sm);color:var(--text-dim);border:1px solid var(--line);background:var(--panel);padding:2px 7px;border-radius:20px; }
+/* (intelitex/pipeline.css) */
+.phase-status-badge.partial { background:var(--green-soft); }

@@ -155,7 +155,7 @@ test('P1 prices update with recorded usage during a run and stop pulsing when it
         candidates: [{ text: 'Ada', reason: 'A name' }], evidence: ['B0000001'] }]
       await page.evaluate(() => window.testStream.emitProgress({ id: 2, job_id: 'j-1', workspace_id: 'w-1',
         sequence: 2, timestamp: '2026-09-23T00:00:02Z', event: { kind: 'job_state', values: { state: 'succeeded' } } }))
-      await page.locator('.phase-status-badge').getByText('Complete').waitFor()
+      await page.locator('.ds-badge').getByText('Complete').waitFor()
       await page.getByText(/Whole-book analysis.*2 entities/).waitFor()
       await page.locator('[data-ui-debug-id="PAV"]').getByText('A visitor').waitFor()
       assert.equal(await page.getByRole('button', { name: 'Run ch0001_a001 P1' }).isDisabled(), true)

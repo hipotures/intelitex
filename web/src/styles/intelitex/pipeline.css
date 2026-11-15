@@ -332,7 +332,7 @@ button:disabled { cursor: not-allowed; }
 .preload-state-label.accepted { color:var(--green); }
 .preload-state-label.running { color:var(--accent); }
 .preload-work-grid .analyse-unit-table tr.working td { background:var(--accent-soft); }
-.phase.partial,.phase-status-badge.partial { background:var(--green-soft); }
+.phase.partial,.ds-badge[data-state="partial"] { background:var(--green-soft); }
 .phase.partial .phase-icon { color:var(--green);border-color:var(--green); }
 .preload-session-explanation { font-size:12px;line-height:1.6;overflow-wrap:anywhere;user-select:text; }
 .preload-freshness { margin-bottom:10px; }

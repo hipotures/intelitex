@@ -12,6 +12,8 @@ export function ErrorNote({ error, retry }: { error: unknown; retry?: () => void
   if (!error) return null
   return <div className="notice error" role="alert"><span>{error instanceof Error ? error.message : 'Unable to load this view.'}</span>{retry && <Button onClick={retry}>Reload current state</Button>}</div>
 }
+// Status badge tone for a phase state; other states keep the neutral badge (data-state stays for app-specific styling).
+export const badgeTone = (state: string | undefined) => state === 'done' ? 'success' : state === 'active' ? 'accent' : state === 'error' ? 'danger' : undefined
 export function Empty({ children }: { children: ReactNode }) { return <div className="empty-note">{children}</div> }
 export function Back({ id }: { id?: string }) {
   return <div className="back-row"><Link className="back-link" to={id ? '/work/workspaces/$workspaceId' : '/work'} params={id ? { workspaceId: id } : {}}><ArrowLeft size={14} />{id ? 'Workspace' : 'Library'}</Link></div>
