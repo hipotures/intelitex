@@ -6,8 +6,8 @@
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-decoration: none; }
 button:disabled { cursor: not-allowed; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.connection-status { font-size: 11px; color:var(--amber); white-space:nowrap; }
+:focus-visible { outline: var(--ds-focus-ring-width) solid var(--accent); outline-offset: var(--ds-focus-ring-offset); }
+.connection-status { font-size: var(--ds-text-xs); color:var(--amber); white-space:nowrap; }
 .connection-status.live { color:var(--green); }
 .workspace-debug-identity { display:none;color:var(--text-soft);user-select:text;overflow-wrap:anywhere; }
 html[data-ui-debug="on"] .workspace-debug-identity { display:inline; }
@@ -39,10 +39,10 @@ select,input,textarea { background:var(--panel-2);border:1px solid var(--line);b
 dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
 dialog.compact-modal { width:min(520px,94vw); }
 dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw;right:0;left:auto;transform:none; }
-.field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:400; }
+.field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:var(--ds-weight-regular); }
 .preview-pagination { display:flex;gap:10px;align-items:center;margin-top:16px;font-size:12px; }
 .activity-line time { color:var(--text-dim);flex-shrink:0; }
-.phase-kv { display:grid;grid-template-columns:minmax(95px,1fr) 2fr;gap:10px;font-size:13px; }
+.phase-kv { display:grid;grid-template-columns:minmax(95px,1fr) 2fr;gap:var(--ds-space-5);font-size:var(--ds-text-md); }
 .phase-kv dt { color:var(--text-dim); }
 .diagnostic-scroll { overflow:auto; }
 .download { display:inline-flex;margin-top:16px; }
@@ -172,10 +172,10 @@ html[data-theme="sepia"] .reader-page { color:#302b25; }
   html.reader-chrome-hidden .reader-mode .reader-reading-area .reader-controls { top:0; }
   html.reader-chrome-hidden .reader-mode .reader-progress-line { top:0; }
 }
-.settings-section > .subtitle { margin:14px 0; }
+.settings-section > .subtitle { margin:var(--ds-space-7) 0; }
 @media (max-width:820px) { .connection-status { display:none; }.model-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.phase-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.reader-content { padding:24px; }.workspace-heading > div { min-width:0; } }
 @media (max-width:720px) { .model-config-row { grid-template-columns:1fr; }.notice { flex-wrap:wrap; }.reader-page { font-size:17px; } }
-h1,h2,h3 { font-weight:700; }
+h1,h2,h3 { font-weight:var(--ds-weight-bold); }
 .processing-switch button { text-align:center; }
 .processing-switch.saving { box-shadow:0 0 0 2px var(--accent); }
 .processing-switch.saving button.active { opacity:.72; }
@@ -253,13 +253,13 @@ h1,h2,h3 { font-weight:700; }
 @media (max-width:560px) { .setup-body .field-row { grid-template-columns:1fr;gap:0; }.setup-profile-row { grid-template-columns:85px minmax(0,1fr); }.source-detail-head .cover { width:88px;flex-basis:88px; } }
 /* v33's two off-canvas drawers cast this edge shadow even while closed. Native
    dialogs are unmounted, so preserve that decoration without hidden focus targets. */
-body::before,body::after { content:"";position:fixed;top:0;right:0;height:100vh;width:min(520px,94vw);transform:translateX(105%);box-shadow:-18px 0 50px rgba(0,0,0,.28);pointer-events:none;z-index:70; }
+body::before,body::after { content:"";position:fixed;top:0;right:0;height:100vh;width:min(520px,94vw);transform:translateX(105%);box-shadow:var(--ds-shadow-drawer);pointer-events:none;z-index:var(--ds-z-drawer); }
 body:has(dialog.drawer[open])::before { display:none; }
 .usage-table { min-width:820px; }.usage-table th:first-child { width:26%; }.usage-table th:nth-child(2) { width:18%; }.usage-table th:nth-child(3) { width:14%; }
 .p1-metrics,.translate-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
 .publish-command-row { display:flex;justify-content:flex-end;margin:0 0 16px; }
 .p1-metrics .phase-metric-value,.translate-metrics .phase-metric-value { font-variant-numeric:tabular-nums; }
-.main.workspace-page,.main.prepare-detail-page,.main.analyse-detail-page,.main.review-page,.main.phase-detail-page { max-width:1520px; }
+.main.workspace-page,.main.prepare-detail-page,.main.analyse-detail-page,.main.review-page,.main.phase-detail-page { max-width:var(--ds-content-max-wide); }
 .analyse-content { display:flex;flex-direction:column;gap:14px; }
 .analyse-unit-table th:first-child { width:auto; }
 .analyse-unit-table th:nth-child(2) { width:76px;text-align:center; }
@@ -461,9 +461,9 @@ body:has(dialog.drawer[open])::before { display:none; }
 .prepare-rerun-reason { flex:1 1 260px;min-width:0;margin:0;color:var(--text-soft);font-size:12px;line-height:1.5;user-select:text; }
 .prepare-rerun-reason strong { color:var(--amber);font-weight:650; }
 .connecting-screen { min-height:calc(100vh - 70px);padding-top:clamp(36px,8vh,96px); }
-.connecting-screen h1 { margin:10px 0 8px; }
+.connecting-screen h1 { margin:var(--ds-space-5) 0 var(--ds-space-4); }
 .connecting-screen .subtitle { max-width:48ch; }
-.connecting-panel { display:grid;gap:16px;margin-top:32px;padding:25px;max-width:720px;min-height:200px;border:1px solid var(--line);border-radius:12px;background:var(--panel); }
+.connecting-panel { display:grid;gap:var(--ds-space-8);margin-top:32px;padding:25px;max-width:720px;min-height:200px;border:1px solid var(--line);border-radius:var(--ds-radius-lg);background:var(--panel); }
 .connecting-panel span { display:block;height:18px;border-radius:5px;background:var(--panel-2); }
 .connecting-panel span:first-child { width:38%;height:24px; }
 .connecting-panel span:nth-child(2) { width:82%; }
@@ -521,7 +521,7 @@ body:has(dialog.drawer[open])::before { display:none; }
 }
 
 /* Debug badges are a presentation-only overlay. The DOM ID stays available when off. */
-.debug-setting { display:flex;align-items:center;gap:10px; }
+.debug-setting { display:flex;align-items:center;gap:var(--ds-space-5); }
 .debug-setting input { width:16px;height:16px;accent-color:var(--accent); }
 .model-visibility { display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer; }
 .model-visibility input { width:16px;height:16px;accent-color:var(--accent); }
