@@ -1,7 +1,7 @@
 /* Shared color themes. Dark is the default (:root); light applies with <html data-theme="light">.
    An application may set its own accent without matching theme selectors:
      :root { --ds-accent-dark: #…; --ds-accent-soft-dark: rgba(…,.14); --ds-accent-light: #…; --ds-accent-soft-light: rgba(…,.12); }
-   Unset hooks keep the Intelitex blue. */
+   Unset hooks keep the default blue (#4f9dea dark, #2f7ed1 light). */
 :root {
   --bg: #0d0f12;
   --bg-soft: #111419;

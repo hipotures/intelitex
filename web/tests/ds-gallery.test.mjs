@@ -3,7 +3,7 @@
 // ds- primitive computes exactly the same default-state styles as the Intelitex component it was extracted from.
 import { testEvidence } from './paths.mjs'
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import test from 'node:test'
@@ -93,6 +93,8 @@ test('design-system gallery works standalone and matches Intelitex components', 
     // Parity with the Intelitex components, in both themes.
     // Transitions are disabled for the comparison so that computed colors are final values, not interpolations.
     await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; }' })
+    // Tailwind preflight as in the app bundle (in its cascade layer), so legacy rules see the same browser-default reset.
+    await page.addStyleTag({ content: `@layer base {\n${await readFile(resolve('node_modules/tailwindcss/preflight.css'), 'utf8')}\n}` })
     for (const file of intelitex) await page.addStyleTag({ url: pathToFileURL(resolve(styles, file)).href })
     for (const theme of ['dark', 'light']) {
       const diffs = await page.evaluate(({ pairs, theme }) => {

@@ -1,23 +1,21 @@
-/* Design-system primitives.
-   Framework-independent: plain `ds-` classes plus native/ARIA state (`:disabled`, `aria-pressed`, `aria-invalid`,
-   `data-tone`, `data-status`). No JavaScript and no build step; depends only on ds/tokens.css and ds/themes.css.
-   Default-state values equal the matching Intelitex components (checked by tests/ds-gallery.test.mjs):
-     .ds-btn (secondary-btn) .ds-btn-primary .ds-btn-ghost .ds-btn-compact .ds-btn-danger .ds-icon-btn
-     .ds-panel (phase-detail-card) .ds-table-card .ds-badge (phase-status-badge) .ds-count (count-badge)
-     .ds-status-dot .ds-notice .ds-field .ds-segmented (filter-segment) .ds-empty (empty-note)
-   Deliberate differences from the Intelitex originals: hover never applies to a disabled control, every button
-   variant (also danger and icon) has the disabled state, and the hover lift is dropped under reduced motion. */
+/* Design-system primitives: .ds-btn (+ -primary, -ghost, -danger, -compact), .ds-icon-btn, .ds-panel (+ -head, -title,
+   -body), .ds-table-card, .ds-table, .ds-progress, .ds-badge, .ds-count, .ds-status-dot, .ds-notice, .ds-field (+ -row,
+   -hint, -error), .ds-segmented, .ds-empty. Plain classes plus native and ARIA state (:disabled, aria-pressed,
+   aria-invalid) and data-tone / data-status. No JavaScript, no build step; needs tokens.css and themes.css.
+   Behavior notes: hover never restyles a disabled control, every button variant has a disabled look, and the
+   primary hover lift is dropped under prefers-reduced-motion. */
 
 /* ---- Resets ---------------------------------------------------------------------------------------------- */
 /* Zero specificity (:where): they only replace browser defaults, so the primitives look the same with or without a
    CSS reset such as Tailwind preflight, and any application rule still wins. */
 :where(.ds-btn, .ds-icon-btn, .ds-segmented, .ds-segmented button, .ds-panel, .ds-panel-head, .ds-panel-body, .ds-table-card,
   .ds-table, .ds-badge, .ds-count, .ds-status-dot, .ds-notice, .ds-field, .ds-field-row, .ds-field input, .ds-field select,
-  .ds-field textarea, .ds-empty, .ds-progress) { box-sizing:border-box; }
+  .ds-field textarea, .ds-field-hint, .ds-field-error, .ds-panel-title, .ds-empty, .ds-progress) { box-sizing:border-box; }
 :where(.ds-btn, .ds-icon-btn, .ds-segmented button, .ds-field input, .ds-field select, .ds-field textarea, button.ds-panel-head) {
   margin:0; font:inherit; color:inherit;
 }
 :where(a.ds-btn) { text-decoration:none; }
+:where(.ds-icon-btn) { padding:0; }
 :where(.ds-panel-title) { margin:0; font-weight:var(--ds-weight-bold); }
 :where(.ds-notice p) { margin:0; }
 
