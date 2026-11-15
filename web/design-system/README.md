@@ -237,6 +237,34 @@ Run these from `web/`, one at a time (`--test-concurrency=1`):
 - `tests/ds-gallery.test.mjs` checks the gallery: it loads, keyboard and theme controls work, and the default
   styles equal the Intelitex originals.
 
+## Distribution to other applications
+
+Until the package has its own repository, other applications take it from Intelitex with `git subtree`. The
+consumer gets the files as ordinary commits (no submodule, no npm package), pinned to one split commit, and
+updates are a single reviewed merge. Never edit the vendored copy; make changes here and pull them.
+
+1. In Intelitex, split this folder and give the result a version name. The split is deterministic: the same
+   Intelitex commit always produces the same split commit.
+
+   ```sh
+   git subtree split --prefix=web/design-system <intelitex-commit>   # prints the split commit
+   git tag design-system-v0.1.0 <split-commit>                         # local tag until a shared remote exists
+   ```
+
+2. In the consumer, add it once with a squash merge. The merge commit records the split commit as
+   `git-subtree-split: <hash>`, which is the version pin.
+
+   ```sh
+   git subtree add --prefix=vendor/design-system <path-or-url-of-intelitex> design-system-v0.1.0 --squash
+   ```
+
+3. To update, tag a newer split and run `git subtree pull` with the same prefix and `--squash`.
+4. In the consumer's CSS, import `ds.css` before the application's own styles. Customize only through the
+   documented hooks (the accent variables, or color tokens under an application theme selector).
+
+Fetching the tag from another machine needs it on a shared remote. Pushing it, or creating a separate repository,
+is a separate decision; until then the tag lives in a local Intelitex clone.
+
 ## Extraction
 
 1. Create the new repository from this folder: `git subtree split --prefix=web/design-system -b design-system`,
