@@ -14,7 +14,7 @@ const cssFiles = (await readdir(pkg)).filter(f => f.endsWith('.css'))
 const sources = Object.fromEntries(await Promise.all(cssFiles.map(async f => [f, await readFile(resolve(pkg, f), 'utf8')])))
 const stripComments = css => css.replace(/\/\*[\s\S]*?\*\//g, '')
 // Hooks a consumer may set; every use has a fallback.
-const OPTIONAL = new Set(['--ds-accent-dark', '--ds-accent-soft-dark', '--ds-accent-light', '--ds-accent-soft-light'])
+const OPTIONAL = new Set(['--ds-accent-dark', '--ds-accent-soft-dark', '--ds-accent-light', '--ds-accent-soft-light', '--ds-control-font-size'])
 
 async function withBrowser(run) {
   const browser = await chromium.launch()
@@ -122,6 +122,65 @@ test('themes, accent hook, keyboard focus, disabled and reduced motion in the st
   const reduced = await open(browser, { reducedMotion: 'reduce' })
   await reduced.page.hover('#publish'); await settled(reduced.page, '#publish', 'filter', 'brightness(1.07)')
   assert.equal(await css(reduced.page, '#publish', 'transform'), 'none')
+}))
+
+test('control font size, icons, panel overflow, badge tones, standalone controls and the dialog', () => withBrowser(async browser => {
+  const { page, problems } = await open(browser)
+  // 10. Controls use --ds-control-font-size (14px here) although the body text is 16px; compact keeps its own size.
+  assert.equal(await css(page, 'body', 'font-size'), '16px')
+  for (const sel of ['#publish', '#name', '#lang', '#notes', '#sort', '#tag', '#summary'])
+    assert.equal(await css(page, sel, 'font-size'), '14px', sel)
+  assert.equal(await css(page, '#brand', 'font-size'), '13px')
+  // Unset, the hook falls back to the inherited size (1em).
+  await page.evaluate(() => document.documentElement.style.setProperty('--ds-control-font-size', 'initial'))
+  await settled(page, '#publish', 'font-size', '16px')
+  await page.evaluate(() => document.documentElement.style.removeProperty('--ds-control-font-size'))
+  // 11. An icon child is laid out next to the label.
+  // (#publish is a flex item of the notice, so inline-flex computes as flex.)
+  assert.deepEqual([await css(page, '#publish', 'display'), await css(page, '#publish', 'align-items'), await css(page, '#publish', 'column-gap')],
+    ['flex', 'center', '6px'])
+  assert.equal(await css(page, '#form button[type="submit"]', 'display'), 'block', 'text-only buttons keep their display')
+  // 12. Panel overflow modifiers.
+  await page.evaluate(() => { const p = document.querySelector('.ds-panel'); p.classList.add('ds-panel-overflow-visible') })
+  assert.equal(await css(page, '.ds-panel', 'overflow-x'), 'visible')
+  await page.evaluate(() => { const p = document.querySelector('.ds-panel'); p.classList.replace('ds-panel-overflow-visible', 'ds-panel-overflow-auto') })
+  assert.equal(await css(page, '.ds-panel', 'overflow-x'), 'auto')
+  // 13. Badge tones: warning uses the amber token; neutral equals the default badge.
+  assert.equal(await css(page, '.ds-badge[data-tone="warning"]', 'color'), 'rgb(213, 166, 62)')
+  const neutral = await page.evaluate(() => {
+    const a = document.createElement('span'), b = document.createElement('span')
+    a.className = b.className = 'ds-badge'; b.dataset.tone = 'neutral'; a.textContent = b.textContent = 'x'
+    document.body.append(a, b)
+    const pick = e => ['color', 'background-color', 'border-top-color'].map(p => getComputedStyle(e).getPropertyValue(p))
+    return [pick(a), pick(b)]
+  })
+  assert.deepEqual(neutral[1], neutral[0])
+  // 14. Standalone controls match the field look and keep their own width; the textarea fills its container.
+  for (const p of ['background-color', 'border-top-color', 'border-top-left-radius', 'padding-left'])
+    assert.equal(await css(page, '#sort', p), await css(page, '#lang', p), p)
+  assert.ok(parseFloat(await css(page, '#sort', 'width')) < parseFloat(await css(page, '#lang', 'width')))
+  assert.equal(await css(page, '#summary', 'width'), await css(page, '#form', 'width'))
+  await page.evaluate(() => { const t = document.getElementById('tag'); t.disabled = true; t.setAttribute('aria-invalid', 'true') })
+  assert.deepEqual([await css(page, '#tag', 'opacity'), await css(page, '#tag', 'cursor')], ['0.6', 'not-allowed'])
+  assert.equal(await css(page, '#tag', 'border-top-color'), await css(page, '#slug', 'border-top-color'))
+  // 15. Dialog: modal from showModal, accessible name, focus inside, Esc closes, focus returns, result from the form.
+  await page.focus('#delete'); await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Delete this project?' })
+  assert.ok(await dialog.isVisible())
+  assert.equal(await page.evaluate(() => document.getElementById('confirm').matches(':modal')), true)
+  assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Cancel', 'first control focused')
+  assert.equal(await css(page, '#confirm', 'overscroll-behavior-y'), 'contain')
+  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('confirm'), '::backdrop').backgroundColor), 'rgba(0, 0, 0, 0.55)')
+  await page.keyboard.press('Escape')
+  assert.equal(await dialog.isVisible(), false)
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'delete', 'focus returns to the opener')
+  // Esc fires close asynchronously; let it run (result '') before reopening.
+  await page.waitForFunction(() => document.getElementById('confirm').dataset.result === '', null, { timeout: 2000 })
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Tab'); await page.keyboard.press('Enter')
+  // The close event is queued, so wait for the listener to record the result.
+  await page.waitForFunction(() => document.getElementById('confirm').dataset.result === 'delete', null, { timeout: 2000 })
+  assert.deepEqual(problems, [])
 }))
 
 // 7. Unrelated markup on a page that loads ds.css computes exactly as on a page without it. The only intended global
