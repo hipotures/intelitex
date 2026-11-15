@@ -1,0 +1,113 @@
+/* Design-system primitives.
+   Framework-independent: plain `ds-` classes plus native/ARIA state (`:disabled`, `aria-pressed`, `aria-invalid`,
+   `data-tone`, `data-status`). No JavaScript and no build step; depends only on ds/tokens.css and ds/themes.css.
+   Default-state values equal the matching Intelitex components (checked by tests/ds-gallery.test.mjs):
+     .ds-btn (secondary-btn) .ds-btn-primary .ds-btn-ghost .ds-btn-compact .ds-btn-danger .ds-icon-btn
+     .ds-panel (phase-detail-card) .ds-table-card .ds-badge (phase-status-badge) .ds-count (count-badge)
+     .ds-status-dot .ds-notice .ds-field .ds-segmented (filter-segment) .ds-empty (empty-note)
+   Deliberate differences from the Intelitex originals: hover never applies to a disabled control, every button
+   variant (also danger and icon) has the disabled state, and the hover lift is dropped under reduced motion. */
+
+/* ---- Buttons ---------------------------------------------------------------------------------------------- */
+.ds-btn, .ds-icon-btn {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  cursor:pointer;
+  transition:var(--ds-duration-base) var(--ds-ease);
+}
+.ds-btn { background:var(--panel); padding:9px 15px; font-weight:var(--ds-weight-semibold); }
+.ds-btn-primary { background:var(--accent); border-color:transparent; color:#fff; font-weight:var(--ds-weight-bold); }
+.ds-btn-danger {
+  background:var(--red-soft); border-color:color-mix(in srgb,var(--red) 55%,var(--line)); color:var(--red);
+  font-weight:var(--ds-weight-bold);
+}
+.ds-btn-ghost { background:transparent; padding:var(--ds-space-4) var(--ds-space-6); color:var(--text-soft); font-weight:inherit; }
+.ds-btn-compact { padding:var(--ds-space-3) var(--ds-space-5); font-size:var(--ds-text-md); }
+.ds-icon-btn {
+  width:36px; height:36px; background:var(--panel); display:grid; place-items:center; color:var(--text-soft);
+  font-size:var(--ds-text-lg);
+}
+/* State conditions sit in :where() so a state rule weighs (0,2,0), like `.x .ds-btn` context rules in applications. */
+.ds-icon-btn:hover:where(:not(:disabled)), .ds-btn:hover:where(:not(:disabled, .ds-btn-primary, .ds-btn-danger)) {
+  border-color:var(--line-strong); background:var(--panel-2);
+}
+.ds-btn-primary:hover:where(:not(:disabled)) { filter:brightness(1.07); transform:translateY(-1px); }
+.ds-btn:disabled, .ds-icon-btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+@media (prefers-reduced-motion: reduce) {
+  .ds-btn-primary:hover:where(:not(:disabled)) { transform:none; }
+}
+
+/* ---- Panels and cards ------------------------------------------------------------------------------------- */
+.ds-panel { border:1px solid var(--line); background:var(--panel); border-radius:var(--ds-radius-lg); overflow:hidden; min-width:0; }
+.ds-panel-head {
+  padding:13px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;
+  gap:var(--ds-space-6);
+}
+.ds-panel-title { font-size:var(--ds-text-base); }
+.ds-panel-body { padding:14px 15px; }
+.ds-panel-body:has(> table) { padding:0; }
+.ds-table-card {
+  margin-top:10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); overflow:hidden;
+  box-shadow:var(--shadow);
+}
+
+/* ---- Badges and status ------------------------------------------------------------------------------------ */
+.ds-badge {
+  display:inline-flex; align-items:center; gap:7px; padding:var(--ds-space-3) var(--ds-space-5); border-radius:var(--ds-radius-pill);
+  border:1px solid var(--line); background:var(--panel); font-size:var(--ds-text-sm); font-weight:var(--ds-weight-bold);
+  color:var(--text-soft); white-space:nowrap;
+}
+.ds-badge[data-tone="success"] { color:var(--green); border-color:color-mix(in srgb,var(--green) 40%,var(--line)); background:color-mix(in srgb,var(--green) 9%,var(--panel)); }
+.ds-badge[data-tone="accent"] { color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--line)); background:var(--accent-soft); }
+.ds-badge[data-tone="danger"] { color:var(--red); border-color:color-mix(in srgb,var(--red) 42%,var(--line)); background:var(--red-soft); }
+.ds-count {
+  font-size:var(--ds-text-sm); color:var(--text-dim); border:1px solid var(--line); background:var(--panel); padding:2px 7px;
+  border-radius:20px;
+}
+.ds-status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--text-dim); }
+.ds-status-dot[data-status="running"] { background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+.ds-status-dot[data-status="waiting"] { background:var(--amber); }
+.ds-status-dot[data-status="error"] { background:var(--red); }
+.ds-status-dot[data-status="done"] { background:var(--green); }
+
+/* ---- Notices ---------------------------------------------------------------------------------------------- */
+.ds-notice {
+  margin-top:14px; border:1px solid color-mix(in srgb,var(--amber) 36%,var(--line)); background:var(--amber-soft);
+  border-radius:var(--radius-sm); padding:13px 14px; display:flex; align-items:center; justify-content:space-between; gap:18px;
+}
+.ds-notice[data-tone="danger"] { background:var(--red-soft); border-color:color-mix(in srgb,var(--red) 40%,var(--line)); }
+.ds-notice strong { font-size:var(--ds-text-md); }
+.ds-notice p { color:var(--text-soft); font-size:12.5px; margin-top:3px; }
+@media (max-width:720px) {
+  .ds-notice { flex-wrap:wrap; }
+}
+
+/* ---- Form fields ------------------------------------------------------------------------------------------ */
+.ds-field { margin-bottom:16px; }
+.ds-field > label {
+  display:block; font-size:var(--ds-text-sm); color:var(--text-dim); font-weight:var(--ds-weight-semibold); margin-bottom:7px;
+}
+.ds-field :is(input, select, textarea) {
+  width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:var(--ds-radius-control); color:var(--text);
+  padding:9px 10px;
+}
+.ds-field :is(input, select, textarea):disabled { opacity:.6; cursor:not-allowed; }
+.ds-field :is(input, select, textarea)[aria-invalid="true"] { border-color:color-mix(in srgb,var(--red) 70%,var(--line)); }
+.ds-field-hint { display:block; margin-top:6px; color:var(--text-dim); font-size:11px; line-height:1.45; }
+.ds-field-error { display:block; margin-top:6px; color:var(--red); font-size:11px; line-height:1.45; }
+.ds-field-row { display:grid; grid-template-columns:1fr 1fr; gap:var(--ds-space-6); }
+
+/* ---- Segmented control ------------------------------------------------------------------------------------ */
+/* A group of <button aria-pressed> toggles (role="group" + aria-label on the container). */
+.ds-segmented { display:flex; background:var(--panel); border:1px solid var(--line); padding:3px; border-radius:var(--radius-sm); }
+.ds-segmented button {
+  border:0; background:transparent; color:var(--text-dim); padding:var(--ds-space-3) var(--ds-space-5); border-radius:var(--ds-radius-xs);
+  cursor:pointer; font-size:var(--ds-text-sm);
+}
+.ds-segmented button[aria-pressed="true"] { background:var(--panel-3); color:var(--text); }
+
+/* ---- Empty state ------------------------------------------------------------------------------------------ */
+.ds-empty {
+  color:var(--text-dim); font-size:var(--ds-text-md); padding:26px; text-align:center; border:1px dashed var(--line);
+  border-radius:var(--ds-radius-md);
+}
