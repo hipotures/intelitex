@@ -6,3 +6,4 @@
   panel, table card, table, progress, badge, count, status dot, notice, field, segmented control, empty state) and a
   focus ring scoped to the primitives.
 - Global element rules removed; `base.css` is optional page defaults with zero specificity.
+- Distribution to other applications through `git subtree` split commits, pinned by tag (`design-system-v0.1.0`).
