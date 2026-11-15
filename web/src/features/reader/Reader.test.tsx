@@ -196,7 +196,8 @@ it('closes settings outside and removes the marker panel and gutter before DELET
   expect(screen.getByText('M000001')).toBeTruthy()
   expect(details.querySelector('.reader-delete-marker')).not.toBeNull()
   fireEvent.click(screen.getByText('Markers · 1'))
-  fireEvent.click(details.querySelector('button')!)
+  // Since bba63f4 the first button in the details is the × close control; target Delete explicitly.
+  fireEvent.click(details.querySelector('.reader-delete-marker')!)
   expect(view.container.querySelector('.reader-gutter-marker')).toBeNull()
   expect(view.container.querySelector('.reader-marker-popover')).toBeNull()
   expect(view.container.querySelector('.reader-range-rect.marker')).toBeNull()
