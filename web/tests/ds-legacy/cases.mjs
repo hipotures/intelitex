@@ -41,3 +41,17 @@ export const status = [
   ...['', 'running'].map(s => ({ name: `status dot ${s || 'idle'}`, context: '<div class="workspace-state">{}Idle</div>',
     legacy: `<span class="status-dot ${s}" data-target></span>`, migrated: `<span class="ds-status-dot"${s ? ` data-status="${s}"` : ''} data-target></span>` })),
 ]
+
+export const notices = [
+  { name: 'notice with action', legacy: '<div class="notice"><span>Analysis is complete.</span><button type="button" class="primary-btn" data-target>Open</button></div>',
+    migrated: '<div class="ds-notice"><span>Analysis is complete.</span><button type="button" class="ds-btn ds-btn-primary" data-target>Open</button></div>' },
+  { name: 'error notice', legacy: '<div class="notice error" role="alert" data-target><strong>Failed</strong><p>Retry later.</p></div>',
+    migrated: '<div class="ds-notice" data-tone="danger" role="alert" data-target><strong>Failed</strong><p>Retry later.</p></div>' },
+  { name: 'paragraph notice', legacy: '<p class="notice preload-session-explanation" role="status" data-target>Text</p>',
+    migrated: '<p class="ds-notice preload-session-explanation" role="status" data-target>Text</p>' },
+  { name: 'publish problem', legacy: '<p class="notice error publish-selection-problem" role="alert" data-target>Text</p>',
+    migrated: '<p class="ds-notice publish-selection-problem" data-tone="danger" role="alert" data-target>Text</p>' },
+  { name: 'command notice', context: '<div class="command">{}</div>', legacy: '<div class="notice" data-target>Text</div>', migrated: '<div class="ds-notice" data-target>Text</div>' },
+  { name: 'empty note', legacy: '<div class="empty-note" data-target>None</div>', migrated: '<div class="ds-empty" data-target>None</div>' },
+  { name: 'source preview empty', context: '<div class="prepare-source-preview">{}</div>', legacy: '<div class="empty-note" data-target>None</div>', migrated: '<div class="ds-empty" data-target>None</div>' },
+]

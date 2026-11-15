@@ -57,3 +57,22 @@
 .count-badge { font-size:var(--ds-text-sm);color:var(--text-dim);border:1px solid var(--line);background:var(--panel);padding:2px 7px;border-radius:20px; }
 /* (intelitex/pipeline.css) */
 .phase-status-badge.partial { background:var(--green-soft); }
+
+/* Notices and empty note (intelitex/components.css); context rules from components.css and pipeline.css */
+.notice {
+  margin-top:14px;
+  border:1px solid color-mix(in srgb,var(--amber) 36%,var(--line));
+  background:var(--amber-soft);
+  border-radius:var(--radius-sm);
+  padding:13px 14px;
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+}
+.notice.error { background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 40%,var(--line)); }
+.notice strong { font-size:var(--ds-text-md); }
+.notice p { color:var(--text-soft);font-size:12.5px;margin-top:3px; }
+.empty-note { color:var(--text-dim);font-size:var(--ds-text-md);padding:26px;text-align:center;border:1px dashed var(--line);border-radius:var(--ds-radius-md); }
+@media (max-width:720px) {
+  .notice { flex-wrap:wrap; }
+}
+.command .notice { font-size:12px;white-space:normal; }
+.prepare-source-preview .empty-note { padding:12px 0;text-align:left; }

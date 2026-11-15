@@ -69,7 +69,7 @@ export function PublishSelection({ id, pipeline }: { id: string; pipeline: Pipel
   return <div className="phase-detail-grid publish-detail-grid" ref={layout}>
     <Panel debugId="PSE" title={`EPUB sections · ${omitted} omitted`}>
       <p className="subtitle publish-selection-help">Choose which pages appear in the final EPUB. Saved P1–P5 results remain in this workspace.</p>
-      {!!diagnosticIds.size && <div className="notice error publish-selection-problem" role="alert">The last publication failed in {pipeline.sections.filter(section => diagnosticIds.has(section.id)).map(section => titles.get(section.id) ?? section.id).join(', ')}. Inspect its source content here before retrying.</div>}
+      {!!diagnosticIds.size && <div className="ds-notice publish-selection-problem" data-tone="danger" role="alert">The last publication failed in {pipeline.sections.filter(section => diagnosticIds.has(section.id)).map(section => titles.get(section.id) ?? section.id).join(', ')}. Inspect its source content here before retrying.</div>}
       <ErrorNote error={query.error ?? command.error} retry={() => void query.refetch()} />
       {!query.data ? <Empty>Loading publication sections…</Empty> :
         <div className="publish-section-scroll diagnostic-scroll"><table className="phase-detail-table publish-section-table">

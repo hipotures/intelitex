@@ -135,7 +135,7 @@ export function AnalyseContent({ id, pipeline, usage, profiles, usageError }: {
   }
 
   return <div className="analyse-content">
-    {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
+    {connection !== 'Live' && !pipeline.busy && <div className="ds-notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <div className="phase-detail-grid translate-detail-grid analyse-work-grid"><div className="phase-detail-stack">
       <Panel debugId="PAN" title="Analysis units"><span className="translate-working-announce" role="status">{workingId ? `Running ${workingId} · P1` : ''}</span>
         <div className="diagnostic-scroll"><table className="phase-detail-table analyse-unit-table"><thead><tr><th>Section / unit</th><th>P1</th></tr></thead><tbody>{pipeline.analysis.units.map(item => {

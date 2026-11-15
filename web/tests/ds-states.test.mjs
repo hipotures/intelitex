@@ -120,8 +120,9 @@ test('migrated components keep the legacy styles in every interaction state', as
   const browser = await chromium.launch()
   const diffs = []
   try {
-    for (const reducedMotion of ['no-preference', 'reduce']) {
-      const context = await browser.newContext({ reducedMotion })
+    // Desktop and phone widths: some primitives change at the 720px breakpoint.
+    for (const [reducedMotion, width] of [['no-preference', 1280], ['reduce', 1280], ['no-preference', 390]]) {
+      const context = await browser.newContext({ reducedMotion, viewport: { width, height: 800 } })
       const pages = {}
       for (const [side, css] of [['legacy', legacyCss], ['migrated', appCss]]) {
         const page = pages[side] = await context.newPage()
@@ -151,7 +152,7 @@ test('migrated components keep the legacy styles in every interaction state', as
             return Object.fromEntries([...s].filter(p => !p.startsWith('--')).map(p => [p, s.getPropertyValue(p)]))
           }).filter(Boolean)))
         }
-        const label = `${c.name} [${theme}, ${reducedMotion}, ${states.join('+') || 'default'}]`
+        const label = `${c.name} [${theme}, ${reducedMotion}, ${width}px, ${states.join('+') || 'default'}]`
         if (result.legacy.length !== result.migrated.length) { diffs.push(`${label}: element count`); continue }
         result.legacy.forEach((values, i) => { for (const p in values) if (values[p] !== result.migrated[i][p]) diffs.push(`${label} #${i} ${p}: ${values[p]} ≠ ${result.migrated[i][p]}`) })
       }

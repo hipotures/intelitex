@@ -321,10 +321,10 @@ export function TranslateContent({ id, pipeline, usage, profiles, usageError }: 
   }
 
   return <div className="translate-content">
-    {prerequisite && <div className="notice" role="status">{prerequisite} Saved results and source previews remain available.</div>}
-    {pipeline.units.some(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')) && <div className="notice" role="status">Segments requiring regeneration: {pipeline.units.filter(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')).map(item => item.id).join(', ')}. Earlier readable results remain available. Run continues the affected work in order.</div>}
-    {failedJob && <div className="notice error" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : failureDetail ? 'This older job did not record a detailed reason.' : 'Checking failure details…'} Saved passes remain available.</div>}
-    {connection !== 'Live' && !pipeline.busy && <div className="notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
+    {prerequisite && <div className="ds-notice" role="status">{prerequisite} Saved results and source previews remain available.</div>}
+    {pipeline.units.some(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')) && <div className="ds-notice" role="status">Segments requiring regeneration: {pipeline.units.filter(item => Object.values(item.passes).some(pass => pass.checkpoint_state === 'stale')).map(item => item.id).join(', ')}. Earlier readable results remain available. Run continues the affected work in order.</div>}
+    {failedJob && <div className="ds-notice" data-tone="danger" role="status"><strong>Previous run failed{failureTime ? ` · ${failureTime}` : ''}.</strong> No translation job is running now. {knownFailure ? failureDetail : failureDetail ? 'This older job did not record a detailed reason.' : 'Checking failure details…'} Saved passes remain available.</div>}
+    {connection !== 'Live' && !pipeline.busy && <div className="ds-notice" role="status">{connection}. Run buttons will be available when the connection recovers.</div>}
     <div className="phase-detail-grid translate-detail-grid"><div className="phase-detail-stack">
       <Panel debugId="PSC" title="Chunk progress"><span className="translate-working-announce" role="status">{working ? `Running ${working.chunkId} · P${working.passNo}${typeof attempt === 'number' ? ` · attempt ${attempt}` : ' · starting…'}` : ''}</span><div className="diagnostic-scroll"><table className="phase-detail-table translate-chunk-table"><thead><tr><th>Section / chunk</th>{passNumbers.map(number => <th key={number}>P{number}</th>)}</tr></thead><tbody>{pipeline.units.map(item => {
         const section = sections.get(item.chapter_id)

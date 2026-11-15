@@ -1,19 +1,8 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
 /* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card.
-   Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. */
+   Status: .ds-badge[data-tone], .ds-count, .ds-status-dot[data-status]. Notices: .ds-notice[data-tone], .ds-empty. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
-.notice {
-  margin-top:14px;
-  border:1px solid color-mix(in srgb,var(--amber) 36%,var(--line));
-  background:var(--amber-soft);
-  border-radius:var(--radius-sm);
-  padding:13px 14px;
-  display:flex;align-items:center;justify-content:space-between;gap:18px;
-}
-.notice.error { background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 40%,var(--line)); }
-.notice strong { font-size:var(--ds-text-md); }
-.notice p { color:var(--text-soft);font-size:12.5px;margin-top:3px; }
 .filter-segment {
   display:flex;background:var(--panel);border:1px solid var(--line);padding:3px;border-radius:var(--radius-sm);
 }
@@ -104,7 +93,6 @@
 .model-config-name { font-weight:650;font-size:13px; }
 .model-config-desc { color:var(--text-dim);font-size:11px;margin-top:3px; }
 .health { color:var(--text-dim);font-size:12px; }
-.empty-note { color:var(--text-dim);font-size:var(--ds-text-md);padding:26px;text-align:center;border:1px dashed var(--line);border-radius:var(--ds-radius-md); }
 .toast {
   position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--text);color:var(--bg);padding:9px 13px;border-radius:var(--radius-sm);
   font-size:12.5px;font-weight:var(--ds-weight-semibold);z-index:var(--ds-z-toast);opacity:0;pointer-events:none;box-shadow:var(--shadow);
@@ -137,7 +125,7 @@
   .phase-detail-head { flex-direction:column;gap:12px; }
 }
 .command > button { display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap; }
-.command .notice { font-size:12px;white-space:normal; }
+.command .ds-notice { font-size:12px;white-space:normal; }
 .overlay-dialog { color:var(--text);padding:0; }
 .overlay-dialog::backdrop { background:rgba(0,0,0,.5);backdrop-filter:blur(2px); }
 dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
@@ -152,7 +140,6 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
 .settings-section > .subtitle { margin:var(--ds-space-7) 0; }
 @media (max-width:720px) {
   .model-config-row { grid-template-columns:1fr; }
-  .notice { flex-wrap:wrap; }
 }
 .categories { margin-bottom:12px; }
 .ds-panel-body:has(> .prepare-structure-scroll) { padding:0; }
