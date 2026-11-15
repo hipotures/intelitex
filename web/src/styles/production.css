@@ -1,17 +1,10 @@
 /* Production semantics and accessible native elements added to v33 geometry. */
-:root {
-  --scrollbar-thumb:color-mix(in srgb,var(--text-dim) 65%,var(--panel));
-  --scrollbar-thumb-hover:color-mix(in srgb,var(--text-dim) 85%,var(--panel));
-}
-* { scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent; }
 *::-webkit-scrollbar { width:8px;height:8px; }
 *::-webkit-scrollbar-track,*::-webkit-scrollbar-corner { background:transparent; }
 *::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb);border:2px solid transparent;background-clip:padding-box;border-radius:999px; }
 *::-webkit-scrollbar-thumb:hover { background:var(--scrollbar-thumb-hover);background-clip:padding-box; }
-body { line-height: normal; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-decoration: none; }
-button { text-align: left; }
 button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .connection-status { font-size: 11px; color:var(--amber); white-space:nowrap; }
@@ -32,15 +25,12 @@ progress::-webkit-progress-bar { background:var(--panel-3); }
 progress::-webkit-progress-value { background:var(--accent); border-radius:20px; }
 progress::-moz-progress-bar { background:var(--accent); }
 progress:indeterminate { opacity:.4; }
-.phase-sub { display:block; }
 .section-open { background:transparent;border:0;cursor:pointer;padding:0;text-align:left; }
 .section-open.fallback { color:var(--text-dim);font-style:italic; }
 .pass-mark.done:not(.has-model) { color:var(--green);background:var(--green-soft);border-color:var(--green); }
 .pass-mark.na { border-color:transparent; }
 .pass-mark.retained,.pass-mark.stale,.pass-mark.partial { color:var(--amber);border-color:var(--amber); }
-.pass-mark.error { color:var(--red);border-color:var(--red); }
 .model-grid { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px; }
-.model-slot { min-width:0; }
 .model-slot label { display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-dim);margin-bottom:8px; }
 select,input,textarea { background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px;max-width:100%; }
 .model-slot select { width:100%;font-size:12px; }
@@ -49,18 +39,13 @@ select,input,textarea { background:var(--panel-2);border:1px solid var(--line);b
 dialog.modal-card { margin:auto;transform:none;max-width:96vw; }
 dialog.compact-modal { width:min(520px,94vw); }
 dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw;right:0;left:auto;transform:none; }
-.drawer-model-grid { display:flex;flex-direction:column;gap:8px; }
 .field .drawer-model-label { display:flex;margin-bottom:0;text-transform:uppercase;letter-spacing:.07em;font-weight:400; }
 .preview-pagination { display:flex;gap:10px;align-items:center;margin-top:16px;font-size:12px; }
-.activity-stream { max-height:250px;overflow:auto; }
-.activity-line { display:flex;gap:15px;font-size:12px;line-height:1.8; }
 .activity-line time { color:var(--text-dim);flex-shrink:0; }
 .phase-kv { display:grid;grid-template-columns:minmax(95px,1fr) 2fr;gap:10px;font-size:13px; }
 .phase-kv dt { color:var(--text-dim); }
-.phase-kv dd { margin:0;overflow-wrap:anywhere; }
 .diagnostic-scroll { overflow:auto; }
 .download { display:inline-flex;margin-top:16px; }
-.reader-book { display:block; }
 .reader-book .reader-book-identity { display:block;margin:3px 0;color:var(--text-soft);overflow-wrap:anywhere; }
 .reader-controls { display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;margin-bottom:24px; }
 .reader-selection { position:sticky;bottom:12px;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:12px;padding:12px;display:flex;gap:8px;flex-wrap:wrap;box-shadow:var(--shadow); }
@@ -180,8 +165,7 @@ html[data-theme="sepia"] .reader-page { color:#302b25; }
   .reader-mode .reader-reading-area .reader-controls { top:0; }
   .reader-progress-line { width:calc(100% + 52px);margin:0 -26px; }
   .reader-mode .reader-progress-line { top:calc(var(--header-h) + 54px + 58px);left:0;width:auto;margin:0; }
-  .reader-progress-popup,.reader-settings { top:calc(var(--header-h) + 116px); }
-  .reader-progress-popup,.reader-settings { right:14px; }
+  .reader-progress-popup,.reader-settings { top:calc(var(--header-h) + 116px); right:14px; }
   .reader-reading-area .reader-page { font-size:18px; }
   .reader-status { margin-bottom:15px; }
   html.reader-chrome-hidden .reader-mobile-books { transform:translateY(calc(-100% - var(--header-h)));opacity:0;pointer-events:none; }
@@ -195,7 +179,6 @@ h1,h2,h3 { font-weight:700; }
 .processing-switch button { text-align:center; }
 .processing-switch.saving { box-shadow:0 0 0 2px var(--accent); }
 .processing-switch.saving button.active { opacity:.72; }
-.review-term-row { display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line); }
 .review-term-sub,.candidate-title,.candidate-note { display:block; }
 .pass-cell { text-align:center; }
 
@@ -218,8 +201,6 @@ h1,h2,h3 { font-weight:700; }
 [data-palette="16"] { --model-color:#7986CB; }
 [data-palette="17"] { --model-color:#4DB6AC; }
 .categories { margin-bottom:12px; }
-
-.profile-swatch { background:var(--model-color,var(--text-dim));vertical-align:middle; }
 
 .section-header > .subtitle { margin:0; }
 .library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
@@ -244,7 +225,6 @@ h1,h2,h3 { font-weight:700; }
 .library-load-more { height:1px; }
 @keyframes library-refresh-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .library-refresh-icon.busy { animation:none; } }
-.book-card { display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start; }
 .workspace-label { margin-top:3px;color:var(--accent);font-size:12px;font-weight:650; }
 .source-detail-head { display:flex;gap:18px;align-items:flex-start; }
 .source-detail-head .cover { width:128px;flex:0 0 128px; }
@@ -309,7 +289,6 @@ body:has(dialog.drawer[open])::before { display:none; }
 @keyframes p1-counting { 0%,88%,100% { opacity:1; } 94% { opacity:.68; } }
 .p1-counting { animation:p1-counting 3.6s ease-in-out infinite; }
 .analyse-detail-page > [data-ui-debug-id="PAC"] { margin-top:14px; }
-.phase-rail { grid-template-columns:repeat(6,minmax(0,1fr)); }
 .sections-table col.section-col { width:38%; }
 .sections-table col.processing-col { width:14%; }
 .sections-table col.pass-col { width:8%; }
@@ -609,8 +588,6 @@ html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }
 @media (max-width:600px) { .review-bulk-bar > .review-transfer-actions { width:100%; } }
 /* Accessibility (audit A1): the workspace label is a <button> for keyboard access; keep the former block <div> geometry. */
 button.workspace-label { display:block;width:100%;margin-inline:0;margin-bottom:0;padding:0;border:0;background:transparent;text-align:start;line-height:inherit; }
-/* Audit A2: the toast stays mounted as a persistent live region. It used to mount already shown, so it never animated; keep that. */
-.toast { transition:none; }
 /* Audit A7: reduced motion for the remaining animations. The slide is dropped and the Reader chrome only fades. */
 @media (prefers-reduced-motion:reduce) {
   .pass-mark.active::after { animation:none; }
