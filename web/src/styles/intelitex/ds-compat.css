@@ -1,5 +1,5 @@
 /* Production parity for ds primitives used by Intelitex.
-   The ds primitives deliberately improve a few interaction states (ds/README.md, "Differences"). Intelitex keeps
+   The ds primitives deliberately improve a few interaction states (web/design-system/README.md, "Differences"). Intelitex keeps
    its current behavior until those changes are approved, so this file restores it for the ds classes. Removing a
    block here is how a deferred improvement would ship; tests/ds-states.test.mjs pins both behaviors. */
 

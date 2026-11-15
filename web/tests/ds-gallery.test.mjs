@@ -1,4 +1,4 @@
-// Design-system gallery: opens web/src/styles/ds/gallery.html straight from disk (no build, no server) and checks that
+// Design-system gallery: opens web/design-system/gallery.html straight from disk (no build, no server) and checks that
 // it loads cleanly, that its controls work from the keyboard, that the accent hook and themes apply, and that every
 // ds- primitive computes exactly the same default-state styles as the Intelitex component it was extracted from.
 import { testEvidence } from './paths.mjs'
@@ -10,7 +10,7 @@ import test from 'node:test'
 import { chromium } from 'playwright'
 
 const styles = resolve('src/styles')
-const gallery = pathToFileURL(resolve(styles, 'ds/gallery.html')).href
+const gallery = pathToFileURL(resolve('design-system/gallery.html')).href
 
 // [Intelitex markup, ds markup]; each pair is rendered into the same parent and compared element by element.
 const pairs = [

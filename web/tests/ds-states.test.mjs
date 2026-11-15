@@ -10,8 +10,9 @@ import test from 'node:test'
 import { chromium } from 'playwright'
 import * as legacyCases from './ds-legacy/cases.mjs'
 
-const styles = resolve('src/styles')
-const read = files => Promise.all(files.map(f => readFile(resolve(styles, f), 'utf8'))).then(parts => parts.join('\n'))
+// 'ds/…' names the design-system package (web/design-system/), anything else an Intelitex stylesheet in src/styles/.
+const cssPath = f => f.startsWith('ds/') ? resolve('design-system', f.slice(3)) : resolve('src/styles', f)
+const read = files => Promise.all(files.map(f => readFile(cssPath(f), 'utf8'))).then(parts => parts.join('\n'))
 const dsFiles = ['ds/tokens.css', 'ds/themes.css', 'ds/base.css', 'ds/components.css', 'ds/state.css']
 const appFiles = ['ds/tokens.css', 'ds/themes.css', 'ds/base.css', 'ds/components.css', 'intelitex/ds-compat.css', 'ds/state.css']
 

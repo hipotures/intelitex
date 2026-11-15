@@ -1,4 +1,4 @@
-# Design system (`web/src/styles/ds/`)
+# Design system (`web/design-system/`)
 
 Plain CSS with no framework, no JavaScript and no build step. Intelitex imports it through `web/src/styles.css`,
 and any other page can link the files directly.
@@ -39,7 +39,7 @@ Status dots are decorative, so always put a text label next to one.
 
 ## Reviewing the gallery
 
-Open `web/src/styles/ds/gallery.html` directly in a browser (`file://`). No dev server is needed. To check it:
+Open `web/design-system/gallery.html` directly in a browser (`file://`). No dev server is needed. To check it:
 
 - Use the Dark/Light toggle at the top, or add `?theme=light` to the URL.
 - Press `Tab` to see focus rings.
@@ -65,7 +65,7 @@ These differences are intentional:
 ## How Intelitex uses it
 
 Intelitex renders these primitives for buttons, panels, the sections table card, status badges, count badges, status
-dots, notices, empty states, form fields and the Sections filter. `../intelitex/ds-compat.css` (loaded right after
+dots, notices, empty states, form fields and the Sections filter. `web/src/styles/intelitex/ds-compat.css` (loaded right after
 `components.css`) keeps the production behavior where the primitives differ:
 
 - hover still styles disabled buttons;
