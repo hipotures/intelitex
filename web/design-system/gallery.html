@@ -46,7 +46,7 @@
   <header class="g-head">
     <div>
       <h1>Design system gallery</h1>
-      <p>Framework-independent primitives from <code>web/src/styles/ds/</code>. Every control is a native element: use
+      <p>Framework-independent primitives from <code>web/design-system/</code> (entry point <code>ds.css</code>). Every control is a native element: use
         <kbd>Tab</kbd> to see the focus ring, <kbd>Space</kbd>/<kbd>Enter</kbd> to press toggles.</p>
     </div>
     <div class="g-controls">
@@ -113,7 +113,7 @@
 
   <section aria-labelledby="panels">
     <h2 id="panels">Panels and tables</h2>
-    <p><code>.ds-panel</code> with <code>.ds-panel-head</code>, <code>.ds-panel-title</code>, <code>.ds-panel-body</code> (no padding when the body holds a table); <code>.ds-table-card</code> for a raised table.</p>
+    <p><code>.ds-panel</code> with <code>.ds-panel-head</code>, <code>.ds-panel-title</code>, <code>.ds-panel-body</code> (no padding when the body holds a table); <code>&lt;table class="ds-table"&gt;</code>, <code>.ds-table-interactive</code> for clickable rows (hover a row below) and <code>.ds-table-card</code> for a raised table. Progress bars use <code>&lt;progress class="ds-progress"&gt;</code>.</p>
     <div class="g-grid">
       <article class="ds-panel">
         <div class="ds-panel-head"><h3 class="ds-panel-title">Source</h3><span class="ds-badge" data-tone="success">Verified</span></div>

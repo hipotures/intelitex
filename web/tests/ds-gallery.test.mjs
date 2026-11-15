@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { chromium } from 'playwright'
+import { embedInter } from './visual-support.mjs'
 
 const styles = resolve('src/styles')
 const gallery = pathToFileURL(resolve('design-system/gallery.html')).href
@@ -62,6 +63,9 @@ test('design-system gallery works standalone and matches Intelitex components', 
     page.on('requestfailed', r => problems.push(`failed ${r.url()}`))
     await page.goto(gallery)
     await page.waitForLoadState('load')
+    // Screenshots use the Inter the project depends on: some machines' fontconfig maps every generic family, even
+    // sans-serif, to a monospace font (Liberation Mono on the test VM), which made the evidence look wrong.
+    await embedInter(page)
     assert.deepEqual(problems, [], 'gallery loads without errors or failed requests')
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ds-space-6').trim()), '12px', 'tokens.css loaded')
     assert.equal(await page.locator('.ds-btn-primary').first().evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(79, 157, 234)', 'dark accent')
