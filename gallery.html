@@ -12,6 +12,9 @@
 <link rel="stylesheet" href="state.css">
 <style>
   /* Gallery layout only; not part of the design system. */
+  h1, h2, h3, p { margin:0; }
+  h1 { font-size:var(--ds-text-4xl); letter-spacing:-.035em; line-height:1.15; }
+  h2 { font-size:var(--ds-text-xl); letter-spacing:-.02em; }
   body { padding:var(--ds-space-9) 16px var(--ds-space-11); }
   .g-page { max-width:var(--ds-content-max); margin:0 auto; }
   .g-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:var(--ds-space-7); margin-bottom:var(--ds-space-9); }
@@ -97,7 +100,7 @@
     </div>
     <div style="margin-top:var(--ds-space-6);max-width:420px">
       <label for="progress-demo" class="visually-hidden">Translation progress</label>
-      <progress id="progress-demo" max="100" value="62">62%</progress>
+      <progress class="ds-progress" id="progress-demo" max="100" value="62">62%</progress>
     </div>
   </section>
 
@@ -118,18 +121,18 @@
       </article>
       <article class="ds-panel">
         <div class="ds-panel-head"><h3 class="ds-panel-title">Usage</h3><span class="ds-count">3</span></div>
-        <div class="ds-panel-body"><table><thead><tr><th scope="col">Pass</th><th scope="col">Units</th></tr></thead>
+        <div class="ds-panel-body"><table class="ds-table"><thead><tr><th scope="col">Pass</th><th scope="col">Units</th></tr></thead>
           <tbody><tr><td>P1</td><td>120</td></tr><tr><td>P2</td><td>88</td></tr><tr><td>P5</td><td>31</td></tr></tbody></table></div>
       </article>
     </div>
     <div class="ds-table-card g-table">
-      <table>
+      <table class="ds-table ds-table-interactive">
         <caption class="visually-hidden">Sections</caption>
         <thead><tr><th scope="col">Section</th><th scope="col">Processing</th><th scope="col">Status</th></tr></thead>
         <tbody>
           <tr><td>Chapter 1</td><td>Full</td><td><span class="ds-status-dot" data-status="done" aria-hidden="true"></span>Done</td></tr>
           <tr><td>Chapter 2</td><td>Translate only</td><td><span class="ds-status-dot" data-status="running" aria-hidden="true"></span>Running</td></tr>
-          <tr class="excluded"><td>Index</td><td>Excluded</td><td>—</td></tr>
+          <tr><td>Index</td><td>Excluded</td><td>—</td></tr>
         </tbody>
       </table>
     </div>
