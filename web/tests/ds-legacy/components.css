@@ -30,3 +30,12 @@
    outranks every legacy base rule above, so the earlier position here does not change the result. */
 .reader-controls .ghost-btn { padding:5px;text-align:center;font-size:19px; }
 .reader-status .ghost-btn { font-size:11px; }
+
+/* Panels and table card (from intelitex/components.css) */
+.table-card { margin-top:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden;box-shadow:var(--shadow); }
+.phase-detail-card { border:1px solid var(--line);background:var(--panel);border-radius:var(--ds-radius-lg);overflow:hidden;min-width:0; }
+.phase-detail-card-head { padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-space-6); }
+.phase-detail-card-head h2 { font-size:var(--ds-text-base); }
+.phase-detail-card-body { padding:14px 15px; }
+.phase-detail-card-body:has(> .prepare-structure-scroll) { padding:0; }
+.phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }

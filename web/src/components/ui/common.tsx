@@ -36,7 +36,7 @@ export function Overlay({ title, eyebrow, children, close, drawer = false, compa
     <div className={drawer ? 'drawer-head' : 'modal-head'}><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h2>{title}</h2></div><Button variant="icon" onClick={close} aria-label="Close"><X size={18} /></Button></div>{children}
   </dialog>, document.body)
 }
-export function Panel({ title, children, debugId }: { title: string; children: ReactNode; debugId: DebugId }) { return <section className="phase-detail-card" {...debugTag(debugId)}><div className="phase-detail-card-head"><h2>{title}</h2></div><div className="phase-detail-card-body">{children}</div></section> }
+export function Panel({ title, children, debugId }: { title: string; children: ReactNode; debugId: DebugId }) { return <section className="ds-panel" {...debugTag(debugId)}><div className="ds-panel-head"><h2 className="ds-panel-title">{title}</h2></div><div className="ds-panel-body">{children}</div></section> }
 
 // Decorative: every use sits next to the profile name (visible text or the selected option), so the swatch is
 // hidden from assistive technologies instead of repeating the name inside labels such as "Pass 1".

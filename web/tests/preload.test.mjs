@@ -170,7 +170,7 @@ test('P0 physical totals, confirmed Play, lost response receipt, Stop and provis
   await readyPreload(page)
   assert.deepEqual((await page.locator('.phase-metric-value').allTextContents()).slice(0, 4), ['200','0','0','10'])
   assert.equal(await page.locator('.phase-metric-value').last().textContent(), '$0.0003 · partial')
-  await page.locator('[data-ui-debug-id="PNC"] > .phase-detail-card-body > details > summary').click()
+  await page.locator('[data-ui-debug-id="PNC"] > .ds-panel-body > details > summary').click()
   for (const heading of ['Current inherited assignments','Recorded P0 summary','Usage by model/profile','Usage by chapter','Usage by source unit/session'])
     await page.getByRole('heading', { name: heading, exact: true }).waitFor()
   assert.equal(await page.locator('[data-ui-debug-id="PNC"] .profile-swatch').count() > 5, true)

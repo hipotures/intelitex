@@ -38,7 +38,7 @@ test('Prepare edits shared metadata, preserves original and restores it', { time
   }
   await dialog.getByRole('button', { name: 'Save metadata' }).click()
   await dialog.waitFor({ state: 'detached' })
-  const panel = page.locator('.phase-detail-card').filter({ has: page.getByRole('heading', { name: 'Source metadata' }) })
+  const panel = page.locator('.ds-panel').filter({ has: page.getByRole('heading', { name: 'Source metadata' }) })
   await panel.getByText('My corrected book title', { exact: true }).waitFor()
   await panel.getByText('Author One, Author Two', { exact: true }).waitFor()
   assert.equal(await panel.getByText('Import folder', { exact: true }).count(), 0)

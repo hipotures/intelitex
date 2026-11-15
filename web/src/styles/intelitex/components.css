@@ -1,5 +1,5 @@
 /* Intelitex UI components: buttons, notices, fields, segmented filters, tables, dialogs and drawers, panels, metrics, tabs, toast. */
-/* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. */
+/* Buttons: ds/components.css (.ds-btn, .ds-icon-btn) with intelitex/ds-compat.css. Panels: .ds-panel, .ds-table-card. */
 .progress-wrap { display:flex;align-items:center;gap:10px; }
 .progress-value { width:42px;text-align:right;color:var(--text-soft);font-size:13px; }
 .status-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-dim); }
@@ -23,7 +23,6 @@
 }
 .filter-segment button { border:0;background:transparent;color:var(--text-dim);padding:var(--ds-space-3) var(--ds-space-5);border-radius:var(--ds-radius-xs);cursor:pointer;font-size:var(--ds-text-sm); }
 .filter-segment button.active { background:var(--panel-3);color:var(--text); }
-.table-card { margin-top:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden;box-shadow:var(--shadow); }
 .drawer .field select { transition:var(--ds-duration-fast) var(--ds-ease); }
 .autosave-note {
   margin-top:-4px;
@@ -137,10 +136,6 @@
 .phase-metric-value { margin-top:5px;font-size:var(--ds-text-xl);font-weight:760;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .phase-detail-grid { display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:14px;align-items:start; }
 .phase-detail-stack { display:flex;flex-direction:column;gap:14px;min-width:0; }
-.phase-detail-card { border:1px solid var(--line);background:var(--panel);border-radius:var(--ds-radius-lg);overflow:hidden;min-width:0; }
-.phase-detail-card-head { padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-space-6); }
-.phase-detail-card-head h2 { font-size:var(--ds-text-base); }
-.phase-detail-card-body { padding:14px 15px; }
 .phase-kv dd { color:var(--text);min-width:0;margin:0;overflow-wrap:anywhere; }
 .phase-detail-table { width:100%;border-collapse:collapse;table-layout:fixed; }
 .phase-detail-table th { text-align:left;color:var(--text-dim);font-size:var(--ds-text-2xs);text-transform:uppercase;letter-spacing:.06em;font-weight:750;padding:9px 10px;border-bottom:1px solid var(--line); }
@@ -172,9 +167,9 @@ dialog.drawer { margin:0 0 0 auto;height:100dvh;max-height:100dvh;max-width:96vw
   .notice { flex-wrap:wrap; }
 }
 .categories { margin-bottom:12px; }
-.phase-detail-card-body:has(> .prepare-structure-scroll) { padding:0; }
+.ds-panel-body:has(> .prepare-structure-scroll) { padding:0; }
 .readonly-field { min-height:37px;display:flex;align-items:center;color:var(--text);font-size:13px; }
-.phase-detail-card-body:has(> table),.phase-detail-card-body:has(> .diagnostic-scroll) { padding:0; }
+.ds-panel-body:has(> .diagnostic-scroll) { padding:0; }
 .execution-diagnostics { max-height:320px;overflow:auto;font-size:12px;overflow-wrap:anywhere; }
 .execution-diagnostics details { padding:8px 0;border-bottom:1px solid var(--line); }
 .execution-diagnostics p { margin-top:7px;color:var(--text-dim); }
