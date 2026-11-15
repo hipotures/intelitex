@@ -50,6 +50,13 @@ Browser tests need Playwright Chromium and its system libraries/fonts. They laun
 a disposable Python server with an in-process offline provider and temporary projects.
 They never use the user's translation workspaces or contact a real model service.
 `test` runs unit/component and browser suites; `test:browser` aliases `test:e2e`.
+
+**Memory safety.** Vitest only discovers unit tests under `web/src/` (`test.include` and `test.exclude` in
+`vite.config.ts`), so a bare `npx vitest run` is equivalent to `test:unit`. The `web/tests/*.test.mjs` files are
+`node:test` integration tests. Each one starts a fixture server and a Chromium. Run them only through
+`test:browser` / `test:e2e`, which uses `--test-concurrency=1`, or one file at a time. Running them in parallel
+OOM-killed the 4 GB development VM twice. To check what Vitest would pick up without importing anything, run
+`npx vitest list --filesOnly`.
 `test:visual` compares the current Work page (six widths × dark/light, Inter embedded,
 reduced motion, settled-state waits) with the approved images in `web/tests/visual-baseline/`
 at an unmasked 1% pixel budget, and runs the 12 P0 preload layout checks. Every comparison
