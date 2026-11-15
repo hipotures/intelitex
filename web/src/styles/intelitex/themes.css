@@ -1,0 +1,32 @@
+/* Intelitex-specific theme additions: the sepia theme (a global Intelitex theme, not part of the shared
+   design system) and the generated book-cover gradients, which do not change with the theme. */
+:root {
+  --cover-1: linear-gradient(145deg,#203c57,#5c7fa1 55%,#c8d4df);
+  --cover-2: linear-gradient(145deg,#4c2645,#9b4f72 55%,#dfb8b1);
+  --cover-3: linear-gradient(145deg,#4a411d,#a88d38 55%,#e8d49a);
+  --cover-4: linear-gradient(145deg,#263f37,#477b69 55%,#b6d0c6);
+  --cover-5: linear-gradient(145deg,#2d2f54,#6669a5 55%,#c4c6e7);
+}
+html[data-theme="sepia"] {
+  --bg: #dcd5c7;
+  --bg-soft: #d2c8b8;
+  --panel: #f2ecdf;
+  --panel-2: #e9e0d1;
+  --panel-3: #dcd1c0;
+  --line: #c8bdaa;
+  --line-strong: #a99b84;
+  --text: #302b25;
+  --text-soft: #544d42;
+  --text-dim: #71675a;
+  --accent: #87543e;
+  --accent-soft: rgba(135,84,62,.14);
+  --green: #366f54;
+  --green-soft: rgba(54,111,84,.14);
+  --red: #ad4d46;
+  --red-soft: rgba(173,77,70,.12);
+  --amber: #866320;
+  --amber-soft: rgba(134,99,32,.13);
+  --shadow: 0 16px 46px rgba(57,44,31,.14);
+  --bg-inset: #e2d9ca;
+  color-scheme: light;
+}

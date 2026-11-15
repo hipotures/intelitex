@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import './styles/ds/tokens.css';
+@import './styles/ds/themes.css';
+@import './styles/intelitex/themes.css';
 @import './styles/v33.css';
 @import './styles/production.css';
