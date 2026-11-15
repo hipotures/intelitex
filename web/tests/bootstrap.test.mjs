@@ -43,6 +43,10 @@ test('production same-origin offline workflow, Review, Reader, archive, themes a
  await page.getByText('✓ Glossary approved',{exact:true}).waitFor()
  await page.getByRole('link',{name:'Workspace',exact:true}).click()
  await page.getByRole('button',{name:'Run',exact:true}).click()
+ // The Run button keeps its idempotency key in sessionStorage until the job receipt arrives. Reloading before that
+ // leaves the key behind, and the later Run of the same operation reuses it and gets this (finished) job back from
+ // the server instead of starting a new one. Wait for the receipt; the reload below still happens mid-job.
+ await page.waitForFunction(()=>!Object.keys(sessionStorage).some(key=>key.startsWith('intelitex.pending.')&&key.endsWith('.jobs.translate')))
  // Route changes and a reload must not cancel workers.
  await page.getByRole('button',{name:'Reader',exact:true}).click(); await page.reload()
  await wait(async()=>{const response=await context.request.get(config.url+'/api/workspaces/prepared/pipeline');return (await response.json()).publication.current},'automatic publication')
