@@ -59,6 +59,11 @@ under the evidence directory, and adopting one is a reviewed copy into `visual-b
 `test:visual:v33` is a separate, explicitly invoked diagnostic against the historical v33
 mockup (`INTELITEX_V33_REFERENCE=<path>`, recoverable from commit `b0c40df`); the current UI,
 not v33, is authoritative, so it is not part of the standard suite.
+`ui:snapshot` guards CSS refactoring beyond the approved Work baselines: `record` drives the
+offline pipeline once and saves its API responses, `capture <dir>` replays them against the built
+`dist/` for 29 representative views (Workspace, phases, Review, Reader in three themes, dialogs and
+drawers, desktop and mobile) and stores screenshots plus every computed style, and
+`compare <before> <after>` reports differences. A behavior-preserving change shows none.
 Artifacts go under `$INTELITEX_TEST_EVIDENCE_ROOT` (default: the system temp directory; `intelitex-browser-evidence`,
 `intelitex-visual-evidence`, `intelitex-visual-v33-evidence`).
 
