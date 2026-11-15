@@ -138,7 +138,10 @@ The new tokens use the `--ds-` prefix because Tailwind v4 owns the `--text-*`, `
   ```
 
 - **Fonts:** set `--ds-font-sans` (and the `serif` and `mono` tokens). The default stack starts with Inter, which
-  the package does not ship. Load it yourself or let the stack fall back to the system font.
+  the package does not ship. Load it yourself or let the stack fall back to the system font. The fallback is
+  whatever the operating system maps `sans-serif` to. Some minimal Linux images map every generic family to a
+  monospace face: the test VM's fontconfig picks Liberation Mono even for `sans-serif`. That is why the tests load
+  Inter from bytes before taking screenshots.
 - **Overrides:** application rules win over the primitives at equal specificity when they load later, and always
   win over the zero-specificity resets.
 
