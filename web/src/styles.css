@@ -4,6 +4,7 @@
 @import './styles/ds/themes.css';
 @import './styles/intelitex/themes.css';
 @import './styles/ds/base.css';
+@import './styles/ds/components.css';
 @import './styles/intelitex/shell.css';
 @import './styles/intelitex/components.css';
 @import './styles/intelitex/library.css';
