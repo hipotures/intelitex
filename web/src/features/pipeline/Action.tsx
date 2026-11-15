@@ -49,9 +49,9 @@ export function Action({ workspace, pipeline, row = false }: { workspace: Worksp
     action.operation = 'open_publish'
   }
   async function run() {
+    if (row && action.label === 'Finished') { await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: workspace.workspace_id } }); return }
     if (checkLatch.current || !action.allowed) return
     setLocalError(null)
-    if (row && action.label === 'Finished') { await navigate({ to: '/work/workspaces/$workspaceId', params: { workspaceId: workspace.workspace_id } }); return }
     if (action.operation === 'open_publish') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'publish' } }); return }
     if (action.operation === 'review') { await navigate({ to: '/work/workspaces/$workspaceId/$phase', params: { workspaceId: workspace.workspace_id, phase: 'review' } }); return }
     if (action.operation === 'stop' && activeJob) { await command.send(`/api/jobs/${encodeURIComponent(activeJob.job_id)}/stop`, jobSchema, {}); return }
