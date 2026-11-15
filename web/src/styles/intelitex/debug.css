@@ -1,0 +1,31 @@
+/* Intelitex UI debug identifiers overlay (presentation only). */
+.workspace-debug-identity { display:none;color:var(--text-soft);user-select:text;overflow-wrap:anywhere; }
+html[data-ui-debug="on"] .workspace-debug-identity { display:inline; }
+.workspace-debug-identity code { color:var(--accent);font-size:12px;user-select:text; }
+html[data-ui-debug="on"] [data-ui-debug-id]:not(.topbar):not(.reader-selection):not(dialog) { position:relative; }
+html[data-ui-debug="on"] [data-ui-debug-id="WRK"],
+html[data-ui-debug="on"] [data-ui-debug-id="WHT"] { outline:1px dashed color-mix(in srgb,var(--accent) 55%,transparent); }
+html[data-ui-debug="on"] [data-ui-debug-id="WRK"] { outline-offset:-2px; }
+html[data-ui-debug="on"] [data-ui-debug-id="WHT"] { outline-offset:4px; }
+html[data-ui-debug="on"] [data-ui-debug-id]::after {
+  content:attr(data-ui-debug-id);
+  position:absolute;
+  top:4px;
+  right:4px;
+  z-index:100;
+  display:block;
+  padding:2px 5px;
+  border:1px solid #f6d365;
+  border-radius:4px;
+  background:#121826;
+  color:#fff8db;
+  font:700 10px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:.06em;
+  white-space:nowrap;
+  pointer-events:none;
+  box-shadow:0 1px 4px #0008;
+}
+/* The list and its first row share a top edge; keep both badges readable. */
+html[data-ui-debug="on"] [data-ui-debug-id="WRC"]::after { right:40px; }
+/* The Review heading's right edge contains approval controls; place its badge in the gap above. */
+html[data-ui-debug="on"] [data-ui-debug-id="RVH"]::after { top:-26px; }

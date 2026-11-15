@@ -1,0 +1,5 @@
+/* Historical compatibility with the v33 mockup that is not a design rule of its own. */
+/* v33's two off-canvas drawers cast this edge shadow even while closed. Native
+   dialogs are unmounted, so preserve that decoration without hidden focus targets. */
+body::before,body::after { content:"";position:fixed;top:0;right:0;height:100vh;width:min(520px,94vw);transform:translateX(105%);box-shadow:var(--ds-shadow-drawer);pointer-events:none;z-index:var(--ds-z-drawer); }
+body:has(dialog.drawer[open])::before { display:none; }

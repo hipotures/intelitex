@@ -1,0 +1,193 @@
+/* Intelitex Work page and library: workspace rows, book cards and covers, sources and setup. */
+.workspace-list {
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:var(--panel);
+  box-shadow:var(--shadow);
+}
+.workspace-row {
+  --workspace-action-width:112px;
+  min-height:100px;
+  padding:16px 18px;
+  display:grid;
+  grid-template-columns:58px minmax(260px,1.25fr) minmax(250px,1fr) minmax(230px,.8fr) var(--workspace-action-width);
+  align-items:center;
+  gap:16px;
+  border-bottom:1px solid var(--line);
+  cursor:pointer;
+  transition:.14s ease;
+}
+.workspace-row:last-child { border-bottom:0; }
+.workspace-row:hover { background:var(--panel-2); }
+.mini-cover {
+  width:48px;height:66px;border-radius:5px;
+  display:grid;place-items:center;padding:5px;
+  color:rgba(255,255,255,.96);
+  font-size:15px;font-weight:850;line-height:1;
+  letter-spacing:.02em;text-align:center;
+  white-space:nowrap;overflow:hidden;
+  box-shadow:0 5px 16px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.08) inset;
+}
+.workspace-title { font-weight:720;letter-spacing:-.015em;font-size:16px; }
+.workspace-author { margin-top:4px;color:var(--text-dim);font-size:13px; }
+.workspace-state { color:var(--text-soft);font-size:14px; }
+.workspace-state small { display:block;color:var(--text-dim);margin-top:4px; }
+.row-actions {
+  width:var(--workspace-action-width);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  justify-content:flex-end;
+}
+.library-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:16px;
+}
+.book-card {
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:var(--panel);
+  padding:12px;
+  cursor:pointer;
+  transition:.16s ease;
+  min-width:0;
+  display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+}
+.book-card:hover { transform:translateY(-2px);border-color:var(--line-strong);box-shadow:var(--shadow); }
+.cover {
+  aspect-ratio:2/3;
+  border-radius:8px;
+  padding:16px 13px;
+  display:grid;
+  place-items:center;
+  box-shadow:0 10px 25px rgba(0,0,0,.23),0 0 0 1px rgba(255,255,255,.09) inset;
+  color:white;
+  overflow:hidden;
+  position:relative;
+}
+.cover::after {
+  content:"";
+  position:absolute;inset:0;
+  background:linear-gradient(110deg,rgba(255,255,255,.11),transparent 23%,transparent 70%,rgba(0,0,0,.12));
+  pointer-events:none;
+}
+.cover-initials {
+  position:relative;z-index:1;
+  display:block;
+  max-width:100%;
+  color:rgba(255,255,255,.97);
+  font-size:42px;
+  font-weight:850;
+  line-height:1;
+  letter-spacing:.015em;
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:clip;
+  text-shadow:0 1px 8px rgba(0,0,0,.22);
+}
+.book-meta { padding:11px 2px 2px; }
+.book-name { font-weight:690;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.workspace-chip { color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);padding:1px 6px;border-radius:20px;font-size:var(--ds-text-xs); }
+/* Archive + reader */
+.archive-list { display:flex;flex-direction:column;gap:10px; }
+.archive-item { border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px; }
+@media (max-width: 1020px) {
+  .workspace-row { grid-template-columns:58px 1fr var(--workspace-action-width); }
+  .workspace-state,.row-progress { display:none; }
+}
+@media (max-width: 720px) {
+  .workspace-row { grid-template-columns:46px 1fr;gap:12px; }
+  .workspace-row .mini-cover { width:42px;height:58px; }
+  .row-actions { grid-column:2;justify-content:flex-start;width:var(--workspace-action-width); }
+  .library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cover-initials { font-size:34px; }
+  .mini-cover { font-size:14px; }
+}
+.cover,.mini-cover { background: var(--cover-1); }
+.book-card:nth-child(5n+2) .cover { background:var(--cover-2); }
+.book-card:nth-child(5n+3) .cover { background:var(--cover-3); }
+.book-card:nth-child(5n+4) .cover { background:var(--cover-4); }
+.book-card:nth-child(5n+5) .cover { background:var(--cover-5); }
+.row-actions .command,.row-actions .command > button { width:100%; }
+.library-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap; }
+.library-title-filter { width:260px;max-width:100%;min-width:0;padding:7px 10px;font-size:13px; }
+.library-sort { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim); }
+.library-sort select { width:auto;min-width:100px;padding:5px 8px; }
+.library-filter { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer; }
+.library-filter input { width:14px;height:14px;accent-color:var(--accent); }
+.library-view-label,.library-kind { font-size:11px;border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--text-dim); }
+.library-kind { text-transform:uppercase;letter-spacing:.05em; }
+.book-card[data-library-group] { box-shadow:inset 3px 0 var(--library-group-color);background:color-mix(in srgb,var(--library-group-color) 6%,var(--panel)); }
+.library-group-path { margin-top:9px;font-size:11px;line-height:1.7;color:var(--text-dim);overflow-wrap:anywhere;text-align:left; }
+.library-group-path .library-kind { font-size:9px;padding:1px 3px; }
+.library-group-warning { display:block;margin-top:6px;font-size:11px;color:var(--text-dim); }
+.source-location { display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-dim);overflow-wrap:anywhere; }
+@media (max-width:600px) {
+  [data-ui-debug-id="LIB"] > .section-header { flex-wrap:wrap;gap:12px; }
+}
+.library-refresh { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
+.library-refresh-icon.busy { animation:library-refresh-spin 1s linear infinite; }
+.library-load-more { height:1px; }
+@keyframes library-refresh-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) {
+  .library-refresh-icon.busy { animation:none; }
+}
+.workspace-label { margin-top:3px;color:var(--accent);font-size:12px;font-weight:650; }
+.source-detail-head { display:flex;gap:18px;align-items:flex-start; }
+.source-detail-head .cover { width:128px;flex:0 0 128px; }
+.source-detail-title { font-size:18px;font-weight:700;margin-bottom:5px; }
+.source-detail-actions { display:flex;gap:8px;flex-wrap:wrap;margin:22px 0; }
+.source-inspect { border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:15px;overflow-wrap:anywhere; }
+.source-inspect h3,.setup-profile-list h3 { margin:0 0 9px;font-size:15px; }
+.source-inspect h4 { margin:22px 0 4px;font-size:14px; }
+.source-inspect-facts { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0; }
+.source-inspect-facts > div { display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel); }
+.source-inspect-facts strong { font-size:19px;line-height:1.1; }
+.source-inspect-facts span,.source-inspect-note { color:var(--text-dim);font-size:12px;line-height:1.5; }
+.source-inspect-note { margin:10px 0; }
+.source-inspect-samples { display:grid;gap:9px;margin-top:12px; }
+.source-inspect-samples article { padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel); }
+.source-inspect-samples strong { display:block;margin-top:5px;font-size:13px; }
+.source-sample-label { color:var(--text-dim);font-size:11px;letter-spacing:.04em;text-transform:uppercase; }
+.source-inspect-samples p { margin:8px 0 0;font-size:13px;line-height:1.55; }
+.setup-body > .subtitle { margin:0 0 20px; }
+.setup-body .field small { display:block;margin-top:6px;color:var(--text-dim);font-size:11px;line-height:1.45; }
+.setup-profile-list { margin-top:8px;padding-top:14px;border-top:1px solid var(--line); }
+.setup-profile-row { display:grid;grid-template-columns:120px minmax(0,1fr);align-items:center;gap:12px;margin-top:8px; }
+.setup-profile-row label { display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em; }
+.setup-profile-row select { min-width:0;width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px; }
+.setup-warning { color:var(--text-dim);font-size:12px;margin-top:7px; }
+@media (max-width:560px) {
+  .setup-body .field-row { grid-template-columns:1fr;gap:0; }
+  .setup-profile-row { grid-template-columns:85px minmax(0,1fr); }
+  .source-detail-head .cover { width:88px;flex-basis:88px; }
+}
+.book-identity { overflow-wrap: anywhere; font-family: monospace; font-size: 0.8em; }
+.book-metadata-editor { padding: 20px; }
+.book-metadata-field { display: grid; gap: 8px; margin: 20px 0; }
+.book-metadata-field input, .book-metadata-field textarea { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+.book-metadata-original { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.book-metadata-original span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.book-metadata-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.workspace-label[title] { cursor:text; }
+.workspace-label.empty { color:#8b93a1;font-weight:400;opacity:.6; }
+.workspace-label-input { font:inherit;color:inherit;background:transparent;border:1px solid var(--accent);border-radius:4px;padding:1px 6px;min-width:180px; }
+.translated-title-form { display:grid;gap:8px; }
+.translated-title-form label { font-size:12px;color:var(--text-dim); }
+.translated-title-form input { width:100%;max-width:520px; }
+.translated-title-actions { display:flex;gap:10px; }
+/* Library cards: one rigid size. The language sits on the cover's top-left corner, the active-workspace count on
+   its bottom edge; the title takes up to three lines (full text in the tooltip) and the author is always shown in
+   full at the very bottom. If a card needs more room (long author, group path), every card grows with it. */
+.library-grid { grid-auto-rows:1fr; }
+.cover-frame { position:relative; }
+.cover-language { position:absolute;top:7px;left:7px;z-index:3;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 6px;border-radius:5px;background:rgba(0,0,0,.42);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;line-height:1; }
+.cover-workspaces { position:absolute;left:7px;right:7px;bottom:7px;z-index:3;text-align:center;background:rgba(0,0,0,.5);color:#fff;border-color:rgba(255,255,255,.28); }
+.book-card .book-meta { display:flex;flex-direction:column;flex:1 1 auto;min-height:0;text-align:left; }
+.book-card .book-name { white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;line-height:1.3;min-height:calc(3 * 1.3em); }
+.book-card .book-author { margin-top:auto;padding-top:6px;min-height:calc(2 * 1.35em + 6px);display:flex;align-items:flex-end;font-size:12.5px;line-height:1.35;color:var(--text-dim);overflow-wrap:anywhere; }
+/* The dim text color blends into the dark card; light and sepia are fine with it. */
+[data-theme="dark"] .book-card .book-author { color:var(--text-soft); }

@@ -3,5 +3,13 @@
 @import './styles/ds/tokens.css';
 @import './styles/ds/themes.css';
 @import './styles/intelitex/themes.css';
-@import './styles/v33.css';
-@import './styles/production.css';
+@import './styles/ds/base.css';
+@import './styles/intelitex/shell.css';
+@import './styles/intelitex/components.css';
+@import './styles/intelitex/library.css';
+@import './styles/intelitex/pipeline.css';
+@import './styles/intelitex/review.css';
+@import './styles/intelitex/reader.css';
+@import './styles/ds/state.css';
+@import './styles/intelitex/debug.css';
+@import './styles/intelitex/legacy.css';

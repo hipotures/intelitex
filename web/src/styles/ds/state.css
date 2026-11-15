@@ -1,0 +1,4 @@
+/* Shared interaction states that must win over component defaults: the keyboard focus ring.
+   `button:disabled` stays in intelitex/pipeline.css: its cursor must beat earlier component buttons and lose to later
+   ones, which only its original position in the cascade reproduces. */
+:focus-visible { outline: var(--ds-focus-ring-width) solid var(--accent); outline-offset: var(--ds-focus-ring-offset); }
